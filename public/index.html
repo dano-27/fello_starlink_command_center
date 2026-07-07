@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Monitor data usage across your Starlink terminal fleet. Track priority and standard data consumption per billing cycle. Audit rental terminal usage.">
+  <title>Starlink Data Usage Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="index.css">
+</head>
+<body>
+  <div id="app">
+    <div id="toast-container" aria-live="polite"></div>
+
+    <!-- Login Screen -->
+    <div id="login-screen">
+      <div class="login-container">
+        <div class="login-logo">
+          <div class="logo-icon">✦</div>
+          <h1>Starlink Dashboard</h1>
+          <p class="login-subtitle">Monitor data usage across your Starlink fleet</p>
+        </div>
+        <form id="login-form" autocomplete="off">
+          <div class="form-group">
+            <label class="form-label" for="client-id">Client ID</label>
+            <input class="form-input" type="text" id="client-id" placeholder="Enter your API Client ID" required autocomplete="off">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="client-secret">Client Secret</label>
+            <input class="form-input" type="password" id="client-secret" placeholder="Enter your API Client Secret" required autocomplete="off">
+          </div>
+          <div class="form-group form-checkbox">
+            <input type="checkbox" id="remember-credentials">
+            <label for="remember-credentials">Remember credentials in this browser</label>
+          </div>
+          <div id="login-error" class="error-message" style="display:none"></div>
+          <button type="submit" class="btn btn-primary btn-full" id="login-btn">
+            <span class="btn-text">Connect to Starlink</span>
+            <span class="btn-loader" style="display:none"></span>
+          </button>
+        </form>
+        <p class="login-footer">Your credentials are stored locally and never sent to third parties.</p>
+      </div>
+    </div>
+
+    <!-- Dashboard -->
+    <div id="dashboard" style="display:none">
+      <nav class="nav-bar">
+        <div class="nav-left">
+          <span class="nav-logo">✦</span>
+          <span class="nav-title">Starlink Dashboard</span>
+        </div>
+        <div class="nav-right">
+          <div class="refresh-indicator" id="refresh-indicator">
+            <span class="refresh-dot"></span>
+            <span id="refresh-text">Live</span>
+          </div>
+          <button class="btn btn-secondary btn-sm" id="refresh-btn" title="Refresh now" aria-label="Refresh data">
+            <span class="refresh-icon">↻</span>
+          </button>
+          <button class="btn btn-secondary btn-sm" id="export-btn" title="Export CSV" aria-label="Export data as CSV">
+            ↓ Export
+          </button>
+          <button class="btn btn-secondary btn-sm" id="settings-btn" title="Settings" aria-label="Open settings">
+            ⚙
+          </button>
+          <button class="btn btn-secondary btn-sm" id="logout-btn" title="Disconnect" aria-label="Log out">
+            ⏻
+          </button>
+        </div>
+      </nav>
+
+      <!-- Fleet Summary -->
+      <section class="fleet-summary" id="fleet-summary">
+        <div class="stat-card">
+          <div class="stat-value" id="total-terminals">—</div>
+          <div class="stat-label">Terminals</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="total-priority">—</div>
+          <div class="stat-label">Priority Data</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="total-standard">—</div>
+          <div class="stat-label">Standard Data</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="total-combined">—</div>
+          <div class="stat-label">Total Data</div>
+        </div>
+      </section>
+
+      <!-- Controls Bar: Date Range + Search + Filters -->
+      <div class="controls-bar" id="controls-bar">
+        <div class="controls-left">
+          <div class="range-pills" id="range-pills">
+            <button class="range-pill active" data-range="current">Current</button>
+            <button class="range-pill" data-range="3months">3 Months</button>
+            <button class="range-pill" data-range="6months">6 Months</button>
+            <button class="range-pill" data-range="custom">Custom</button>
+          </div>
+          <div class="custom-date-range" id="custom-date-range" style="display:none">
+            <input type="date" id="range-start" class="form-input form-input-sm" aria-label="Start date">
+            <span class="date-separator">to</span>
+            <input type="date" id="range-end" class="form-input form-input-sm" aria-label="End date">
+            <button class="btn btn-primary btn-sm" id="apply-range-btn">Apply</button>
+          </div>
+        </div>
+        <div class="controls-right">
+          <div class="search-container">
+            <span class="search-icon">⌕</span>
+            <input type="text" id="terminal-search" class="form-input form-input-sm search-input" placeholder="Search terminals..." aria-label="Search terminals">
+          </div>
+          <label class="toggle-label" for="include-inactive">
+            <span class="toggle-switch">
+              <input type="checkbox" id="include-inactive">
+              <span class="toggle-slider"></span>
+            </span>
+            <span class="toggle-text">Include Inactive</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Section Header -->
+      <div class="section-header">
+        <h2 class="section-title">Terminal Usage</h2>
+        <div class="results-count" id="results-count"></div>
+      </div>
+
+      <!-- Terminal Grid -->
+      <div class="terminal-grid" id="terminal-grid"></div>
+
+      <!-- Empty State -->
+      <div class="empty-state" id="empty-state" style="display:none">
+        <div class="empty-icon">📡</div>
+        <h3>No terminals found</h3>
+        <p>No service lines matched your filters.</p>
+      </div>
+
+      <!-- Loading State -->
+      <div class="terminal-grid" id="loading-grid">
+        <div class="terminal-card skeleton-card"><div class="skeleton skeleton-header"></div><div class="skeleton skeleton-gauge"></div><div class="skeleton skeleton-bar"></div><div class="skeleton skeleton-bar"></div></div>
+        <div class="terminal-card skeleton-card"><div class="skeleton skeleton-header"></div><div class="skeleton skeleton-gauge"></div><div class="skeleton skeleton-bar"></div><div class="skeleton skeleton-bar"></div></div>
+        <div class="terminal-card skeleton-card"><div class="skeleton skeleton-header"></div><div class="skeleton skeleton-gauge"></div><div class="skeleton skeleton-bar"></div><div class="skeleton skeleton-bar"></div></div>
+        <div class="terminal-card skeleton-card"><div class="skeleton skeleton-header"></div><div class="skeleton skeleton-gauge"></div><div class="skeleton skeleton-bar"></div><div class="skeleton skeleton-bar"></div></div>
+        <div class="terminal-card skeleton-card"><div class="skeleton skeleton-header"></div><div class="skeleton skeleton-gauge"></div><div class="skeleton skeleton-bar"></div><div class="skeleton skeleton-bar"></div></div>
+        <div class="terminal-card skeleton-card"><div class="skeleton skeleton-header"></div><div class="skeleton skeleton-gauge"></div><div class="skeleton skeleton-bar"></div><div class="skeleton skeleton-bar"></div></div>
+      </div>
+    </div>
+
+    <!-- Terminal Detail Modal -->
+    <div class="modal-overlay" id="detail-modal" style="display:none">
+      <div class="modal-content modal-wide">
+        <div class="modal-header">
+          <div>
+            <h2 id="detail-terminal-name">Terminal</h2>
+            <span class="modal-subtitle" id="detail-terminal-sln"></span>
+          </div>
+          <button class="modal-close" id="detail-close" aria-label="Close detail view">&times;</button>
+        </div>
+        <div class="modal-body">
+          <!-- Detail Summary Stats -->
+          <div class="detail-summary" id="detail-summary">
+            <div class="detail-stat">
+              <div class="detail-stat-value" id="detail-total-priority">—</div>
+              <div class="detail-stat-label">Total Priority</div>
+            </div>
+            <div class="detail-stat">
+              <div class="detail-stat-value" id="detail-total-standard">—</div>
+              <div class="detail-stat-label">Total Standard</div>
+            </div>
+            <div class="detail-stat">
+              <div class="detail-stat-value" id="detail-total-combined">—</div>
+              <div class="detail-stat-label">Combined Total</div>
+            </div>
+            <div class="detail-stat">
+              <div class="detail-stat-value" id="detail-cycle-count">—</div>
+              <div class="detail-stat-label" id="detail-cycle-label">Billing Cycles</div>
+            </div>
+          </div>
+
+          <!-- Daily Usage Chart -->
+          <div class="chart-section">
+            <h3>Daily Usage</h3>
+            <div class="chart-container">
+              <canvas id="daily-chart" width="800" height="280"></canvas>
+            </div>
+            <div class="chart-legend">
+              <span class="legend-item"><span class="legend-dot priority"></span> Priority</span>
+              <span class="legend-item"><span class="legend-dot standard"></span> Standard</span>
+            </div>
+          </div>
+
+          <!-- Billing Cycle History Table -->
+          <div class="table-section">
+            <h3>Billing Cycle History</h3>
+            <div class="table-scroll">
+              <table class="data-table" id="cycle-history-table">
+                <thead>
+                  <tr>
+                    <th>Billing Cycle</th>
+                    <th>Priority (GB)</th>
+                    <th>Standard (GB)</th>
+                    <th>Total (GB)</th>
+                    <th>Overage (GB)</th>
+                  </tr>
+                </thead>
+                <tbody id="cycle-history-body"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Daily Usage Breakdown Table -->
+          <div class="table-section">
+            <h3 id="daily-table-title">Daily Usage Breakdown</h3>
+            <div class="table-scroll table-scroll-tall">
+              <table class="data-table" id="daily-usage-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Priority (GB)</th>
+                    <th>Standard (GB)</th>
+                    <th>Total (GB)</th>
+                    <th>Non-Billable (GB)</th>
+                  </tr>
+                </thead>
+                <tbody id="daily-usage-body"></tbody>
+                <tfoot id="daily-usage-foot"></tfoot>
+              </table>
+            </div>
+          </div>
+
+          <!-- Export single terminal -->
+          <div class="detail-actions">
+            <button class="btn btn-secondary" id="detail-export-btn">↓ Export This Terminal's Data</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="modal-overlay" id="settings-modal" style="display:none">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Settings</h2>
+          <button class="modal-close" id="settings-close" aria-label="Close settings">&times;</button>
+        </div>
+        <div class="modal-body">
+          <h3>Terminal Nicknames</h3>
+          <p class="modal-hint">Assign friendly names to your terminals for easier identification.</p>
+          <div id="nickname-list"></div>
+          <hr class="modal-divider">
+          <h3>Auto-Refresh</h3>
+          <div class="form-group">
+            <label class="form-label" for="refresh-interval">Refresh interval (minutes)</label>
+            <input class="form-input" type="number" id="refresh-interval" min="1" max="60" value="5">
+          </div>
+          <hr class="modal-divider">
+          <h3>Danger Zone</h3>
+          <button class="btn btn-danger" id="clear-data-btn">Clear All Local Data</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js" defer></script>
+</body>
+</html>

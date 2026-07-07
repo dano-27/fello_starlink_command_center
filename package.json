@@ -1,0 +1,13 @@
+{
+  "name": "starlink-data-usage-dashboard",
+  "version": "1.0.0",
+  "description": "Web dashboard to monitor Starlink terminal data usage via the Management API V2",
+  "main": "server.js",
+  "scripts": {
+    "dev": "node --watch server.js",
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0"
+  }
+}
