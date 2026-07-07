@@ -495,7 +495,7 @@
 
   function createGaugeSVG(percentage) {
     const offset = GAUGE_CIRCUMFERENCE * (1 - percentage / 100);
-    const color = percentage > 90 ? 'var(--accent-red)' : percentage > 75 ? 'var(--accent-amber)' : 'var(--accent-blue)';
+    const color = percentage > 90 ? '#ff4d41' : percentage > 75 ? '#f59231' : '#3166ae';
     const displayPct = Math.round(percentage);
 
     return `
@@ -689,8 +689,8 @@
 
     if (dailyData.length === 0) {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.fillStyle = 'rgba(255,255,255,0.3)';
-      ctx.font = '14px Inter, sans-serif';
+      ctx.fillStyle = '#636363';
+      ctx.font = '14px Montserrat, sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText('No daily usage data available', canvas.width / 2, canvas.height / 2);
       return;
@@ -725,10 +725,10 @@
 
     // Draw grid lines
     const gridLines = 4;
-    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+    ctx.strokeStyle = 'rgba(0,0,0,0.08)';
     ctx.lineWidth = 1;
-    ctx.fillStyle = 'rgba(255,255,255,0.35)';
-    ctx.font = '11px Inter, sans-serif';
+    ctx.fillStyle = '#636363';
+    ctx.font = '11px Montserrat, sans-serif';
     ctx.textAlign = 'right';
 
     for (let i = 0; i <= gridLines; i++) {
@@ -752,17 +752,17 @@
       const totalH = priorityH + standardH;
 
       // Standard (bottom)
-      ctx.fillStyle = 'rgba(255,255,255,0.18)';
+      ctx.fillStyle = '#e1edfd';
       ctx.fillRect(x, padTop + chartH - totalH, barWidth, standardH);
 
       // Priority (top of stack)
-      ctx.fillStyle = '#00A3FF';
+      ctx.fillStyle = '#3166ae';
       ctx.fillRect(x, padTop + chartH - totalH + standardH, barWidth, priorityH);
     });
 
     // Draw x-axis labels (show ~8 labels max)
-    ctx.fillStyle = 'rgba(255,255,255,0.35)';
-    ctx.font = '10px Inter, sans-serif';
+    ctx.fillStyle = '#636363';
+    ctx.font = '10px Montserrat, sans-serif';
     ctx.textAlign = 'center';
 
     const labelInterval = Math.max(1, Math.floor(dailyData.length / 8));
