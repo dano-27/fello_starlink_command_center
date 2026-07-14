@@ -296,12 +296,13 @@
       }
     });
 
-    // Merge service line nicknames
+    // Merge service line nicknames and active status
     serviceLines.forEach((sl) => {
       const sln = sl.serviceLineNumber;
       if (!sln) return;
       if (map[sln]) {
         map[sln].slNickname = sl.nickname || '';
+        map[sln].active = sl.active;
       } else {
         map[sln] = {
           dishSerial: '',
@@ -309,6 +310,9 @@
           utNickname: '',
           userTerminalId: '',
           slNickname: sl.nickname || '',
+          latitude: null,
+          longitude: null,
+          active: sl.active,
         };
       }
     });
@@ -2428,7 +2432,7 @@
     var tbody = $('ops-table-body');
     var entries = Object.keys(state.deviceMap).map(function(sln) {
       var d = state.deviceMap[sln];
-      return { sln: sln, id: d.userTerminalId || sln, name: d.utNickname || d.slNickname || sln };
+      return { sln: sln, id: d.userTerminalId || sln, name: d.utNickname || d.slNickname || sln, active: d.active };
     });
     if (entries.length === 0) {
       tbody.innerHTML = '<tr><td colspan="5" class="rc-loading-row">No terminals found</td></tr>';
@@ -2437,8 +2441,9 @@
     tbody.innerHTML = entries.map(function(e) {
       var id = e.id;
       var name = e.name || id.slice(0, 12) || 'Unknown';
-      var statusClass = 'status-online';
-      var statusText = 'Online';
+      var active = e.active === true;
+      var statusClass = active ? 'status-online' : 'status-offline';
+      var statusText = active ? 'Online' : 'Offline';
       var uptime = state.uptimeData[id];
       var uptimeText = uptime != null ? uptime.toFixed(1) + '%' : '\u2014';
       var uptimeClass = uptime >= 99 ? 'uptime-good' : uptime >= 95 ? 'uptime-warn' : uptime != null ? 'uptime-bad' : '';
