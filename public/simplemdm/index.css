@@ -567,14 +567,13 @@ body {
     background: var(--white);
     border-radius: var(--radius);
     border: 1.5px solid var(--border);
-    padding: 24px;
+    padding: 20px;
     display: flex;
     align-items: center;
-    gap: 16px;
+    gap: 14px;
     cursor: pointer;
     box-shadow: var(--shadow-sm);
     transition: all var(--transition);
-    position: relative;
     animation: fadeSlideUp 0.35s ease both;
 }
 
@@ -590,52 +589,53 @@ body {
 }
 
 .group-card-icon {
-    font-size: 2rem;
+    font-size: 1.6rem;
     flex-shrink: 0;
-    width: 52px;
-    height: 52px;
+    width: 44px;
+    height: 44px;
     display: flex;
     align-items: center;
     justify-content: center;
     background: var(--sky);
-    border-radius: 14px;
+    border-radius: 12px;
 }
 
 .group-card-body {
     flex: 1;
     min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
 }
 
 .group-card-name {
-    font-size: 1rem;
+    font-size: 0.875rem;
     font-weight: 700;
     color: var(--black);
-    margin-bottom: 4px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
 .group-card-count {
-    font-size: 0.8rem;
+    font-size: 0.75rem;
     font-weight: 500;
     color: var(--charcol);
     opacity: 0.65;
 }
 
 .group-card-badge {
-    position: absolute;
-    top: 12px;
-    right: 44px;
-    font-size: 0.65rem;
+    font-size: 0.6rem;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.3px;
-    padding: 3px 10px;
+    padding: 2px 8px;
     border-radius: var(--pill);
     background: var(--light-blue);
     color: var(--blue);
     white-space: nowrap;
+    flex-shrink: 0;
+    align-self: flex-start;
 }
 
 .group-card-arrow {
