@@ -175,6 +175,7 @@
             <h2 class="section-title">Saved WiFi Configs</h2>
             <div class="rc-profile-actions">
               <button class="btn btn-secondary btn-sm" id="rc-bulk-clean-btn" title="Remove all non-Fello-IP SSIDs from configs">🧹 Clean Extra SSIDs</button>
+              <button class="btn btn-secondary btn-sm" id="rc-add-ssid-btn" title="Add an SSID to existing configs">📶 Add SSID</button>
               <button class="btn btn-primary btn-sm" id="rc-create-btn">+ Create Config</button>
             </div>
           </div>
@@ -379,7 +380,48 @@
       </div>
     </div>
 
-    <!-- Assign Config Modal -->
+    <!-- Add SSID to Existing Configs Modal -->
+    <div class="modal-overlay" id="add-ssid-modal" style="display:none">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Add SSID to Configs</h2>
+          <button class="modal-close" id="add-ssid-close" aria-label="Close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p class="modal-hint">Enter the WiFi credentials, then select which profiles to add them to.</p>
+          <div class="form-group">
+            <label class="form-label" for="add-ssid-name">WiFi Network Name (SSID)</label>
+            <input class="form-input" type="text" id="add-ssid-name" placeholder="e.g. Event-WiFi" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="add-ssid-password">WiFi Password</label>
+            <input class="form-input" type="text" id="add-ssid-password" placeholder="Minimum 8 characters" required minlength="8">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="add-ssid-auth">Security</label>
+            <select class="form-input" id="add-ssid-auth">
+              <option value="WPA2">WPA2 (Recommended)</option>
+              <option value="WPA3">WPA3</option>
+              <option value="OPEN">Open (No Password)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Select Configs to Add To</label>
+            <div class="rc-add-ssid-select-bar">
+              <label class="rc-add-ssid-select-all-label"><input type="checkbox" id="add-ssid-select-all"> Select All</label>
+            </div>
+            <div class="rc-add-ssid-config-list" id="add-ssid-config-list">
+              <!-- Config checkboxes rendered here -->
+            </div>
+          </div>
+          <div id="add-ssid-error" class="error-message" style="display:none"></div>
+          <button class="btn btn-primary btn-full" id="add-ssid-submit">
+            <span class="btn-text">Add SSID to Selected Configs</span>
+            <span class="btn-loader" style="display:none"></span>
+          </button>
+        </div>
+      </div>
+    </div>
     <div class="modal-overlay" id="assign-config-modal" style="display:none">
       <div class="modal-content">
         <div class="modal-header">

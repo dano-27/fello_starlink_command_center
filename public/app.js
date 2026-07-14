@@ -1213,6 +1213,12 @@
 
     // ── Router Config Event Listeners ───────────────────────────────
     $('rc-bulk-clean-btn').addEventListener('click', bulkCleanExtraSsids);
+    $('rc-add-ssid-btn').addEventListener('click', openAddSsidModal);
+    $('add-ssid-close').addEventListener('click', () => { $('add-ssid-modal').style.display = 'none'; });
+    $('add-ssid-submit').addEventListener('click', handleAddSsidToConfigs);
+    $('add-ssid-select-all').addEventListener('change', (e) => {
+      $('add-ssid-config-list').querySelectorAll('input[type="checkbox"]').forEach(cb => { cb.checked = e.target.checked; });
+    });
     $('rc-create-btn').addEventListener('click', () => {
       $('create-config-modal').style.display = 'flex';
     });
@@ -1902,6 +1908,158 @@
     } else {
       showToast(`Cleaned ${successCount} config${successCount > 1 ? 's' : ''} — extra SSIDs removed`, 'success');
     }
+
+    // Refresh
+    state.routerConfigs = await fetchAllRouterConfigs();
+    renderConfigCards();
+    renderRouterTable();
+  }
+
+  // Open the Add SSID modal and populate config checklist
+  function openAddSsidModal() {
+    // Clear form
+    $('add-ssid-name').value = '';
+    $('add-ssid-password').value = '';
+    $('add-ssid-auth').value = 'WPA2';
+    $('add-ssid-select-all').checked = false;
+    $('add-ssid-error').style.display = 'none';
+
+    const list = $('add-ssid-config-list');
+    list.innerHTML = state.routerConfigs.map(cfg => {
+      const parsed = parseConfigJson(cfg.routerConfigJson);
+      const ssids = parsed.allSsids.map(s => s.ssid).join(', ') || 'No SSIDs';
+      return `
+        <label class="rc-add-ssid-config-item">
+          <input type="checkbox" value="${cfg.configId}">
+          <div class="rc-add-ssid-config-info">
+            <span class="rc-add-ssid-config-name">${cfg.nickname || 'Unnamed'}</span>
+            <span class="rc-add-ssid-config-ssids">${ssids}</span>
+          </div>
+        </label>`;
+    }).join('');
+
+    $('add-ssid-modal').style.display = 'flex';
+  }
+
+  // Handle adding an SSID to selected configs
+  async function handleAddSsidToConfigs() {
+    const ssid = $('add-ssid-name').value.trim();
+    const password = $('add-ssid-password').value.trim();
+    const authType = $('add-ssid-auth').value;
+    const errorEl = $('add-ssid-error');
+
+    // Validation
+    if (!ssid) {
+      errorEl.textContent = 'SSID is required';
+      errorEl.style.display = 'block';
+      return;
+    }
+    if (authType !== 'OPEN' && password.length < 8) {
+      errorEl.textContent = 'Password must be at least 8 characters';
+      errorEl.style.display = 'block';
+      return;
+    }
+
+    const selectedIds = [];
+    $('add-ssid-config-list').querySelectorAll('input[type="checkbox"]:checked').forEach(cb => {
+      selectedIds.push(cb.value);
+    });
+
+    if (selectedIds.length === 0) {
+      errorEl.textContent = 'Select at least one config';
+      errorEl.style.display = 'block';
+      return;
+    }
+
+    errorEl.style.display = 'none';
+
+    // Build the new BSS entry
+    const newBss = { ssid };
+    if (authType === 'WPA2') {
+      newBss.authWpa2 = { password };
+    } else if (authType === 'WPA3') {
+      newBss.authWpa3 = { password };
+    } else {
+      newBss.authOpen = {};
+    }
+
+    // Show loading
+    const submitBtn = $('add-ssid-submit');
+    submitBtn.querySelector('.btn-text').style.display = 'none';
+    submitBtn.querySelector('.btn-loader').style.display = 'inline-block';
+    submitBtn.disabled = true;
+
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const configId of selectedIds) {
+      const cfg = state.routerConfigs.find(c => c.configId === configId);
+      if (!cfg) continue;
+
+      try {
+        const raw = typeof cfg.routerConfigJson === 'string' ? JSON.parse(cfg.routerConfigJson) : { ...cfg.routerConfigJson };
+
+        // Ensure networks array exists
+        if (!raw.networks || !Array.isArray(raw.networks)) {
+          raw.networks = [];
+        }
+
+        // Check if this SSID already exists in this config
+        const alreadyExists = raw.networks.some(net =>
+          net.basicServiceSets?.some(bss => bss.ssid === ssid)
+        );
+
+        if (alreadyExists) {
+          console.log(`SSID "${ssid}" already exists in ${cfg.nickname}, skipping`);
+          successCount++; // Don't count as failure
+          continue;
+        }
+
+        // Add to first network's basicServiceSets, or create a new network
+        if (raw.networks.length > 0) {
+          if (!raw.networks[0].basicServiceSets) {
+            raw.networks[0].basicServiceSets = [];
+          }
+          raw.networks[0].basicServiceSets.push(newBss);
+        } else {
+          raw.networks.push({ basicServiceSets: [newBss] });
+        }
+
+        const res = await fetch(`/api/router-configs/${configId}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${state.token}`,
+          },
+          body: JSON.stringify({
+            nickname: cfg.nickname,
+            routerConfigJson: JSON.stringify(raw),
+          }),
+        });
+
+        if (!res.ok) {
+          const errText = await res.text();
+          throw new Error(errText || `${res.status}`);
+        }
+        successCount++;
+      } catch (err) {
+        console.error(`Failed to add SSID to ${cfg.nickname}:`, err);
+        failCount++;
+      }
+    }
+
+    // Reset button
+    submitBtn.querySelector('.btn-text').style.display = '';
+    submitBtn.querySelector('.btn-loader').style.display = 'none';
+    submitBtn.disabled = false;
+
+    if (failCount > 0) {
+      showToast(`Added to ${successCount} config${successCount !== 1 ? 's' : ''}, ${failCount} failed`, 'error');
+    } else {
+      showToast(`Added "${ssid}" to ${successCount} config${successCount !== 1 ? 's' : ''}`, 'success');
+    }
+
+    $('add-ssid-modal').style.display = 'none';
 
     // Refresh
     state.routerConfigs = await fetchAllRouterConfigs();
