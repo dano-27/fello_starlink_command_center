@@ -17,9 +17,9 @@
     nextRefreshAt: null,
     // Router config state
     activeTab: 'data-usage',
-    routerConfigs: [],       // all saved configs
-    defaultConfigId: null,   // account default config id
-    routerList: [],          // routers with their config assignments
+    routerConfigs: [],       // all saved configs from API
+    routerDefaults: {},      // routerId → configId (per-router saved defaults, from localStorage)
+    routerList: [],          // routers with their current config assignments
     selectedRouterIds: new Set(),
     rcLoaded: false,         // whether router config data has been loaded
   };
@@ -29,6 +29,7 @@
     credentials: 'starlink_credentials',
     nicknames: 'starlink_nicknames',
     refreshInterval: 'starlink_refresh_interval',
+    routerDefaults: 'starlink_router_defaults',
   };
   const DEFAULT_REFRESH_MINUTES = 5;
   const GAUGE_RADIUS = 54;
@@ -1236,26 +1237,43 @@
 
   async function loadRouterConfigData() {
     try {
-      const [configs, defaultCfg, terminals] = await Promise.all([
+      // Load per-router defaults from localStorage
+      try {
+        const saved = localStorage.getItem(STORAGE_KEYS.routerDefaults);
+        state.routerDefaults = saved ? JSON.parse(saved) : {};
+      } catch { state.routerDefaults = {}; }
+
+      const [configs, terminals] = await Promise.all([
         fetchAllRouterConfigs(),
-        fetchDefaultConfig(),
         fetchAllUserTerminals(),
       ]);
 
       state.routerConfigs = configs;
-      state.defaultConfigId = defaultCfg;
       state.rcLoaded = true;
 
       // Build router list from user terminals
       await buildRouterList(terminals);
 
-      renderDefaultConfigCard();
       renderConfigCards();
       renderRouterTable();
     } catch (err) {
       console.error('Router config load error:', err);
       toast('Failed to load router configs: ' + err.message, 'error');
     }
+  }
+
+  function saveRouterDefaults() {
+    localStorage.setItem(STORAGE_KEYS.routerDefaults, JSON.stringify(state.routerDefaults));
+  }
+
+  function getRouterDefaultConfigId(routerId) {
+    return state.routerDefaults[routerId] || null;
+  }
+
+  function isRouterModified(router) {
+    const defaultCfgId = getRouterDefaultConfigId(router.routerId);
+    if (!defaultCfgId) return false;
+    return router.configId !== defaultCfgId;
   }
 
   async function fetchAllRouterConfigs() {
@@ -1275,18 +1293,7 @@
     return allConfigs;
   }
 
-  async function fetchDefaultConfig() {
-    const res = await fetch('/api/router-configs/default', {
-      headers: { Authorization: `Bearer ${state.token}` },
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data?.content?.configId || null;
-  }
-
   async function fetchAllUserTerminals() {
-    // We already have user terminal data from the data-usage flow
-    // But we need router info — let's re-fetch to get routerId linkage
     const allTerminals = [];
     let page = 0;
     while (true) {
@@ -1309,7 +1316,6 @@
       const routerId = ut.routerId || ut.kitSerialNumber;
       if (!routerId) continue;
 
-      // Try to get router details to find its config assignment
       let configId = null;
       let nickname = null;
       try {
@@ -1321,9 +1327,7 @@
           configId = data?.content?.configId || null;
           nickname = data?.content?.nickname || null;
         }
-      } catch (e) {
-        // Router detail fetch failed, that's ok
-      }
+      } catch (e) {}
 
       routers.push({
         routerId: routerId,
@@ -1341,8 +1345,6 @@
   function parseConfigJson(routerConfigJson) {
     try {
       const cfg = typeof routerConfigJson === 'string' ? JSON.parse(routerConfigJson) : routerConfigJson;
-      // Try to extract WiFi network info from common structures
-      // The Starlink config JSON can vary, but commonly has networks array
       let ssid = null, password = null, auth = null;
 
       if (cfg.networks && Array.isArray(cfg.networks)) {
@@ -1371,57 +1373,6 @@
     return cfg?.nickname || configId?.slice(0, 8) || 'Unknown';
   }
 
-  function renderDefaultConfigCard() {
-    const card = $('rc-default-card');
-    if (!state.defaultConfigId) {
-      card.innerHTML = `
-        <div class="rc-no-default">
-          No default config set. Create a config and set it as default to enable bulk revert.
-        </div>
-      `;
-      return;
-    }
-
-    const cfg = state.routerConfigs.find(c => c.configId === state.defaultConfigId);
-    if (!cfg) {
-      card.innerHTML = `
-        <div class="rc-no-default">
-          Default config ID set (${state.defaultConfigId.slice(0, 12)}...) but config details not found.
-        </div>
-      `;
-      return;
-    }
-
-    const parsed = parseConfigJson(cfg.routerConfigJson);
-    card.innerHTML = `
-      <div class="rc-default-info">
-        <div class="rc-default-detail">
-          <span class="rc-label">Config Name</span>
-          <span class="rc-value">${cfg.nickname || 'Unnamed'}</span>
-        </div>
-        <div class="rc-default-detail">
-          <span class="rc-label">WiFi Name (SSID)</span>
-          <span class="rc-value">${parsed.ssid || 'N/A'}</span>
-        </div>
-        <div class="rc-default-detail">
-          <span class="rc-label">Password</span>
-          <span class="rc-value rc-password">
-            <span id="default-pw-display">••••••••</span>
-            <button class="rc-eye-btn" onclick="document.getElementById('default-pw-display').textContent = document.getElementById('default-pw-display').textContent === '••••••••' ? '${parsed.password || 'N/A'}' : '••••••••'">👁</button>
-          </span>
-        </div>
-        ${parsed.auth ? `
-        <div class="rc-default-detail">
-          <span class="rc-label">Security</span>
-          <span class="rc-value">${parsed.auth}</span>
-        </div>` : ''}
-        <div class="rc-default-actions">
-          <button class="btn btn-secondary btn-sm" onclick="handleChangeDefault()">Change Default</button>
-        </div>
-      </div>
-    `;
-  }
-
   function renderConfigCards() {
     const grid = $('rc-configs-grid');
     if (state.routerConfigs.length === 0) {
@@ -1433,14 +1384,19 @@
       return;
     }
 
+    const defaultCounts = {};
+    Object.values(state.routerDefaults).forEach(cfgId => {
+      defaultCounts[cfgId] = (defaultCounts[cfgId] || 0) + 1;
+    });
+
     grid.innerHTML = state.routerConfigs.map(cfg => {
       const parsed = parseConfigJson(cfg.routerConfigJson);
-      const isDefault = cfg.configId === state.defaultConfigId;
+      const count = defaultCounts[cfg.configId] || 0;
       return `
-        <div class="rc-config-card ${isDefault ? 'is-default' : ''}" data-config-id="${cfg.configId}">
+        <div class="rc-config-card" data-config-id="${cfg.configId}">
           <div class="rc-card-name">
             ${cfg.nickname || 'Unnamed Config'}
-            ${isDefault ? '<span class="rc-default-badge">Default</span>' : ''}
+            ${count > 0 ? `<span class="rc-default-badge">${count} router${count > 1 ? 's' : ''}</span>` : ''}
           </div>
           <div class="rc-card-field">
             <span class="rc-field-label">SSID</span>
@@ -1455,9 +1411,6 @@
             <span class="rc-field-label">Security</span>
             <span class="rc-field-value">${parsed.auth}</span>
           </div>` : ''}
-          <div class="rc-card-actions">
-            ${!isDefault ? `<button class="btn btn-primary btn-sm" onclick="handleSetAsDefault('${cfg.configId}')">Set as Default</button>` : ''}
-          </div>
         </div>
       `;
     }).join('');
@@ -1473,22 +1426,25 @@
     tbody.innerHTML = state.routerList.map(router => {
       const cfg = router.configId ? state.routerConfigs.find(c => c.configId === router.configId) : null;
       const parsed = cfg ? parseConfigJson(cfg.routerConfigJson) : { ssid: null, password: null, auth: null };
-      const configName = cfg?.nickname || null;
-      const isDefault = router.configId && router.configId === state.defaultConfigId;
+
+      const defaultCfgId = getRouterDefaultConfigId(router.routerId);
+      const defaultCfg = defaultCfgId ? state.routerConfigs.find(c => c.configId === defaultCfgId) : null;
+      const defaultName = defaultCfg?.nickname || null;
+      const modified = isRouterModified(router);
+      const hasDefault = !!defaultCfgId;
+
       const checked = state.selectedRouterIds.has(router.routerId) ? 'checked' : '';
 
-      // Find friendly name from device map
       const deviceInfo = Object.values(state.deviceMap).find(d =>
         d.kitSerial === router.kitSerialNumber || d.dishSerial === router.dishSerialNumber
       );
       const terminalName = deviceInfo?.slNickname || deviceInfo?.utNickname || router.dishSerialNumber || router.userTerminalId || '';
       const routerLabel = router.routerId?.slice(0, 12) || '—';
 
-      // Unique ID for password toggle
       const pwId = 'pw-' + router.routerId?.replace(/[^a-zA-Z0-9]/g, '');
 
       return `
-        <tr>
+        <tr class="${modified ? 'rc-row-modified' : ''}">
           <td class="rc-th-check"><input type="checkbox" class="rc-router-check" data-router-id="${router.routerId}" ${checked}></td>
           <td>
             <div class="rc-router-identity">
@@ -1497,9 +1453,9 @@
             </div>
           </td>
           <td>
-            ${configName
-              ? `<span class="rc-config-name-cell">${configName}</span>`
-              : '<span class="rc-config-badge no-config">None</span>'}
+            ${defaultName
+              ? `<span class="rc-config-name-cell">${defaultName}</span>`
+              : '<span class="rc-no-val">Not set</span>'}
           </td>
           <td class="rc-ssid-cell">${parsed.ssid || '<span class="rc-no-val">—</span>'}</td>
           <td>
@@ -1511,18 +1467,21 @@
               : '<span class="rc-no-val">—</span>'}
           </td>
           <td>
-            <span class="rc-config-badge ${isDefault ? 'is-default' : cfg ? '' : 'no-config'}">
-              ${isDefault ? '★ Default' : cfg ? 'Custom' : 'No Config'}
-            </span>
+            ${modified
+              ? '<span class="rc-config-badge rc-modified">⚠ Modified</span>'
+              : hasDefault
+                ? '<span class="rc-config-badge is-default">✓ Default</span>'
+                : '<span class="rc-config-badge no-config">No Default Set</span>'}
           </td>
-          <td>
-            <button class="btn btn-secondary btn-sm" onclick="handleAssignSingleRouter('${router.routerId}')">Assign</button>
+          <td class="rc-actions-cell">
+            <button class="btn btn-secondary btn-sm" onclick="handleSetRouterDefault('${router.routerId}')" title="Save current config as this router's default">${hasDefault ? '✎' : '★'} Set Default</button>
+            <button class="btn btn-secondary btn-sm" onclick="handleAssignSingleRouter('${router.routerId}')" title="Assign a different config">Assign</button>
+            ${modified ? `<button class="btn btn-primary btn-sm" onclick="handleRevertSingleRouter('${router.routerId}')" title="Revert to saved default">⟲ Revert</button>` : ''}
           </td>
         </tr>
       `;
     }).join('');
 
-    // Add checkbox listeners
     tbody.querySelectorAll('.rc-router-check').forEach(cb => {
       cb.addEventListener('change', () => {
         if (cb.checked) state.selectedRouterIds.add(cb.dataset.routerId);
@@ -1531,7 +1490,6 @@
       });
     });
 
-    // Add password toggle listeners
     tbody.querySelectorAll('.rc-eye-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         const el = document.getElementById(btn.dataset.pwId);
@@ -1561,7 +1519,11 @@
     const checked = e.target.checked;
     state.selectedRouterIds.clear();
     if (checked) {
-      state.routerList.forEach(r => state.selectedRouterIds.add(r.routerId));
+      state.routerList.forEach(r => {
+        if (isRouterModified(r)) {
+          state.selectedRouterIds.add(r.routerId);
+        }
+      });
     }
     renderRouterTable();
     updateBulkBar();
@@ -1622,7 +1584,6 @@
       $('config-ssid').value = '';
       $('config-password').value = '';
 
-      // Reload configs
       state.routerConfigs = await fetchAllRouterConfigs();
       renderConfigCards();
     } catch (err) {
@@ -1634,31 +1595,52 @@
     }
   }
 
-  // Expose to onclick handlers in HTML
-  window.handleSetAsDefault = async function(configId) {
-    if (!confirm('Set this config as the account default? All new routers will receive this config.')) return;
+  // ── Per-Router Default Management ──────────────────────────────────
+
+  window.handleSetRouterDefault = function(routerId) {
+    const router = state.routerList.find(r => r.routerId === routerId);
+    if (!router || !router.configId) {
+      toast('This router has no config assigned. Assign a config first, then set it as default.', 'error');
+      return;
+    }
+    const configName = getConfigName(router.configId);
+    if (!confirm(`Save "${configName}" as the default WiFi profile for this router?\n\nYou can revert to this profile anytime after a customer change.`)) return;
+
+    state.routerDefaults[routerId] = router.configId;
+    saveRouterDefaults();
+    toast(`Default saved for router ${routerId.slice(0, 12)}`, 'success');
+    renderConfigCards();
+    renderRouterTable();
+  };
+
+  window.handleRevertSingleRouter = async function(routerId) {
+    const defaultCfgId = getRouterDefaultConfigId(routerId);
+    if (!defaultCfgId) {
+      toast('No default set for this router.', 'error');
+      return;
+    }
+    const configName = getConfigName(defaultCfgId);
+    if (!confirm(`Revert this router to "${configName}"?\n\nThe config will push within 1-2 minutes.`)) return;
+
     try {
-      const res = await fetch('/api/router-configs/default', {
+      const res = await fetch('/api/router-configs/assign', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${state.token}`,
         },
-        body: JSON.stringify({ configId }),
+        body: JSON.stringify({ configId: defaultCfgId, routerIds: [routerId] }),
       });
-      if (!res.ok) throw new Error('Failed to set default config');
-      state.defaultConfigId = configId;
-      toast('Default config updated!', 'success');
-      renderDefaultConfigCard();
-      renderConfigCards();
+      if (!res.ok) throw new Error('Failed to assign config');
+
+      const router = state.routerList.find(r => r.routerId === routerId);
+      if (router) router.configId = defaultCfgId;
+
+      toast(`Router reverted to "${configName}"!`, 'success');
       renderRouterTable();
     } catch (err) {
       toast('Error: ' + err.message, 'error');
     }
-  };
-
-  window.handleChangeDefault = function() {
-    openAssignConfigModal(true);
   };
 
   window.handleAssignSingleRouter = function(routerId) {
@@ -1667,38 +1649,27 @@
     openAssignConfigModal();
   };
 
-  function openAssignConfigModal(isSettingDefault = false) {
+  function openAssignConfigModal() {
     const list = $('rc-assign-list');
     const count = state.selectedRouterIds.size;
-    $('assign-router-count').textContent = isSettingDefault
-      ? 'Select the new default config'
-      : `Assigning to ${count} router${count > 1 ? 's' : ''}`;
+    $('assign-router-count').textContent = `Assigning to ${count} router${count > 1 ? 's' : ''}`;
 
     list.innerHTML = state.routerConfigs.map(cfg => {
       const parsed = parseConfigJson(cfg.routerConfigJson);
-      const isDefault = cfg.configId === state.defaultConfigId;
       return `
-        <div class="rc-assign-option" data-config-id="${cfg.configId}" data-is-default-action="${isSettingDefault}">
+        <div class="rc-assign-option" data-config-id="${cfg.configId}">
           <div>
             <div class="rc-assign-name">${cfg.nickname || 'Unnamed'}</div>
             <div class="rc-assign-ssid">SSID: ${parsed.ssid || 'N/A'}</div>
           </div>
-          ${isDefault ? '<span class="rc-assign-badge">Current Default</span>' : ''}
         </div>
       `;
     }).join('');
 
-    // Add click handlers to options
     list.querySelectorAll('.rc-assign-option').forEach(opt => {
       opt.addEventListener('click', async () => {
         const configId = opt.dataset.configId;
-        const isDefaultAction = opt.dataset.isDefaultAction === 'true';
-
-        if (isDefaultAction) {
-          await window.handleSetAsDefault(configId);
-        } else {
-          await assignConfigToSelectedRouters(configId);
-        }
+        await assignConfigToSelectedRouters(configId);
         $('assign-config-modal').style.display = 'none';
       });
     });

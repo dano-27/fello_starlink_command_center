@@ -1861,3 +1861,30 @@ body {
 .rc-router-table-wrap {
   overflow-x: auto;
 }
+
+/* Modified row highlight */
+.rc-row-modified {
+  background: #fff8f0;
+  border-left: 3px solid var(--orange);
+}
+
+/* Modified badge */
+.rc-config-badge.rc-modified {
+  background: #fef3e0;
+  color: #d47800;
+}
+
+/* Actions cell */
+.rc-actions-cell {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+/* Section hint text */
+.rc-section-hint {
+  font-size: 13px;
+  color: var(--dark-gray-shade);
+  margin: -4px 0 16px;
+  line-height: 1.4;
+}

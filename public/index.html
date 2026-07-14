@@ -168,26 +168,13 @@
       <!-- ═══ TAB: Router Config ═══ -->
       <div class="tab-panel" id="panel-router-config" style="display:none">
 
-        <!-- Default Config Card -->
-        <section class="rc-section">
-          <div class="section-header">
-            <h2 class="section-title">Default Configuration</h2>
-            <span class="rc-hint">This is the config that matches your QR code labels</span>
-          </div>
-          <div class="rc-default-card" id="rc-default-card">
-            <div class="rc-default-loading">
-              <span class="btn-loader" style="display:inline-block"></span>
-              Loading default config...
-            </div>
-          </div>
-        </section>
-
         <!-- Saved Configs -->
         <section class="rc-section">
           <div class="section-header">
-            <h2 class="section-title">Saved Configs</h2>
+            <h2 class="section-title">Saved WiFi Configs</h2>
             <button class="btn btn-primary btn-sm" id="rc-create-btn">+ Create Config</button>
           </div>
+          <p class="rc-section-hint">These are your reusable WiFi profiles. Set one as each router's default to match its QR code label.</p>
           <div class="rc-configs-grid" id="rc-configs-grid">
             <div class="rc-empty-configs">
               <span class="btn-loader" style="display:inline-block"></span>
@@ -202,19 +189,20 @@
             <h2 class="section-title">Router Fleet</h2>
             <div class="rc-fleet-actions">
               <label class="rc-select-all-label" for="rc-select-all">
-                <input type="checkbox" id="rc-select-all"> Select All
+                <input type="checkbox" id="rc-select-all"> Select All Modified
               </label>
             </div>
           </div>
+          <p class="rc-section-hint">Each router has its own default WiFi profile. When a customer needs a different config, assign a new one — then revert back when the rental returns.</p>
           <div class="rc-router-table-wrap">
             <table class="data-table" id="rc-router-table">
               <thead>
                 <tr>
                   <th class="rc-th-check"></th>
                   <th>Router / Terminal</th>
-                  <th>Config Name</th>
-                  <th>WiFi SSID</th>
-                  <th>WiFi Password</th>
+                  <th>Default Profile</th>
+                  <th>Current SSID</th>
+                  <th>Current Password</th>
                   <th>Status</th>
                   <th>Actions</th>
                 </tr>
@@ -229,7 +217,7 @@
         <!-- Bulk Actions Bar -->
         <div class="rc-bulk-bar" id="rc-bulk-bar" style="display:none">
           <span class="rc-bulk-count" id="rc-bulk-count">0 selected</span>
-          <button class="btn btn-primary btn-sm" id="rc-bulk-revert">⟲ Revert to Default</button>
+          <button class="btn btn-primary btn-sm" id="rc-bulk-revert">⟲ Revert to Their Defaults</button>
           <button class="btn btn-secondary btn-sm" id="rc-bulk-assign">Assign Config ▾</button>
         </div>
 
