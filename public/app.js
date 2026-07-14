@@ -1212,6 +1212,7 @@
     });
 
     // ── Router Config Event Listeners ───────────────────────────────
+    $('rc-config-search').addEventListener('input', filterConfigCards);
     $('rc-bulk-clean-btn').addEventListener('click', bulkCleanExtraSsids);
     $('rc-add-ssid-btn').addEventListener('click', openAddSsidModal);
     $('add-ssid-close').addEventListener('click', () => { $('add-ssid-modal').style.display = 'none'; });
@@ -1479,6 +1480,34 @@
   function getConfigName(configId) {
     const cfg = state.routerConfigs.find(c => c.configId === configId);
     return cfg?.nickname || configId?.slice(0, 8) || 'Unknown';
+  }
+
+  function filterConfigCards() {
+    var query = $('rc-config-search').value.trim().toLowerCase();
+    var grid = $('rc-configs-grid');
+    var cards = grid.querySelectorAll('.rc-config-card');
+    var visibleCount = 0;
+
+    cards.forEach(function(card) {
+      var configId = card.dataset.configId;
+      var cfg = state.routerConfigs.find(function(c) { return c.configId === configId; });
+      if (!cfg) { card.style.display = 'none'; return; }
+
+      var name = (cfg.nickname || '').toLowerCase();
+      var parsed = parseConfigJson(cfg.routerConfigJson);
+      var ssidText = parsed.allSsids.map(function(s) { return s.ssid; }).join(' ').toLowerCase();
+
+      var matches = !query || name.includes(query) || ssidText.includes(query);
+      card.style.display = matches ? '' : 'none';
+      if (matches) visibleCount++;
+    });
+
+    var countEl = $('rc-search-count');
+    if (query) {
+      countEl.textContent = visibleCount + ' of ' + cards.length;
+    } else {
+      countEl.textContent = '';
+    }
   }
 
   function renderConfigCards() {
