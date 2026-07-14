@@ -2423,26 +2423,8 @@
   }
 
   async function loadMapLocations() {
-    try {
-      var res = await fetch('/api/telemetry/location', {
-        headers: { Authorization: 'Bearer ' + state.token },
-      });
-      if (!res.ok) {
-        console.warn('Location API returned ' + res.status);
-        plotTerminalsFromState();
-        return;
-      }
-      var data = await res.json();
-      var locations = data.results || data.content || data || [];
-      if (Array.isArray(locations) && locations.length > 0) {
-        plotLocations(locations);
-      } else {
-        plotTerminalsFromState();
-      }
-    } catch (err) {
-      console.warn('Location fetch failed:', err.message);
-      plotTerminalsFromState();
-    }
+    // Telemetry location endpoint not available on this plan — use fallback
+    plotTerminalsFromState();
   }
 
   function plotLocations(locations) {
