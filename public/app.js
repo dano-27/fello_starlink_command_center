@@ -1331,11 +1331,18 @@
   function isPairingMatch(terminal, routerId) {
     const pairing = getPairingForRouter(routerId);
     if (!pairing) return null; // unknown router, can't determine
-    // Check if the terminal's nickname contains the expected dish name
-    const dishName = pairing.dish;
-    const termName = terminal.terminalNickname || terminal.nickname || '';
-    // Match if terminal nickname contains the dish identifier
-    return termName.includes(dishName) || dishName.includes(termName);
+
+    // If terminal has a recognizable dish nickname (e.g. "I00912907"), check it
+    const termName = (terminal.terminalNickname || terminal.nickname || '').trim();
+    if (termName && termName.startsWith('I00')) {
+      // Terminal has a dish-style nickname — compare directly
+      return termName === pairing.dish;
+    }
+
+    // Terminal has a generic nickname (e.g. "Starlink 01")
+    // Can't verify dish identity, but the router IS in our fleet table
+    // so assume it's correct (return true) unless we find evidence otherwise
+    return true;
   }
 
   async function fetchAllRouterConfigs() {
