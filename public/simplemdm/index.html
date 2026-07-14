@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SimpleMDM Dashboard — Fello IT Admin</title>
+    <meta name="description" content="Fello IT Admin SimpleMDM Dashboard for device management, remote actions, and fleet oversight.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="index.css">
+</head>
+<body>
+    <!-- Toast Container -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- Confirmation Modal -->
+    <div id="confirm-overlay" class="confirm-overlay hidden">
+        <div class="confirm-dialog">
+            <div class="confirm-icon" id="confirm-icon">⚠️</div>
+            <h3 id="confirm-title">Confirm Action</h3>
+            <p id="confirm-message">Are you sure you want to proceed?</p>
+            <div class="confirm-actions">
+                <button class="btn btn-secondary" id="confirm-cancel">Cancel</button>
+                <button class="btn btn-danger" id="confirm-proceed">Proceed</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Device Detail Modal -->
+    <div id="device-modal-overlay" class="modal-overlay hidden">
+        <div class="modal-container">
+            <div class="modal-header">
+                <div class="modal-title-group">
+                    <h2 id="modal-device-name">Device Name</h2>
+                    <span class="modal-badge" id="modal-device-status">Enrolled</span>
+                </div>
+                <button class="modal-close" id="modal-close" aria-label="Close modal">&times;</button>
+            </div>
+            <div class="modal-body" id="modal-body">
+                <!-- Device details populated by JS -->
+            </div>
+            <div class="modal-footer">
+                <h4>Remote Actions</h4>
+                <div class="modal-actions">
+                    <button class="btn btn-action btn-lock" id="action-lock">
+                        <span class="action-icon">🔒</span> Lock Device
+                    </button>
+                    <button class="btn btn-action btn-restart" id="action-restart">
+                        <span class="action-icon">🔄</span> Restart
+                    </button>
+                    <button class="btn btn-action btn-shutdown" id="action-shutdown">
+                        <span class="action-icon">⏻</span> Shutdown
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- LOGIN SCREEN -->
+    <div id="login-screen" class="login-screen">
+        <div class="login-card">
+            <div class="login-logo">
+                <div class="logo-icon">
+                    <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
+                        <rect width="40" height="40" rx="10" fill="#3166ae"/>
+                        <path d="M12 20h4v8h-4zM18 14h4v14h-4zM24 17h4v11h-4z" fill="#fcd230"/>
+                    </svg>
+                </div>
+                <h1>SimpleMDM</h1>
+                <p class="login-subtitle">Device Management Dashboard</p>
+            </div>
+            <form id="login-form" autocomplete="off">
+                <div class="form-group">
+                    <label for="api-key-input">API Key</label>
+                    <div class="input-wrapper">
+                        <input type="password" id="api-key-input" placeholder="Enter your SimpleMDM API key" required>
+                        <button type="button" class="toggle-visibility" id="toggle-key" aria-label="Toggle visibility">
+                            <svg class="eye-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                        </button>
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-primary btn-full" id="login-btn">
+                    <span class="btn-text">Connect to SimpleMDM</span>
+                    <span class="btn-spinner hidden"></span>
+                </button>
+            </form>
+            <p class="login-hint">Your API key is stored locally and sent securely via Basic Auth.</p>
+        </div>
+    </div>
+
+    <!-- DASHBOARD -->
+    <div id="dashboard" class="dashboard hidden">
+        <!-- Top Bar -->
+        <header class="topbar">
+            <div class="topbar-left">
+                <a href="/" class="back-to-hub">← Back to Command Center</a>
+            </div>
+            <div class="topbar-center">
+                <div class="topbar-brand">
+                    <svg width="28" height="28" viewBox="0 0 40 40" fill="none">
+                        <rect width="40" height="40" rx="10" fill="#3166ae"/>
+                        <path d="M12 20h4v8h-4zM18 14h4v14h-4zM24 17h4v11h-4z" fill="#fcd230"/>
+                    </svg>
+                    <span>SimpleMDM Dashboard</span>
+                </div>
+            </div>
+            <div class="topbar-right">
+                <button class="btn btn-outline btn-sm" id="refresh-btn" title="Refresh devices">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                    Refresh
+                </button>
+                <button class="btn btn-outline btn-sm btn-logout" id="logout-btn" title="Disconnect">
+                    Logout
+                </button>
+            </div>
+        </header>
+
+        <!-- Stats Row -->
+        <div class="stats-row" id="stats-row">
+            <div class="stat-card">
+                <div class="stat-value" id="stat-total">—</div>
+                <div class="stat-label">Total Devices</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value stat-enrolled" id="stat-enrolled">—</div>
+                <div class="stat-label">Enrolled</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-value stat-unenrolled" id="stat-unenrolled">—</div>
+                <div class="stat-label">Unenrolled</div>
+            </div>
+        </div>
+
+        <!-- Toolbar -->
+        <div class="toolbar">
+            <div class="search-box">
+                <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input type="text" id="search-input" placeholder="Search by name, model, or serial…">
+                <button class="search-clear hidden" id="search-clear">&times;</button>
+            </div>
+            <div class="toolbar-info">
+                <span id="device-count-label">0 devices</span>
+            </div>
+        </div>
+
+        <!-- Device Table -->
+        <div class="table-wrapper">
+            <!-- Loading State -->
+            <div class="loading-state" id="loading-state">
+                <div class="loader"></div>
+                <p>Fetching devices from SimpleMDM…</p>
+            </div>
+
+            <!-- Empty State -->
+            <div class="empty-state hidden" id="empty-state">
+                <div class="empty-icon">📱</div>
+                <h3>No Devices Found</h3>
+                <p>No devices match your current search or no devices are enrolled in SimpleMDM.</p>
+            </div>
+
+            <!-- Error State -->
+            <div class="error-state hidden" id="error-state">
+                <div class="error-icon">⚠️</div>
+                <h3>Failed to Load Devices</h3>
+                <p id="error-message">An unknown error occurred.</p>
+                <button class="btn btn-primary" id="retry-btn">Retry</button>
+            </div>
+
+            <!-- Table -->
+            <table class="device-table hidden" id="device-table">
+                <thead>
+                    <tr>
+                        <th class="sortable" data-sort="name">Name <span class="sort-arrow"></span></th>
+                        <th class="sortable" data-sort="model">Model <span class="sort-arrow"></span></th>
+                        <th>Serial Number</th>
+                        <th class="sortable" data-sort="os_version">OS Version <span class="sort-arrow"></span></th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody id="device-tbody">
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

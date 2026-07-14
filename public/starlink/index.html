@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Fello Starlink Command Center — Monitor data usage across your Starlink terminal fleet. Track priority and standard data for rental terminal auditing.">
+  <meta name="theme-color" content="#3166ae">
+  <title>Fello Starlink Command Center</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="index.css">
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+</head>
+<body>
+  <div id="app">
+    <div id="toast-container" aria-live="polite"></div>
+
+    <a href="/" class="back-to-hub">← Back to Command Center</a>
+
+    <!-- Login Screen -->
+    <div id="login-screen">
+      <div class="login-container">
+        <div class="login-logo">
+          <div class="logo-icon">✦</div>
+          <h1>Starlink Dashboard</h1>
+          <p class="login-subtitle">Monitor data usage across your Starlink fleet</p>
+        </div>
+        <form id="login-form" autocomplete="off">
+          <div class="form-group">
+            <label class="form-label" for="client-id">Client ID</label>
+            <input class="form-input" type="text" id="client-id" placeholder="Enter your API Client ID" required autocomplete="off">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="client-secret">Client Secret</label>
+            <input class="form-input" type="password" id="client-secret" placeholder="Enter your API Client Secret" required autocomplete="off">
+          </div>
+          <div class="form-group form-checkbox">
+            <input type="checkbox" id="remember-credentials">
+            <label for="remember-credentials">Remember credentials in this browser</label>
+          </div>
+          <div id="login-error" class="error-message" style="display:none"></div>
+          <button type="submit" class="btn btn-primary btn-full" id="login-btn">
+            <span class="btn-text">Connect to Starlink</span>
+            <span class="btn-loader" style="display:none"></span>
+          </button>
+        </form>
+        <p class="login-footer">Your credentials are stored locally and never sent to third parties.</p>
+      </div>
+    </div>
+
+    <!-- Dashboard -->
+    <div id="dashboard" style="display:none">
+      <nav class="nav-bar">
+        <div class="nav-left">
+          <span class="nav-logo">✦</span>
+          <span class="nav-title">Starlink Dashboard</span>
+        </div>
+        <div class="nav-right">
+          <div class="refresh-indicator" id="refresh-indicator">
+            <span class="refresh-dot"></span>
+            <span id="refresh-text">Live</span>
+          </div>
+          <button class="btn btn-secondary btn-sm" id="refresh-btn" title="Refresh now" aria-label="Refresh data">
+            <span class="refresh-icon">↻</span>
+          </button>
+          <button class="btn btn-secondary btn-sm" id="export-btn" title="Export CSV" aria-label="Export data as CSV">
+            ↓ Export
+          </button>
+          <button class="btn btn-secondary btn-sm" id="settings-btn" title="Settings" aria-label="Open settings">
+            ⚙
+          </button>
+          <button class="btn btn-secondary btn-sm" id="logout-btn" title="Disconnect" aria-label="Log out">
+            ⏻
+          </button>
+        </div>
+      </nav>
+
+      <!-- Tab Navigation -->
+      <div class="tab-bar" id="tab-bar">
+        <button class="tab-btn active" data-tab="data-usage" id="tab-data-usage">
+          <span class="tab-icon">📊</span> Data Usage
+        </button>
+        <button class="tab-btn" data-tab="router-config" id="tab-router-config">
+          <span class="tab-icon">📡</span> Router Config
+        </button>
+        <button class="tab-btn" data-tab="fleet-ops" id="tab-fleet-ops">
+          <span class="tab-icon">🔧</span> Fleet Ops
+        </button>
+        <button class="tab-btn" data-tab="alerts" id="tab-alerts">
+          <span class="tab-icon">🔔</span> Alerts
+          <span class="alert-count-badge" id="alert-count-badge" style="display:none">0</span>
+        </button>
+      </div>
+
+      <!-- ═══ TAB: Data Usage ═══ -->
+      <div class="tab-panel active" id="panel-data-usage">
+
+      <!-- Fleet Summary -->
+      <section class="fleet-summary" id="fleet-summary">
+        <div class="stat-card">
+          <div class="stat-value" id="total-terminals">—</div>
+          <div class="stat-label">Terminals</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="total-priority">—</div>
+          <div class="stat-label">Priority Data</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="total-standard">—</div>
+          <div class="stat-label">Standard Data</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="total-combined">—</div>
+          <div class="stat-label">Total Data</div>
+        </div>
+      </section>
+
+      <!-- Controls Bar: Date Range + Search + Filters -->
+      <div class="controls-bar" id="controls-bar">
+        <div class="controls-left">
+          <div class="range-pills" id="range-pills">
+            <button class="range-pill active" data-range="current">Current</button>
+            <button class="range-pill" data-range="3months">3 Months</button>
+            <button class="range-pill" data-range="6months">6 Months</button>
+            <button class="range-pill" data-range="custom">Custom</button>
+          </div>
+          <div class="custom-date-range" id="custom-date-range" style="display:none">
+            <input type="date" id="range-start" class="form-input form-input-sm" aria-label="Start date">
+            <span class="date-separator">to</span>
+            <input type="date" id="range-end" class="form-input form-input-sm" aria-label="End date">
+            <button class="btn btn-primary btn-sm" id="apply-range-btn">Apply</button>
+          </div>
+        </div>
+        <div class="controls-right">
+          <div class="search-container">
+            <span class="search-icon">⌕</span>
+            <input type="text" id="terminal-search" class="form-input form-input-sm search-input" placeholder="Search terminals..." aria-label="Search terminals">
+          </div>
+          <label class="toggle-label" for="include-inactive">
+            <span class="toggle-switch">
+              <input type="checkbox" id="include-inactive">
+              <span class="toggle-slider"></span>
+            </span>
+            <span class="toggle-text">Include Inactive</span>
+          </label>
+        </div>
+      </div>
+
+      <!-- Section Header -->
+      <div class="section-header">
+        <h2 class="section-title">Terminal Usage</h2>
+        <div class="results-count" id="results-count"></div>
+      </div>
+
+      <!-- Terminal Grid -->
+      <div class="terminal-grid" id="terminal-grid"></div>
+
+      <!-- Empty State -->
+      <div class="empty-state" id="empty-state" style="display:none">
+        <div class="empty-icon">📡</div>
+        <h3>No terminals found</h3>
+        <p>No service lines matched your filters.</p>
+      </div>
+
+      <!-- Loading State -->
+      <div class="terminal-grid" id="loading-grid">
+        <div class="terminal-card skeleton-card"><div class="skeleton skeleton-header"></div><div class="skeleton skeleton-gauge"></div><div class="skeleton skeleton-bar"></div><div class="skeleton skeleton-bar"></div></div>
+        <div class="terminal-card skeleton-card"><div class="skeleton skeleton-header"></div><div class="skeleton skeleton-gauge"></div><div class="skeleton skeleton-bar"></div><div class="skeleton skeleton-bar"></div></div>
+        <div class="terminal-card skeleton-card"><div class="skeleton skeleton-header"></div><div class="skeleton skeleton-gauge"></div><div class="skeleton skeleton-bar"></div><div class="skeleton skeleton-bar"></div></div>
+        <div class="terminal-card skeleton-card"><div class="skeleton skeleton-header"></div><div class="skeleton skeleton-gauge"></div><div class="skeleton skeleton-bar"></div><div class="skeleton skeleton-bar"></div></div>
+        <div class="terminal-card skeleton-card"><div class="skeleton skeleton-header"></div><div class="skeleton skeleton-gauge"></div><div class="skeleton skeleton-bar"></div><div class="skeleton skeleton-bar"></div></div>
+        <div class="terminal-card skeleton-card"><div class="skeleton skeleton-header"></div><div class="skeleton skeleton-gauge"></div><div class="skeleton skeleton-bar"></div><div class="skeleton skeleton-bar"></div></div>
+      </div>
+
+      </div><!-- end panel-data-usage -->
+
+      <!-- ═══ TAB: Router Config ═══ -->
+      <div class="tab-panel" id="panel-router-config" style="display:none">
+
+        <!-- Saved Configs -->
+        <section class="rc-section">
+          <div class="section-header">
+            <h2 class="section-title">Saved WiFi Configs</h2>
+            <div class="rc-profile-actions">
+              <button class="btn btn-secondary btn-sm" id="rc-bulk-clean-btn" title="Remove all non-Fello-IP SSIDs from configs">🧹 Clean Extra SSIDs</button>
+              <button class="btn btn-secondary btn-sm" id="rc-add-ssid-btn" title="Add an SSID to existing configs">📶 Add SSID</button>
+              <button class="btn btn-primary btn-sm" id="rc-create-btn">+ Create Config</button>
+            </div>
+          </div>
+          <p class="rc-section-hint">These are your reusable WiFi profiles. Set one as each router's default to match its QR code label.</p>
+          <div class="rc-search-bar">
+            <svg class="rc-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            <input class="rc-search-input" type="text" id="rc-config-search" placeholder="Search configs by name or SSID...">
+            <span class="rc-search-count" id="rc-search-count"></span>
+          </div>
+          <div class="rc-configs-grid" id="rc-configs-grid">
+            <div class="rc-empty-configs">
+              <span class="btn-loader" style="display:inline-block"></span>
+              Loading configs...
+            </div>
+          </div>
+        </section>
+
+        <!-- Router Fleet -->
+        <section class="rc-section">
+          <div class="section-header">
+            <h2 class="section-title">Router Fleet</h2>
+            <div class="rc-fleet-actions">
+              <label class="rc-select-all-label" for="rc-select-all">
+                <input type="checkbox" id="rc-select-all"> Select All
+              </label>
+            </div>
+          </div>
+          <p class="rc-section-hint">Each router has its own default WiFi profile. When a customer needs a different config, assign a new one — then revert back when the rental returns.</p>
+          <div class="rc-router-table-wrap">
+            <table class="data-table" id="rc-router-table">
+              <thead>
+                <tr>
+                  <th class="rc-th-check"><input type="checkbox" id="rc-thead-select-all"></th>
+                  <th class="rc-sortable" data-sort="terminal">Dish / Router <span class="rc-sort-icon">⇅</span></th>
+                  <th class="rc-sortable rc-th-pairing" data-sort="pairing">Pairing <span class="rc-sort-icon">⇅</span></th>
+                  <th class="rc-sortable" data-sort="default">Default Profile <span class="rc-sort-icon">⇅</span></th>
+                  <th class="rc-sortable" data-sort="ssid">Current SSID <span class="rc-sort-icon">⇅</span></th>
+                  <th>Current Password</th>
+                  <th class="rc-sortable" data-sort="status">Status <span class="rc-sort-icon">⇅</span></th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="rc-router-body">
+                <tr><td colspan="8" class="rc-loading-row"><span class="btn-loader" style="display:inline-block"></span> Loading routers...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Bulk Actions Bar -->
+        <div class="rc-bulk-bar" id="rc-bulk-bar" style="display:none">
+          <span class="rc-bulk-count" id="rc-bulk-count">0 selected</span>
+          <button class="btn btn-primary btn-sm" id="rc-bulk-revert">⟲ Revert to Their Defaults</button>
+          <button class="btn btn-secondary btn-sm" id="rc-bulk-assign">Assign Config ▾</button>
+        </div>
+
+      </div><!-- end panel-router-config -->
+
+      <!-- ═══ TAB: Fleet Ops ═══ -->
+      <div class="tab-panel" id="panel-fleet-ops" style="display:none">
+        <section class="rc-section">
+          <div class="section-header">
+            <h2 class="section-title">Fleet Operations</h2>
+            <div class="fleet-ops-actions">
+              <button class="btn btn-secondary btn-sm" id="ops-refresh-btn">↻ Refresh</button>
+            </div>
+          </div>
+          <p class="rc-section-hint">Remotely manage your terminal fleet — reboot dishes, stow for transport, and monitor uptime.</p>
+
+          <!-- Bulk Actions -->
+          <div class="ops-bulk-bar" id="ops-bulk-bar" style="display:none">
+            <span class="ops-bulk-count" id="ops-bulk-count">0 selected</span>
+            <button class="btn btn-secondary btn-sm" id="ops-bulk-reboot">🔄 Reboot Selected</button>
+            <button class="btn btn-secondary btn-sm" id="ops-bulk-stow">📦 Stow Selected</button>
+            <button class="btn btn-secondary btn-sm" id="ops-bulk-unstow">📡 Unstow Selected</button>
+          </div>
+
+          <!-- Fleet Ops Table -->
+          <div class="table-scroll-tall">
+            <table class="data-table" id="ops-table">
+              <thead>
+                <tr>
+                  <th style="width:36px"><input type="checkbox" id="ops-select-all" title="Select all"></th>
+                  <th>Terminal</th>
+                  <th>Subscription</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="ops-table-body">
+                <tr><td colspan="4" class="rc-loading-row"><span class="btn-loader" style="display:inline-block"></span> Loading terminals...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div><!-- end panel-fleet-ops -->
+
+      <!-- ═══ TAB: Alerts ═══ -->
+      <div class="tab-panel" id="panel-alerts" style="display:none">
+        <section class="rc-section">
+          <div class="section-header">
+            <h2 class="section-title">Alert Feed</h2>
+            <div class="alert-actions">
+              <span class="alert-auto-refresh">Auto-refreshes every 60s</span>
+              <button class="btn btn-secondary btn-sm" id="alerts-refresh-btn">↻ Refresh</button>
+            </div>
+          </div>
+          <p class="rc-section-hint">Hardware alerts and outage notifications from your Starlink fleet.</p>
+          <div class="alert-feed" id="alert-feed">
+            <div class="rc-loading-row"><span class="btn-loader" style="display:inline-block"></span> Loading alerts...</div>
+          </div>
+          <div class="alert-empty" id="alert-empty" style="display:none">
+            <div class="alert-empty-icon">✅</div>
+            <h3>All Clear</h3>
+            <p>No active alerts across your fleet.</p>
+          </div>
+        </section>
+      </div><!-- end panel-alerts -->
+
+    <!-- Terminal Detail Modal -->
+    <div class="modal-overlay" id="detail-modal" style="display:none">
+      <div class="modal-content modal-wide">
+        <div class="modal-header">
+          <div>
+            <h2 id="detail-terminal-name">Terminal</h2>
+            <span class="modal-subtitle" id="detail-terminal-sln"></span>
+          </div>
+          <button class="modal-close" id="detail-close" aria-label="Close detail view">&times;</button>
+        </div>
+        <div class="modal-body">
+          <!-- Detail Summary Stats -->
+          <div class="detail-summary" id="detail-summary">
+            <div class="detail-stat">
+              <div class="detail-stat-value" id="detail-total-priority">—</div>
+              <div class="detail-stat-label">Total Priority</div>
+            </div>
+            <div class="detail-stat">
+              <div class="detail-stat-value" id="detail-total-standard">—</div>
+              <div class="detail-stat-label">Total Standard</div>
+            </div>
+            <div class="detail-stat">
+              <div class="detail-stat-value" id="detail-total-combined">—</div>
+              <div class="detail-stat-label">Combined Total</div>
+            </div>
+            <div class="detail-stat">
+              <div class="detail-stat-value" id="detail-cycle-count">—</div>
+              <div class="detail-stat-label" id="detail-cycle-label">Billing Cycles</div>
+            </div>
+          </div>
+
+          <!-- Daily Usage Chart -->
+          <div class="chart-section">
+            <h3>Daily Usage</h3>
+            <div class="chart-container">
+              <canvas id="daily-chart" width="800" height="280"></canvas>
+            </div>
+            <div class="chart-legend">
+              <span class="legend-item"><span class="legend-dot priority"></span> Priority</span>
+              <span class="legend-item"><span class="legend-dot standard"></span> Standard</span>
+            </div>
+          </div>
+
+          <!-- Billing Cycle History Table -->
+          <div class="table-section">
+            <h3>Billing Cycle History</h3>
+            <div class="table-scroll">
+              <table class="data-table" id="cycle-history-table">
+                <thead>
+                  <tr>
+                    <th>Billing Cycle</th>
+                    <th>Priority (GB)</th>
+                    <th>Standard (GB)</th>
+                    <th>Total (GB)</th>
+                    <th>Overage (GB)</th>
+                  </tr>
+                </thead>
+                <tbody id="cycle-history-body"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Daily Usage Breakdown Table -->
+          <div class="table-section">
+            <h3 id="daily-table-title">Daily Usage Breakdown</h3>
+            <div class="table-scroll table-scroll-tall">
+              <table class="data-table" id="daily-usage-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Priority (GB)</th>
+                    <th>Standard (GB)</th>
+                    <th>Total (GB)</th>
+                    <th>Non-Billable (GB)</th>
+                  </tr>
+                </thead>
+                <tbody id="daily-usage-body"></tbody>
+                <tfoot id="daily-usage-foot"></tfoot>
+              </table>
+            </div>
+          </div>
+
+          <!-- Export single terminal -->
+          <div class="detail-actions">
+            <button class="btn btn-secondary" id="detail-export-btn">↓ Export This Terminal's Data</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings Modal -->
+    <div class="modal-overlay" id="settings-modal" style="display:none">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Settings</h2>
+          <button class="modal-close" id="settings-close" aria-label="Close settings">&times;</button>
+        </div>
+        <div class="modal-body">
+          <h3>Terminal Nicknames</h3>
+          <p class="modal-hint">Assign friendly names to your terminals for easier identification.</p>
+          <div id="nickname-list"></div>
+          <hr class="modal-divider">
+          <h3>Auto-Refresh</h3>
+          <div class="form-group">
+            <label class="form-label" for="refresh-interval">Refresh interval (minutes)</label>
+            <input class="form-input" type="number" id="refresh-interval" min="1" max="60" value="5">
+          </div>
+          <hr class="modal-divider">
+          <h3>Danger Zone</h3>
+          <button class="btn btn-danger" id="clear-data-btn">Clear All Local Data</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Create Config Modal -->
+    <div class="modal-overlay" id="create-config-modal" style="display:none">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Create WiFi Config</h2>
+          <button class="modal-close" id="create-config-close" aria-label="Close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label" for="config-nickname">Config Name</label>
+            <input class="form-input" type="text" id="config-nickname" placeholder="e.g. Fello Default, Event WiFi" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="config-ssid">WiFi Network Name (SSID)</label>
+            <input class="form-input" type="text" id="config-ssid" placeholder="e.g. FELLO-STARLINK" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="config-password">WiFi Password</label>
+            <input class="form-input" type="text" id="config-password" placeholder="Minimum 8 characters" required minlength="8">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="config-auth">Security</label>
+            <select class="form-input" id="config-auth">
+              <option value="WPA2">WPA2 (Recommended)</option>
+              <option value="WPA3">WPA3</option>
+              <option value="OPEN">Open (No Password)</option>
+            </select>
+          </div>
+          <div id="create-config-error" class="error-message" style="display:none"></div>
+          <button class="btn btn-primary btn-full" id="create-config-submit">
+            <span class="btn-text">Create Config</span>
+            <span class="btn-loader" style="display:none"></span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Add SSID to Existing Configs Modal -->
+    <div class="modal-overlay" id="add-ssid-modal" style="display:none">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Add SSID to Configs</h2>
+          <button class="modal-close" id="add-ssid-close" aria-label="Close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p class="modal-hint">Enter the WiFi credentials, then select which profiles to add them to.</p>
+          <div class="form-group">
+            <label class="form-label" for="add-ssid-name">WiFi Network Name (SSID)</label>
+            <input class="form-input" type="text" id="add-ssid-name" placeholder="e.g. Event-WiFi" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="add-ssid-password">WiFi Password</label>
+            <input class="form-input" type="text" id="add-ssid-password" placeholder="Minimum 8 characters" required minlength="8">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="add-ssid-auth">Security</label>
+            <select class="form-input" id="add-ssid-auth">
+              <option value="WPA2">WPA2 (Recommended)</option>
+              <option value="WPA3">WPA3</option>
+              <option value="OPEN">Open (No Password)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Select Configs to Add To</label>
+            <div class="rc-add-ssid-select-bar">
+              <label class="rc-add-ssid-select-all-label"><input type="checkbox" id="add-ssid-select-all"> Select All</label>
+            </div>
+            <div class="rc-add-ssid-config-list" id="add-ssid-config-list">
+              <!-- Config checkboxes rendered here -->
+            </div>
+          </div>
+          <div id="add-ssid-error" class="error-message" style="display:none"></div>
+          <button class="btn btn-primary btn-full" id="add-ssid-submit">
+            <span class="btn-text">Add SSID to Selected Configs</span>
+            <span class="btn-loader" style="display:none"></span>
+          </button>
+        </div>
+      </div>
+    </div>
+    <div class="modal-overlay" id="assign-config-modal" style="display:none">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Assign Config to Selected Routers</h2>
+          <button class="modal-close" id="assign-config-close" aria-label="Close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p class="modal-hint" id="assign-router-count">Assigning to 0 routers</p>
+          <div class="rc-assign-list" id="rc-assign-list">
+            <!-- Config options rendered here -->
+          </div>
+          <div id="assign-config-error" class="error-message" style="display:none"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- QR Code Modal -->
+    <div class="modal-overlay" id="qr-modal" style="display:none">
+      <div class="modal-content" style="max-width:420px; text-align:center;">
+        <div class="modal-header">
+          <div>
+            <h2 id="qr-modal-title">WiFi QR Code</h2>
+            <span class="modal-subtitle" id="qr-modal-subtitle"></span>
+          </div>
+          <button class="modal-close" id="qr-close">&times;</button>
+        </div>
+        <div class="qr-carousel">
+          <button class="qr-carousel-arrow qr-arrow-left" id="qr-prev" title="Previous">‹</button>
+          <div class="qr-carousel-track" id="qr-carousel-track">
+            <!-- QR slides rendered here -->
+          </div>
+          <button class="qr-carousel-arrow qr-arrow-right" id="qr-next" title="Next">›</button>
+        </div>
+        <div class="qr-carousel-dots" id="qr-carousel-dots"></div>
+        <p id="qr-modal-hint" style="font-size:13px; color:var(--dark-gray-shade); margin:0 0 16px;">Scan with a phone camera to connect to this WiFi network</p>
+        <button class="btn btn-primary btn-sm" id="qr-download-btn" style="margin-bottom:8px;">⬇ Download PNG</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js" defer></script>
+</body>
+</html>

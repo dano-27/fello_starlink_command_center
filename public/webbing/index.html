@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Webbing IoT — Fello Command Center</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --blue: #3166ae;
+      --black: #232428;
+      --charcol: #3e3e40;
+      --gray: #fafafa;
+      --border: #cfccca;
+      --dark-gray-shade: #636363;
+      --sky: #e1edfd;
+      --light-blue: #f4f6fa;
+    }
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Montserrat', sans-serif;
+      background: var(--gray);
+      color: var(--black);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .back-to-hub {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 10px 20px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--blue);
+      text-decoration: none;
+      border-radius: 40px;
+      background: var(--sky);
+      margin: 12px 16px;
+      transition: all 0.2s ease;
+    }
+    .back-to-hub:hover { background: var(--blue); color: white; }
+    .coming-soon {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 48px 24px;
+    }
+    .coming-soon-icon {
+      font-size: 72px;
+      margin-bottom: 24px;
+      opacity: 0.8;
+    }
+    .coming-soon h1 {
+      font-size: 28px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      color: var(--black);
+    }
+    .coming-soon p {
+      font-size: 15px;
+      color: var(--dark-gray-shade);
+      max-width: 420px;
+      line-height: 1.6;
+      margin-bottom: 24px;
+    }
+    .coming-soon .info-box {
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px 32px;
+      max-width: 460px;
+      text-align: left;
+    }
+    .info-box h3 {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 12px;
+      color: var(--blue);
+    }
+    .info-box ol {
+      font-size: 13px;
+      color: var(--charcol);
+      line-height: 1.8;
+      padding-left: 20px;
+    }
+  </style>
+</head>
+<body>
+  <a href="/" class="back-to-hub">← Back to Command Center</a>
+  <div class="coming-soon">
+    <div class="coming-soon-icon">📶</div>
+    <h1>Webbing IoT</h1>
+    <p>Cellular SIM management dashboard is coming soon. Webbing's API requires enterprise credentials to access.</p>
+    <div class="info-box">
+      <h3>To enable this dashboard:</h3>
+      <ol>
+        <li>Log into <strong>mywebbing.webbing.com</strong></li>
+        <li>Navigate to Developer / API settings</li>
+        <li>Generate an API key or Bearer token</li>
+        <li>Share the API docs URL and key format</li>
+      </ol>
+    </div>
+  </div>
+</body>
+</html>

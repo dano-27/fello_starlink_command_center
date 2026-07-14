@@ -1,0 +1,263 @@
+/* ═══════════════════════════════════════════════════════════════
+   Fello Command Center — Hub Styles
+   ═══════════════════════════════════════════════════════════════ */
+
+:root {
+  --orange: #f59231;
+  --yellow: #fcd230;
+  --yellow-hover: #f3c100;
+  --blue: #3166ae;
+  --brand-hover: #27528b;
+  --black: #232428;
+  --charcol: #3e3e40;
+  --white: #fff;
+  --gray: #fafafa;
+  --border: #cfccca;
+  --dark-gray: #4c4c4c;
+  --dark-gray-shade: #636363;
+  --sky: #e1edfd;
+  --light-blue: #f4f6fa;
+  --success-color: #05ac3f;
+  --light-red: #ff4d41;
+}
+
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Montserrat', sans-serif;
+  background: var(--gray);
+  color: var(--black);
+  min-height: 100vh;
+}
+
+/* ── Header ─────────────────────────────────────────────────── */
+.hub-header {
+  background: var(--white);
+  border-bottom: 1px solid var(--border);
+  padding: 0 24px;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  backdrop-filter: blur(12px);
+}
+
+.hub-header-inner {
+  max-width: 1100px;
+  margin: 0 auto;
+  height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.hub-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.hub-logo {
+  width: 44px;
+  height: 44px;
+  background: linear-gradient(135deg, var(--blue), var(--yellow));
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  color: white;
+}
+
+.hub-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--black);
+  letter-spacing: -0.3px;
+}
+
+.hub-subtitle {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--dark-gray-shade);
+  margin-top: 1px;
+}
+
+/* ── Main ───────────────────────────────────────────────────── */
+.hub-main {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 48px 24px 80px;
+}
+
+/* ── Tool Grid ──────────────────────────────────────────────── */
+.hub-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(480px, 1fr));
+  gap: 20px;
+}
+
+@media (max-width: 560px) {
+  .hub-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Tool Card ──────────────────────────────────────────────── */
+.tool-card {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 24px 28px;
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  text-decoration: none;
+  color: var(--black);
+  transition: all 0.25s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+.tool-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 100%;
+  border-radius: 16px 0 0 16px;
+  transition: width 0.25s ease;
+}
+
+.tool-card:hover {
+  border-color: var(--blue);
+  box-shadow: 0 8px 32px rgba(49, 102, 174, 0.12);
+  transform: translateY(-2px);
+}
+
+.tool-card:hover::before {
+  width: 6px;
+}
+
+.tool-card:hover .tool-arrow {
+  transform: translateX(4px);
+  color: var(--blue);
+}
+
+/* Card accent colors */
+#card-starlink::before { background: var(--blue); }
+#card-simplemdm::before { background: var(--orange); }
+#card-hexnode::before { background: var(--success-color); }
+#card-webbing::before { background: var(--dark-gray-shade); }
+
+/* ── Tool Icon ──────────────────────────────────────────────── */
+.tool-icon {
+  width: 56px;
+  height: 56px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 28px;
+  flex-shrink: 0;
+}
+
+.tool-icon-starlink { background: var(--sky); }
+.tool-icon-simplemdm { background: rgba(245, 146, 49, 0.12); }
+.tool-icon-hexnode { background: rgba(5, 172, 63, 0.1); }
+.tool-icon-webbing { background: var(--light-blue); }
+
+/* ── Tool Info ──────────────────────────────────────────────── */
+.tool-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.tool-name {
+  font-size: 17px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: var(--black);
+}
+
+.tool-desc {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--dark-gray-shade);
+  line-height: 1.4;
+}
+
+/* ── Tool Status ────────────────────────────────────────────── */
+.tool-status {
+  flex-shrink: 0;
+}
+
+.tool-badge {
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.tool-badge-active {
+  background: rgba(5, 172, 63, 0.1);
+  color: var(--success-color);
+}
+
+.tool-badge-soon {
+  background: var(--light-blue);
+  color: var(--dark-gray-shade);
+}
+
+/* ── Arrow ──────────────────────────────────────────────────── */
+.tool-arrow {
+  font-size: 20px;
+  color: var(--border);
+  font-weight: 600;
+  transition: all 0.25s ease;
+  flex-shrink: 0;
+}
+
+/* ── Coming Soon Card ───────────────────────────────────────── */
+.tool-card-coming-soon {
+  opacity: 0.65;
+  cursor: default;
+  pointer-events: none;
+}
+
+/* ── Footer ─────────────────────────────────────────────────── */
+.hub-footer {
+  text-align: center;
+  padding: 24px;
+  font-size: 12px;
+  color: var(--dark-gray-shade);
+  border-top: 1px solid var(--border);
+  margin-top: auto;
+}
+
+/* ── Back to Hub (shared across tools) ──────────────────────── */
+.back-to-hub {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 20px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--blue);
+  text-decoration: none;
+  border-radius: 40px;
+  background: var(--sky);
+  margin: 12px 16px;
+  transition: all 0.2s ease;
+}
+
+.back-to-hub:hover {
+  background: var(--blue);
+  color: white;
+}

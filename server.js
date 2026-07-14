@@ -658,13 +658,111 @@ app.post('/api/unstow/:userTerminalId', async (req, res) => {
   }
 });
 
-// ── Fallback to SPA ──────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════
+// ██  SimpleMDM Proxy Routes
+// ══════════════════════════════════════════════════════════════════════
+
+// Generic SimpleMDM proxy — forwards /api/simplemdm/* to SimpleMDM API
+app.all('/api/simplemdm/*', async (req, res) => {
+  const auth = req.headers.authorization;
+  if (!auth) return res.status(401).json({ error: 'Missing Authorization header' });
+
+  // Strip /api/simplemdm prefix to get the SimpleMDM path
+  const apiPath = req.path.replace('/api/simplemdm', '');
+  const url = new URL(`https://a.simplemdm.com/api/v1${apiPath}`);
+
+  // Forward query params
+  Object.entries(req.query).forEach(([k, v]) => url.searchParams.set(k, v));
+
+  try {
+    const opts = {
+      method: req.method,
+      headers: {
+        Authorization: auth,
+        'Content-Type': 'application/json',
+      },
+    };
+    if (['POST', 'PUT', 'PATCH'].includes(req.method) && req.body && Object.keys(req.body).length > 0) {
+      opts.body = JSON.stringify(req.body);
+    }
+    const resp = await fetch(url.toString(), opts);
+    const contentType = resp.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      const data = await resp.json();
+      return res.status(resp.status).json(data);
+    } else {
+      const text = await resp.text();
+      return res.status(resp.status).send(text);
+    }
+  } catch (err) {
+    console.error('SimpleMDM proxy error:', err.message);
+    return res.status(500).json({ error: 'SimpleMDM proxy failed: ' + err.message });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════
+// ██  Hexnode Proxy Routes
+// ══════════════════════════════════════════════════════════════════════
+
+// Generic Hexnode proxy — forwards /api/hexnode/* to Hexnode API
+app.all('/api/hexnode/*', async (req, res) => {
+  const auth = req.headers.authorization;
+  if (!auth) return res.status(401).json({ error: 'Missing Authorization header' });
+
+  // Strip /api/hexnode prefix to get the Hexnode path
+  const apiPath = req.path.replace('/api/hexnode', '');
+  const url = new URL(`https://fello23.hexnodemdm.com/api/v1${apiPath}`);
+
+  // Forward query params
+  Object.entries(req.query).forEach(([k, v]) => url.searchParams.set(k, v));
+
+  try {
+    const opts = {
+      method: req.method,
+      headers: {
+        Authorization: auth,
+        'Content-Type': 'application/json',
+      },
+    };
+    if (['POST', 'PUT', 'PATCH'].includes(req.method) && req.body && Object.keys(req.body).length > 0) {
+      opts.body = JSON.stringify(req.body);
+    }
+    const resp = await fetch(url.toString(), opts);
+    const contentType = resp.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      const data = await resp.json();
+      return res.status(resp.status).json(data);
+    } else {
+      const text = await resp.text();
+      return res.status(resp.status).send(text);
+    }
+  } catch (err) {
+    console.error('Hexnode proxy error:', err.message);
+    return res.status(500).json({ error: 'Hexnode proxy failed: ' + err.message });
+  }
+});
+
+// ── Fallback Routes ─────────────────────────────────────────────────
+// Tool sub-apps: serve each tool's own index.html
+app.get('/starlink/*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'starlink', 'index.html'));
+});
+app.get('/simplemdm/*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'simplemdm', 'index.html'));
+});
+app.get('/hexnode/*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'hexnode', 'index.html'));
+});
+app.get('/webbing/*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'webbing', 'index.html'));
+});
+// Hub landing page
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 app.listen(PORT, () => {
-  console.log(`\n  ✦ Fello Starlink Command Center`);
+  console.log(`\n  ✦ Fello Command Center`);
   console.log(`  ─────────────────────────────────`);
   console.log(`  Running at http://localhost:${PORT}`);
   console.log(`  Press Ctrl+C to stop\n`);

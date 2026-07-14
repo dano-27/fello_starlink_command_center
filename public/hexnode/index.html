@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hexnode UEM — Fello Device Management</title>
+  <meta name="description" content="Unified endpoint management dashboard for Fello fleet devices powered by Hexnode UEM.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="index.css">
+</head>
+<body>
+  <!-- ═══════════ LOGIN SCREEN ═══════════ -->
+  <div id="login-screen" class="login-screen">
+    <div class="login-card">
+      <div class="login-logo">
+        <div class="login-icon">
+          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="3" width="20" height="14" rx="2"/>
+            <path d="M8 21h8M12 17v4"/>
+          </svg>
+        </div>
+        <h1>Hexnode UEM</h1>
+        <p class="login-subtitle">Fello Device Management Portal</p>
+      </div>
+      <form id="login-form" autocomplete="off">
+        <label for="api-key-input" class="input-label">API Key</label>
+        <div class="input-wrapper">
+          <svg class="input-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+          </svg>
+          <input type="password" id="api-key-input" placeholder="Enter your Hexnode API key" required>
+          <button type="button" id="toggle-key-visibility" class="toggle-vis" aria-label="Toggle visibility">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+              <circle cx="12" cy="12" r="3"/>
+            </svg>
+          </button>
+        </div>
+        <p class="input-hint">Portal: <strong>fello23.hexnodemdm.com</strong></p>
+        <button type="submit" class="btn btn-primary btn-full" id="login-btn">
+          <span class="btn-text">Connect to Hexnode</span>
+          <span class="btn-loader hidden">
+            <span class="spinner"></span> Connecting…
+          </span>
+        </button>
+      </form>
+      <p class="login-footer">Secured connection via API proxy</p>
+    </div>
+  </div>
+
+  <!-- ═══════════ MAIN DASHBOARD ═══════════ -->
+  <div id="app" class="app hidden">
+    <!-- Top Bar -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <a href="/" class="back-to-hub">← Back to Command Center</a>
+        <div class="topbar-divider"></div>
+        <div class="topbar-brand">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="3" width="20" height="14" rx="2"/>
+            <path d="M8 21h8M12 17v4"/>
+          </svg>
+          <span class="topbar-title">Hexnode UEM</span>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <span class="topbar-portal">fello23.hexnodemdm.com</span>
+        <button class="btn btn-outline btn-sm" id="logout-btn">Disconnect</button>
+      </div>
+    </header>
+
+    <!-- Stats Row -->
+    <section class="stats-row" id="stats-row">
+      <div class="stat-card" id="stat-total">
+        <div class="stat-icon stat-icon-blue">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+        </div>
+        <div class="stat-info">
+          <span class="stat-value" id="stat-total-val">—</span>
+          <span class="stat-label">Total Devices</span>
+        </div>
+      </div>
+      <div class="stat-card" id="stat-enrolled">
+        <div class="stat-icon stat-icon-green">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+        </div>
+        <div class="stat-info">
+          <span class="stat-value" id="stat-enrolled-val">—</span>
+          <span class="stat-label">Enrolled</span>
+        </div>
+      </div>
+      <div class="stat-card" id="stat-groups">
+        <div class="stat-icon stat-icon-purple">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        </div>
+        <div class="stat-info">
+          <span class="stat-value" id="stat-groups-val">—</span>
+          <span class="stat-label">Device Groups</span>
+        </div>
+      </div>
+      <div class="stat-card" id="stat-os">
+        <div class="stat-icon stat-icon-orange">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+        </div>
+        <div class="stat-info">
+          <span class="stat-value" id="stat-os-val">—</span>
+          <span class="stat-label">OS Types</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tabs -->
+    <div class="tab-bar">
+      <button class="tab active" data-tab="devices" id="tab-devices">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+        Devices
+      </button>
+      <button class="tab" data-tab="groups" id="tab-groups">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Groups
+      </button>
+    </div>
+
+    <!-- ═══ DEVICES TAB ═══ -->
+    <section class="tab-content active" id="panel-devices">
+      <div class="toolbar">
+        <div class="search-box">
+          <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+          <input type="text" id="device-search" placeholder="Search devices by name, model, serial…">
+          <button class="search-clear hidden" id="search-clear" aria-label="Clear search">×</button>
+        </div>
+        <div class="toolbar-actions">
+          <select id="os-filter" class="select-pill">
+            <option value="">All OS</option>
+          </select>
+          <button class="btn btn-primary btn-sm" id="refresh-devices-btn">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      <!-- Device Table -->
+      <div class="table-wrap" id="device-table-wrap">
+        <table class="data-table" id="device-table">
+          <thead>
+            <tr>
+              <th>Device Name</th>
+              <th>Model</th>
+              <th>OS</th>
+              <th>Serial Number</th>
+              <th>Enrollment</th>
+              <th>Last Reported</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="device-tbody"></tbody>
+        </table>
+      </div>
+
+      <!-- Loading / Empty States -->
+      <div class="state-message hidden" id="devices-loading">
+        <div class="loading-dots"><span></span><span></span><span></span></div>
+        <p>Fetching devices…</p>
+      </div>
+      <div class="state-message hidden" id="devices-empty">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--border)" stroke-width="1.5"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+        <p>No devices found</p>
+        <span class="state-sub">Try adjusting your search or filters</span>
+      </div>
+      <div class="state-message hidden" id="devices-error">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--light-red)" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+        <p>Failed to load devices</p>
+        <span class="state-sub" id="devices-error-msg"></span>
+        <button class="btn btn-outline btn-sm" id="retry-devices-btn" style="margin-top:12px">Retry</button>
+      </div>
+
+      <!-- Pagination -->
+      <div class="pagination hidden" id="pagination">
+        <button class="btn btn-outline btn-sm" id="prev-page" disabled>← Previous</button>
+        <span class="page-info" id="page-info"></span>
+        <button class="btn btn-outline btn-sm" id="next-page">Next →</button>
+      </div>
+    </section>
+
+    <!-- ═══ GROUPS TAB ═══ -->
+    <section class="tab-content" id="panel-groups">
+      <div class="toolbar">
+        <div class="search-box">
+          <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+          <input type="text" id="group-search" placeholder="Search groups…">
+        </div>
+        <button class="btn btn-primary btn-sm" id="refresh-groups-btn">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          Refresh
+        </button>
+      </div>
+
+      <div class="groups-grid" id="groups-grid"></div>
+
+      <div class="state-message hidden" id="groups-loading">
+        <div class="loading-dots"><span></span><span></span><span></span></div>
+        <p>Fetching groups…</p>
+      </div>
+      <div class="state-message hidden" id="groups-empty">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--border)" stroke-width="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+        <p>No device groups found</p>
+      </div>
+    </section>
+  </div>
+
+  <!-- ═══════════ DEVICE DETAIL MODAL ═══════════ -->
+  <div class="modal-overlay hidden" id="device-modal-overlay">
+    <div class="modal" id="device-modal">
+      <div class="modal-header">
+        <h2 id="modal-device-name">Device Details</h2>
+        <button class="modal-close" id="modal-close" aria-label="Close">×</button>
+      </div>
+      <div class="modal-body" id="modal-body">
+        <div class="state-message" id="modal-loading">
+          <div class="loading-dots"><span></span><span></span><span></span></div>
+          <p>Loading device details…</p>
+        </div>
+      </div>
+      <div class="modal-footer hidden" id="modal-footer">
+        <span class="modal-footer-label">Remote Actions</span>
+        <div class="modal-actions">
+          <button class="btn btn-action btn-lock" id="action-lock" data-action="lock">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            Lock
+          </button>
+          <button class="btn btn-action btn-restart" id="action-restart" data-action="restart">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+            Restart
+          </button>
+          <button class="btn btn-action btn-scan" id="action-scan" data-action="scan">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+            Scan
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════ CONFIRMATION DIALOG ═══════════ -->
+  <div class="confirm-overlay hidden" id="confirm-overlay">
+    <div class="confirm-dialog">
+      <div class="confirm-icon" id="confirm-icon"></div>
+      <h3 id="confirm-title">Confirm Action</h3>
+      <p id="confirm-message">Are you sure?</p>
+      <div class="confirm-actions">
+        <button class="btn btn-outline" id="confirm-cancel">Cancel</button>
+        <button class="btn btn-danger" id="confirm-ok">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════ TOAST CONTAINER ═══════════ -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
