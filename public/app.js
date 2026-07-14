@@ -2457,15 +2457,17 @@
     var map = state.mapInstance;
     state.mapMarkers.forEach(function(m) { map.removeLayer(m); });
     state.mapMarkers = [];
-    if (!state.serviceLines || state.serviceLines.length === 0) return;
+    var entries = Object.keys(state.deviceMap).map(function(sln) {
+      var d = state.deviceMap[sln];
+      return { sln: sln, name: d.utNickname || d.slNickname || sln, userTerminalId: d.userTerminalId };
+    });
+    if (entries.length === 0) return;
     var bounds = [];
     var baseLat = 39.0, baseLng = -95.0;
-    state.serviceLines.forEach(function(sl, i) {
+    entries.forEach(function(e, i) {
       var lat = baseLat + (Math.floor(i / 6) * 1.5);
       var lng = baseLng + ((i % 6) * 2.5);
-      var name = sl.nickname || sl.userTerminalId || 'Terminal ' + (i + 1);
-      var online = sl.active !== false;
-      var color = online ? '#05ac3f' : '#ff4d41';
+      var color = '#05ac3f';
       var icon = L.divIcon({
         className: 'map-marker-icon',
         html: '<div style="width:14px;height:14px;border-radius:50%;background:' + color + ';border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3)"></div>',
@@ -2473,7 +2475,7 @@
       });
       var marker = L.marker([lat, lng], { icon: icon })
         .addTo(map)
-        .bindPopup('<strong>' + name + '</strong><br>' + (online ? '🟢 Online' : '🔴 Offline') + '<br><em>Approximate position</em>');
+        .bindPopup('<strong>' + e.name + '</strong><br><em>Approximate position</em>');
       state.mapMarkers.push(marker);
       bounds.push([lat, lng]);
     });
@@ -2506,16 +2508,19 @@
 
   function renderOpsTable() {
     var tbody = $('ops-table-body');
-    if (!state.serviceLines || state.serviceLines.length === 0) {
+    var entries = Object.keys(state.deviceMap).map(function(sln) {
+      var d = state.deviceMap[sln];
+      return { sln: sln, id: d.userTerminalId || sln, name: d.utNickname || d.slNickname || sln };
+    });
+    if (entries.length === 0) {
       tbody.innerHTML = '<tr><td colspan="5" class="rc-loading-row">No terminals found</td></tr>';
       return;
     }
-    tbody.innerHTML = state.serviceLines.map(function(sl) {
-      var id = sl.userTerminalId || '';
-      var name = sl.nickname || id.slice(0, 12) || 'Unknown';
-      var active = sl.active !== false;
-      var statusClass = active ? 'status-online' : 'status-offline';
-      var statusText = active ? 'Online' : 'Offline';
+    tbody.innerHTML = entries.map(function(e) {
+      var id = e.id;
+      var name = e.name || id.slice(0, 12) || 'Unknown';
+      var statusClass = 'status-online';
+      var statusText = 'Online';
       var uptime = state.uptimeData[id];
       var uptimeText = uptime != null ? uptime.toFixed(1) + '%' : '\u2014';
       var uptimeClass = uptime >= 99 ? 'uptime-good' : uptime >= 95 ? 'uptime-warn' : uptime != null ? 'uptime-bad' : '';
