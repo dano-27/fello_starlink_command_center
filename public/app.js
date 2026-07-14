@@ -2435,7 +2435,7 @@
       return { sln: sln, id: d.userTerminalId || sln, name: d.utNickname || d.slNickname || sln, active: d.active };
     });
     if (entries.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="5" class="rc-loading-row">No terminals found</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="4" class="rc-loading-row">No terminals found</td></tr>';
       return;
     }
     tbody.innerHTML = entries.map(function(e) {
@@ -2443,16 +2443,12 @@
       var name = e.name || id.slice(0, 12) || 'Unknown';
       var active = e.active === true;
       var statusClass = active ? 'status-online' : 'status-offline';
-      var statusText = active ? 'Online' : 'Offline';
-      var uptime = state.uptimeData[id];
-      var uptimeText = uptime != null ? uptime.toFixed(1) + '%' : '\u2014';
-      var uptimeClass = uptime >= 99 ? 'uptime-good' : uptime >= 95 ? 'uptime-warn' : uptime != null ? 'uptime-bad' : '';
+      var statusText = active ? 'Active' : 'Inactive';
       var checked = state.opsSelected.has(id) ? ' checked' : '';
       return '<tr>'
         + '<td><input type="checkbox" class="ops-row-checkbox" data-terminal-id="' + id + '"' + checked + '></td>'
         + '<td><strong>' + name + '</strong><div class="ops-terminal-id">' + id.slice(0, 16) + '</div></td>'
         + '<td><span class="ops-status ' + statusClass + '">' + statusText + '</span></td>'
-        + '<td><span class="ops-uptime ' + uptimeClass + '">' + uptimeText + '</span></td>'
         + '<td class="ops-actions-cell">'
         + '<button class="ops-btn ops-reboot-btn" data-id="' + id + '" data-name="' + name + '" title="Reboot">\ud83d\udd04</button>'
         + '<button class="ops-btn ops-stow-btn" data-id="' + id + '" data-name="' + name + '" title="Stow">\ud83d\udce6</button>'
