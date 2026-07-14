@@ -218,6 +218,7 @@ app.get('/api/router-configs', async (req, res) => {
 
     if (!response.ok) {
       const text = await response.text();
+      console.error(`Router configs API returned ${response.status}: ${text}`);
       return res.status(response.status).json({ error: text });
     }
 

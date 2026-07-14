@@ -1347,19 +1347,23 @@
       const cfg = typeof routerConfigJson === 'string' ? JSON.parse(routerConfigJson) : routerConfigJson;
       let ssid = null, password = null, auth = null;
 
-      if (cfg.networks && Array.isArray(cfg.networks)) {
+      // Starlink format: networks[0].basicServiceSets[0].ssid / authWpa2.password
+      if (cfg.networks && Array.isArray(cfg.networks) && cfg.networks.length > 0) {
         const net = cfg.networks[0];
-        ssid = net?.ssid || net?.name || null;
-        password = net?.password || net?.psk || null;
-        auth = net?.auth || net?.security || null;
-      } else if (cfg.wifi) {
-        ssid = cfg.wifi.ssid || cfg.wifi.name || null;
-        password = cfg.wifi.password || cfg.wifi.psk || null;
-        auth = cfg.wifi.auth || cfg.wifi.security || null;
-      } else if (cfg.ssid) {
-        ssid = cfg.ssid;
-        password = cfg.password || cfg.psk || null;
-        auth = cfg.auth || cfg.security || null;
+        if (net.basicServiceSets && Array.isArray(net.basicServiceSets) && net.basicServiceSets.length > 0) {
+          const bss = net.basicServiceSets[0];
+          ssid = bss.ssid || null;
+          // Auth can be authWpa2, authWpa3, or authOpen
+          if (bss.authWpa3) {
+            password = bss.authWpa3.password || null;
+            auth = 'WPA3';
+          } else if (bss.authWpa2) {
+            password = bss.authWpa2.password || null;
+            auth = 'WPA2';
+          } else if (bss.authOpen !== undefined) {
+            auth = 'Open';
+          }
+        }
       }
 
       return { ssid, password, auth, raw: cfg };
@@ -1553,11 +1557,20 @@
     btn.querySelector('.btn-loader').style.display = 'inline-block';
 
     try {
+      // Build auth object based on security type
+      const authObj = auth === 'OPEN' ? { authOpen: {} }
+        : auth === 'WPA3' ? { authWpa3: { password } }
+        : { authWpa2: { password } };
+
+      const bss = { ssid, ...authObj };
       const configJson = {
+        setupComplete: true,
+        applyNetworks: true,
         networks: [{
-          ssid: ssid,
-          password: auth !== 'OPEN' ? password : undefined,
-          auth: auth,
+          basicServiceSets: [
+            { ...bss, band: 'RF_2GHZ' },
+            { ...bss, band: 'RF_5GHZ' },
+          ],
         }],
       };
 
