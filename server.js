@@ -449,6 +449,215 @@ app.get('/api/routers/:routerId', async (req, res) => {
   }
 });
 
+// ── Proxy: Telemetry ─────────────────────────────────────────────────
+app.get('/api/telemetry/location', async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).json({ error: 'Authorization header required' });
+  }
+
+  try {
+    const url = new URL('https://starlink.com/api/public/v2/telemetry/location');
+    if (req.query.page != null) url.searchParams.set('page', req.query.page);
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: authHeader,
+      },
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      return res.status(response.status).json({ error: text });
+    }
+
+    const data = await response.json();
+    return res.json(data);
+  } catch (err) {
+    console.error('Telemetry location proxy error:', err.message);
+    return res.status(500).json({ error: 'Failed to fetch telemetry location' });
+  }
+});
+
+app.post('/api/telemetry/uptime', async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).json({ error: 'Authorization header required' });
+  }
+
+  try {
+    const url = new URL('https://starlink.com/api/public/v2/telemetry/uptime/query');
+    if (req.query.page != null) url.searchParams.set('page', req.query.page);
+    if (req.query.limit != null) url.searchParams.set('limit', req.query.limit);
+    const response = await fetch(url.toString(), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: authHeader,
+      },
+      body: JSON.stringify(req.body),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      return res.status(response.status).json({ error: text });
+    }
+
+    const data = await response.json();
+    return res.json(data);
+  } catch (err) {
+    console.error('Telemetry uptime proxy error:', err.message);
+    return res.status(500).json({ error: 'Failed to fetch telemetry uptime' });
+  }
+});
+
+// ── Proxy: Alerts ────────────────────────────────────────────────────
+app.get('/api/alerts', async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).json({ error: 'Authorization header required' });
+  }
+
+  try {
+    const url = new URL('https://starlink.com/api/public/v2/alerts');
+    if (req.query.page != null) url.searchParams.set('page', req.query.page);
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: authHeader,
+      },
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      return res.status(response.status).json({ error: text });
+    }
+
+    const data = await response.json();
+    return res.json(data);
+  } catch (err) {
+    console.error('Alerts proxy error:', err.message);
+    return res.status(500).json({ error: 'Failed to fetch alerts' });
+  }
+});
+
+app.get('/api/alerts/history', async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).json({ error: 'Authorization header required' });
+  }
+
+  try {
+    const url = new URL('https://starlink.com/api/public/v2/alerts/history');
+    if (req.query.page != null) url.searchParams.set('page', req.query.page);
+    const response = await fetch(url.toString(), {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: authHeader,
+      },
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      return res.status(response.status).json({ error: text });
+    }
+
+    const data = await response.json();
+    return res.json(data);
+  } catch (err) {
+    console.error('Alerts history proxy error:', err.message);
+    return res.status(500).json({ error: 'Failed to fetch alerts history' });
+  }
+});
+
+// ── Proxy: Device Control ────────────────────────────────────────────
+app.post('/api/reboot/:userTerminalId', async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).json({ error: 'Authorization header required' });
+  }
+
+  try {
+    const response = await fetch(`https://starlink.com/api/public/v2/user-terminals/${req.params.userTerminalId}/reboot`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: authHeader,
+      },
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      return res.status(response.status).json({ error: text });
+    }
+
+    const data = await response.json();
+    return res.json(data);
+  } catch (err) {
+    console.error('Reboot proxy error:', err.message);
+    return res.status(500).json({ error: 'Failed to reboot user terminal' });
+  }
+});
+
+app.post('/api/stow/:userTerminalId', async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).json({ error: 'Authorization header required' });
+  }
+
+  try {
+    const response = await fetch(`https://starlink.com/api/public/v2/user-terminals/${req.params.userTerminalId}/stow`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: authHeader,
+      },
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      return res.status(response.status).json({ error: text });
+    }
+
+    const data = await response.json();
+    return res.json(data);
+  } catch (err) {
+    console.error('Stow proxy error:', err.message);
+    return res.status(500).json({ error: 'Failed to stow user terminal' });
+  }
+});
+
+app.post('/api/unstow/:userTerminalId', async (req, res) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).json({ error: 'Authorization header required' });
+  }
+
+  try {
+    const response = await fetch(`https://starlink.com/api/public/v2/user-terminals/${req.params.userTerminalId}/unstow`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: authHeader,
+      },
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      return res.status(response.status).json({ error: text });
+    }
+
+    const data = await response.json();
+    return res.json(data);
+  } catch (err) {
+    console.error('Unstow proxy error:', err.message);
+    return res.status(500).json({ error: 'Failed to unstow user terminal' });
+  }
+});
+
 // ── Fallback to SPA ──────────────────────────────────────────────────
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));

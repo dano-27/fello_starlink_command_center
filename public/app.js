@@ -27,6 +27,15 @@
     fleetPairings: [],       // dish-to-router pairings from fleet-pairings.json
     pairingByRouterId: {},   // routerId → { dish, router, routerId }
     pairingByDish: {},       // dishName → { dish, router, routerId }
+    mapLoaded: false,        // whether fleet map has been initialized
+    mapInstance: null,        // Leaflet map instance
+    mapMarkers: [],          // Leaflet markers
+    opsLoaded: false,        // whether fleet ops has been loaded
+    opsSelected: new Set(),  // selected terminal IDs for bulk ops
+    uptimeData: {},          // userTerminalId → uptime %
+    alertsLoaded: false,     // whether alerts have been loaded
+    alertsData: [],          // alert objects
+    alertRefreshTimer: null, // auto-refresh interval
   };
 
   // ── Constants ───────────────────────────────────────────────────────
@@ -1208,6 +1217,18 @@
         if (tab === 'router-config' && !state.rcLoaded) {
           loadRouterConfigData();
         }
+        // Load fleet map on first visit
+        if (tab === 'fleet-map' && !state.mapLoaded) {
+          initFleetMap();
+        }
+        // Load fleet ops on first visit
+        if (tab === 'fleet-ops' && !state.opsLoaded) {
+          loadFleetOps();
+        }
+        // Load alerts on first visit
+        if (tab === 'alerts' && !state.alertsLoaded) {
+          loadAlerts();
+        }
       });
     });
 
@@ -2382,6 +2403,294 @@
     }
 
     await assignConfigToSelectedRouters(state.defaultConfigId);
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // ███  FLEET MAP
+  // ══════════════════════════════════════════════════════════════════════
+
+  async function initFleetMap() {
+    state.mapLoaded = true;
+    var map = L.map('fleet-map').setView([39.8, -98.5], 4);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors',
+      maxZoom: 18,
+    }).addTo(map);
+    state.mapInstance = map;
+    setTimeout(function() { map.invalidateSize(); }, 200);
+    await loadMapLocations();
+    $('map-refresh-btn').addEventListener('click', loadMapLocations);
+  }
+
+  async function loadMapLocations() {
+    try {
+      var res = await fetch('/api/telemetry/location', {
+        headers: { Authorization: 'Bearer ' + state.token },
+      });
+      if (!res.ok) {
+        console.warn('Location API returned ' + res.status);
+        plotTerminalsFromState();
+        return;
+      }
+      var data = await res.json();
+      var locations = data.results || data.content || data || [];
+      if (Array.isArray(locations) && locations.length > 0) {
+        plotLocations(locations);
+      } else {
+        plotTerminalsFromState();
+      }
+    } catch (err) {
+      console.warn('Location fetch failed:', err.message);
+      plotTerminalsFromState();
+    }
+  }
+
+  function plotLocations(locations) {
+    var map = state.mapInstance;
+    state.mapMarkers.forEach(function(m) { map.removeLayer(m); });
+    state.mapMarkers = [];
+    var bounds = [];
+    locations.forEach(function(loc) {
+      var lat = loc.latitude || loc.lat;
+      var lng = loc.longitude || loc.lng || loc.lon;
+      if (!lat || !lng) return;
+      var name = loc.nickname || loc.userTerminalId || 'Terminal';
+      var online = loc.active !== false;
+      var color = online ? '#05ac3f' : '#ff4d41';
+      var icon = L.divIcon({
+        className: 'map-marker-icon',
+        html: '<div style="width:14px;height:14px;border-radius:50%;background:' + color + ';border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3)"></div>',
+        iconSize: [14, 14],
+      });
+      var marker = L.marker([lat, lng], { icon: icon })
+        .addTo(map)
+        .bindPopup('<strong>' + name + '</strong><br>' + (online ? '🟢 Online' : '🔴 Offline'));
+      state.mapMarkers.push(marker);
+      bounds.push([lat, lng]);
+    });
+    if (bounds.length > 0) map.fitBounds(bounds, { padding: [40, 40] });
+  }
+
+  function plotTerminalsFromState() {
+    var map = state.mapInstance;
+    state.mapMarkers.forEach(function(m) { map.removeLayer(m); });
+    state.mapMarkers = [];
+    if (!state.serviceLines || state.serviceLines.length === 0) return;
+    var bounds = [];
+    var baseLat = 39.0, baseLng = -95.0;
+    state.serviceLines.forEach(function(sl, i) {
+      var lat = baseLat + (Math.floor(i / 6) * 1.5);
+      var lng = baseLng + ((i % 6) * 2.5);
+      var name = sl.nickname || sl.userTerminalId || 'Terminal ' + (i + 1);
+      var online = sl.active !== false;
+      var color = online ? '#05ac3f' : '#ff4d41';
+      var icon = L.divIcon({
+        className: 'map-marker-icon',
+        html: '<div style="width:14px;height:14px;border-radius:50%;background:' + color + ';border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3)"></div>',
+        iconSize: [14, 14],
+      });
+      var marker = L.marker([lat, lng], { icon: icon })
+        .addTo(map)
+        .bindPopup('<strong>' + name + '</strong><br>' + (online ? '🟢 Online' : '🔴 Offline') + '<br><em>Approximate position</em>');
+      state.mapMarkers.push(marker);
+      bounds.push([lat, lng]);
+    });
+    if (bounds.length > 0) map.fitBounds(bounds, { padding: [40, 40] });
+    showToast('GPS data not available — showing approximate positions', 'info');
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // ███  FLEET OPS (Reboot, Stow, Uptime)
+  // ══════════════════════════════════════════════════════════════════════
+
+  async function loadFleetOps() {
+    state.opsLoaded = true;
+    renderOpsTable();
+    loadUptimeData();
+    $('ops-refresh-btn').addEventListener('click', function() { loadUptimeData(); renderOpsTable(); });
+    $('ops-select-all').addEventListener('change', function(e) {
+      var checked = e.target.checked;
+      state.opsSelected.clear();
+      document.querySelectorAll('.ops-row-checkbox').forEach(function(cb) {
+        cb.checked = checked;
+        if (checked) state.opsSelected.add(cb.dataset.terminalId);
+      });
+      updateOpsBulkBar();
+    });
+    $('ops-bulk-reboot').addEventListener('click', function() { bulkTerminalAction('reboot'); });
+    $('ops-bulk-stow').addEventListener('click', function() { bulkTerminalAction('stow'); });
+    $('ops-bulk-unstow').addEventListener('click', function() { bulkTerminalAction('unstow'); });
+  }
+
+  function renderOpsTable() {
+    var tbody = $('ops-table-body');
+    if (!state.serviceLines || state.serviceLines.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" class="rc-loading-row">No terminals found</td></tr>';
+      return;
+    }
+    tbody.innerHTML = state.serviceLines.map(function(sl) {
+      var id = sl.userTerminalId || '';
+      var name = sl.nickname || id.slice(0, 12) || 'Unknown';
+      var active = sl.active !== false;
+      var statusClass = active ? 'status-online' : 'status-offline';
+      var statusText = active ? 'Online' : 'Offline';
+      var uptime = state.uptimeData[id];
+      var uptimeText = uptime != null ? uptime.toFixed(1) + '%' : '\u2014';
+      var uptimeClass = uptime >= 99 ? 'uptime-good' : uptime >= 95 ? 'uptime-warn' : uptime != null ? 'uptime-bad' : '';
+      var checked = state.opsSelected.has(id) ? ' checked' : '';
+      return '<tr>'
+        + '<td><input type="checkbox" class="ops-row-checkbox" data-terminal-id="' + id + '"' + checked + '></td>'
+        + '<td><strong>' + name + '</strong><div class="ops-terminal-id">' + id.slice(0, 16) + '</div></td>'
+        + '<td><span class="ops-status ' + statusClass + '">' + statusText + '</span></td>'
+        + '<td><span class="ops-uptime ' + uptimeClass + '">' + uptimeText + '</span></td>'
+        + '<td class="ops-actions-cell">'
+        + '<button class="ops-btn ops-reboot-btn" data-id="' + id + '" data-name="' + name + '" title="Reboot">\ud83d\udd04</button>'
+        + '<button class="ops-btn ops-stow-btn" data-id="' + id + '" data-name="' + name + '" title="Stow">\ud83d\udce6</button>'
+        + '<button class="ops-btn ops-unstow-btn" data-id="' + id + '" data-name="' + name + '" title="Unstow">\ud83d\udce1</button>'
+        + '</td></tr>';
+    }).join('');
+    tbody.querySelectorAll('.ops-row-checkbox').forEach(function(cb) {
+      cb.addEventListener('change', function() {
+        if (cb.checked) state.opsSelected.add(cb.dataset.terminalId);
+        else state.opsSelected.delete(cb.dataset.terminalId);
+        updateOpsBulkBar();
+      });
+    });
+    tbody.querySelectorAll('.ops-reboot-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() { singleTerminalAction(btn.dataset.id, btn.dataset.name, 'reboot'); });
+    });
+    tbody.querySelectorAll('.ops-stow-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() { singleTerminalAction(btn.dataset.id, btn.dataset.name, 'stow'); });
+    });
+    tbody.querySelectorAll('.ops-unstow-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() { singleTerminalAction(btn.dataset.id, btn.dataset.name, 'unstow'); });
+    });
+  }
+
+  function updateOpsBulkBar() {
+    var count = state.opsSelected.size;
+    $('ops-bulk-bar').style.display = count > 0 ? 'flex' : 'none';
+    $('ops-bulk-count').textContent = count + ' selected';
+  }
+
+  async function singleTerminalAction(terminalId, terminalName, action) {
+    var msgs = {
+      reboot: 'Reboot "' + terminalName + '"?\n\nThis will interrupt service for ~2 minutes.',
+      stow: 'Stow "' + terminalName + '"?\n\nThe dish will fold into transport position and go offline.',
+      unstow: 'Unstow "' + terminalName + '"?\n\nThe dish will return to normal operation.',
+    };
+    if (!confirm(msgs[action])) return;
+    try {
+      var res = await fetch('/api/' + action + '/' + terminalId, {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + state.token },
+      });
+      if (res.ok) showToast(terminalName + ': ' + action + ' sent \u2713', 'success');
+      else showToast(action + ' failed for ' + terminalName + ': ' + res.status, 'error');
+    } catch (err) {
+      showToast(action + ' failed: ' + err.message, 'error');
+    }
+  }
+
+  async function bulkTerminalAction(action) {
+    var count = state.opsSelected.size;
+    if (count === 0) return;
+    var label = action.charAt(0).toUpperCase() + action.slice(1);
+    if (!confirm(label + ' ' + count + ' terminal' + (count > 1 ? 's' : '') + '?')) return;
+    var success = 0, fail = 0;
+    for (var id of state.opsSelected) {
+      try {
+        var res = await fetch('/api/' + action + '/' + id, {
+          method: 'POST',
+          headers: { Authorization: 'Bearer ' + state.token },
+        });
+        if (res.ok) success++; else fail++;
+      } catch (e) { fail++; }
+    }
+    showToast(label + ': ' + success + ' OK, ' + fail + ' failed', success > 0 ? 'success' : 'error');
+  }
+
+  async function loadUptimeData() {
+    try {
+      var now = new Date();
+      var ago = new Date(now.getTime() - 30 * 86400000);
+      var res = await fetch('/api/telemetry/uptime', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + state.token },
+        body: JSON.stringify({ startDate: ago.toISOString().split('T')[0], endDate: now.toISOString().split('T')[0] }),
+      });
+      if (!res.ok) { console.warn('Uptime API: ' + res.status); return; }
+      var data = await res.json();
+      var results = data.results || data.content || data || [];
+      if (Array.isArray(results)) {
+        results.forEach(function(r) {
+          if (r.userTerminalId && r.uptimePercent != null) state.uptimeData[r.userTerminalId] = r.uptimePercent;
+        });
+        renderOpsTable();
+      }
+    } catch (err) { console.warn('Uptime fetch:', err.message); }
+  }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // ███  ALERTS
+  // ══════════════════════════════════════════════════════════════════════
+
+  async function loadAlerts() {
+    state.alertsLoaded = true;
+    await fetchAlerts();
+    $('alerts-refresh-btn').addEventListener('click', fetchAlerts);
+    if (state.alertRefreshTimer) clearInterval(state.alertRefreshTimer);
+    state.alertRefreshTimer = setInterval(fetchAlerts, 60000);
+  }
+
+  async function fetchAlerts() {
+    try {
+      var res = await fetch('/api/alerts', { headers: { Authorization: 'Bearer ' + state.token } });
+      if (!res.ok) { renderAlertsEmpty('Alerts API not available (HTTP ' + res.status + ')'); return; }
+      var data = await res.json();
+      state.alertsData = data.results || data.content || data || [];
+      if (!Array.isArray(state.alertsData)) state.alertsData = [];
+      renderAlerts();
+    } catch (err) { renderAlertsEmpty('Could not load alerts: ' + err.message); }
+  }
+
+  function renderAlerts() {
+    var feed = $('alert-feed');
+    var empty = $('alert-empty');
+    var badge = $('alert-count-badge');
+    if (state.alertsData.length === 0) {
+      feed.style.display = 'none';
+      empty.style.display = 'block';
+      badge.style.display = 'none';
+      return;
+    }
+    empty.style.display = 'none';
+    feed.style.display = 'block';
+    badge.style.display = 'inline-flex';
+    badge.textContent = state.alertsData.length;
+    feed.innerHTML = state.alertsData.map(function(a) {
+      var sev = (a.severity || a.level || 'info').toLowerCase();
+      var cls = sev === 'critical' || sev === 'error' ? 'alert-critical' : sev === 'warning' ? 'alert-warning' : 'alert-info';
+      var terminal = a.nickname || a.userTerminalId || a.deviceId || 'Unknown';
+      var msg = a.alertMessage || a.message || a.errorMessage || a.type || 'Alert';
+      var t = a.timestamp || a.createdAt || a.time || '';
+      var ts = t ? new Date(t).toLocaleString() : '';
+      return '<div class="alert-card ' + cls + '">'
+        + '<div class="alert-card-header">'
+        + '<span class="alert-severity-badge ' + cls + '">' + (sev.charAt(0).toUpperCase() + sev.slice(1)) + '</span>'
+        + '<span class="alert-terminal">' + terminal + '</span>'
+        + '<span class="alert-time">' + ts + '</span>'
+        + '</div>'
+        + '<div class="alert-message">' + msg + '</div></div>';
+    }).join('');
+  }
+
+  function renderAlertsEmpty(message) {
+    $('alert-feed').style.display = 'none';
+    var empty = $('alert-empty');
+    empty.style.display = 'block';
+    if (message) empty.querySelector('p').textContent = message;
+    $('alert-count-badge').style.display = 'none';
   }
 
 })();
