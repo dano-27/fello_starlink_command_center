@@ -430,42 +430,12 @@
     }
 
     async function fetchGroupDeviceCounts(groups) {
-        // Fetch device list (limit=1) for each group just to get a count
-        // We do them in parallel with a concurrency limit
-        const BATCH_SIZE = 10;
+        // Device IDs are already inline in the group response: relationships.devices.data
         state.groupDeviceCounts = {};
-
-        for (let i = 0; i < groups.length; i += BATCH_SIZE) {
-            const batch = groups.slice(i, i + BATCH_SIZE);
-            const promises = batch.map(async (group) => {
-                try {
-                    // Fetch all devices to count them
-                    let count = 0;
-                    let hasMore = true;
-                    let startingAfter = 0;
-
-                    while (hasMore) {
-                        const resp = await apiRequest(`/assignment_groups/${group.id}/devices?limit=100&starting_after=${startingAfter}`);
-                        const devices = resp.data || resp;
-                        if (Array.isArray(devices) && devices.length > 0) {
-                            count += devices.length;
-                            if (devices.length < 100) {
-                                hasMore = false;
-                            } else {
-                                startingAfter = devices[devices.length - 1].id;
-                            }
-                        } else {
-                            hasMore = false;
-                        }
-                    }
-
-                    state.groupDeviceCounts[group.id] = count;
-                } catch (e) {
-                    state.groupDeviceCounts[group.id] = 0;
-                }
-            });
-            await Promise.all(promises);
-        }
+        groups.forEach((group) => {
+            const devRel = group.relationships && group.relationships.devices && group.relationships.devices.data;
+            state.groupDeviceCounts[group.id] = Array.isArray(devRel) ? devRel.length : 0;
+        });
     }
 
     function updateGroupsStats() {
@@ -565,24 +535,31 @@
         showDevicesState('loading');
 
         try {
+            // Get device IDs from the group's relationships
+            const devRel = group.relationships && group.relationships.devices && group.relationships.devices.data;
+            const deviceIds = Array.isArray(devRel) ? devRel.map(d => d.id) : [];
+
+            if (deviceIds.length === 0) {
+                state.devices = [];
+                state.filteredDevices = [];
+                updateDevicesStats();
+                showDevicesState('empty');
+                return;
+            }
+
+            // Fetch each device's details in parallel (batched 10 at a time)
             let allDevices = [];
-            let hasMore = true;
-            let startingAfter = 0;
-
-            while (hasMore) {
-                const response = await apiRequest(`/assignment_groups/${group.id}/devices?limit=100&starting_after=${startingAfter}`);
-                const devices = response.data || response;
-
-                if (Array.isArray(devices) && devices.length > 0) {
-                    allDevices = allDevices.concat(devices);
-                    if (devices.length < 100) {
-                        hasMore = false;
-                    } else {
-                        startingAfter = devices[devices.length - 1].id;
-                    }
-                } else {
-                    hasMore = false;
-                }
+            const BATCH = 10;
+            for (let i = 0; i < deviceIds.length; i += BATCH) {
+                const batch = deviceIds.slice(i, i + BATCH);
+                const results = await Promise.all(
+                    batch.map(id =>
+                        apiRequest(`/devices/${id}`)
+                            .then(resp => resp.data || resp)
+                            .catch(() => null)
+                    )
+                );
+                allDevices = allDevices.concat(results.filter(Boolean));
             }
 
             state.devices = allDevices;
