@@ -440,7 +440,7 @@
 
     <!-- QR Code Modal -->
     <div class="modal-overlay" id="qr-modal" style="display:none">
-      <div class="modal-content" style="max-width:400px; text-align:center;">
+      <div class="modal-content" style="max-width:420px; text-align:center;">
         <div class="modal-header">
           <div>
             <h2 id="qr-modal-title">WiFi QR Code</h2>
@@ -448,7 +448,14 @@
           </div>
           <button class="modal-close" id="qr-close">&times;</button>
         </div>
-        <div id="qr-code-container" style="display:flex; justify-content:center; padding:24px 0;"></div>
+        <div class="qr-carousel">
+          <button class="qr-carousel-arrow qr-arrow-left" id="qr-prev" title="Previous">‹</button>
+          <div class="qr-carousel-track" id="qr-carousel-track">
+            <!-- QR slides rendered here -->
+          </div>
+          <button class="qr-carousel-arrow qr-arrow-right" id="qr-next" title="Next">›</button>
+        </div>
+        <div class="qr-carousel-dots" id="qr-carousel-dots"></div>
         <p id="qr-modal-hint" style="font-size:13px; color:var(--dark-gray-shade); margin:0 0 16px;">Scan with a phone camera to connect to this WiFi network</p>
         <button class="btn btn-primary btn-sm" id="qr-download-btn" style="margin-bottom:8px;">⬇ Download PNG</button>
       </div>

@@ -1739,6 +1739,107 @@ body {
   color: var(--dark-gray-shade);
 }
 
+/* QR Carousel */
+.qr-carousel {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px 0;
+  min-height: 300px;
+}
+
+.qr-carousel-track {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 280px;
+  overflow: hidden;
+}
+
+.qr-slide {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  animation: qrFadeIn 0.25s ease;
+}
+
+.qr-slide-active {
+  display: flex;
+}
+
+@keyframes qrFadeIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.qr-slide-label {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--blue);
+  letter-spacing: 0.5px;
+}
+
+.qr-slide-code {
+  display: flex;
+  justify-content: center;
+  padding: 8px 0;
+}
+
+.qr-carousel-arrow {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 36px;
+  height: 36px;
+  border: 1px solid var(--border);
+  background: white;
+  border-radius: 50%;
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--dark-gray);
+  cursor: pointer;
+  z-index: 2;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.qr-arrow-left { left: 0; }
+.qr-arrow-right { right: 0; }
+
+.qr-carousel-arrow:hover {
+  background: var(--blue);
+  color: white;
+  border-color: var(--blue);
+}
+
+.qr-carousel-dots {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  padding: 4px 0 8px;
+}
+
+.qr-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.2s ease;
+}
+
+.qr-dot-active {
+  background: var(--blue);
+  border-color: var(--blue);
+}
+
 .rc-config-card .rc-card-field {
   display: flex;
   justify-content: space-between;

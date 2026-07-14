@@ -1536,8 +1536,6 @@
             </div>`;
         }).join('');
       } else {
-        // Single SSID (or same SSID on multiple bands)
-        const bandCount = parsed.allSsids.length;
         const bands = parsed.allSsids.map(s => s.band?.replace('RF_', '').replace('GHZ', ' GHz')).filter(Boolean);
         ssidSections = `
           <div class="rc-card-field">
@@ -1559,78 +1557,125 @@
           </div>` : ''}`;
       }
 
-      // QR button for first SSID
-      const qrBtn = parsed.ssid ? `<button class="rc-qr-icon-btn rc-qr-btn" data-ssid="${parsed.ssid}" data-pw="${parsed.password || ''}" data-auth="${parsed.auth || 'WPA'}" data-name="${cfg.nickname || 'WiFi'}" title="Generate QR Code"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="8" height="8" rx="1"/><rect x="14" y="2" width="8" height="8" rx="1"/><rect x="2" y="14" width="8" height="8" rx="1"/><rect x="5" y="5" width="2" height="2" fill="currentColor" stroke="none"/><rect x="17" y="5" width="2" height="2" fill="currentColor" stroke="none"/><rect x="5" y="17" width="2" height="2" fill="currentColor" stroke="none"/><rect x="14" y="14" width="2" height="2" fill="currentColor" stroke="none"/><rect x="18" y="14" width="2" height="2" fill="currentColor" stroke="none"/><rect x="14" y="18" width="2" height="2" fill="currentColor" stroke="none"/><rect x="18" y="18" width="2" height="2" fill="currentColor" stroke="none"/></svg></button>` : '';
+      // QR button
+      const qrBtn = parsed.ssid ? '<button class="rc-qr-icon-btn rc-qr-btn" data-config-id="' + cfg.configId + '" data-name="' + (cfg.nickname || 'WiFi').replace(/"/g, '&quot;') + '" title="Generate QR Code"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="8" height="8" rx="1"/><rect x="14" y="2" width="8" height="8" rx="1"/><rect x="2" y="14" width="8" height="8" rx="1"/><rect x="5" y="5" width="2" height="2" fill="currentColor" stroke="none"/><rect x="17" y="5" width="2" height="2" fill="currentColor" stroke="none"/><rect x="5" y="17" width="2" height="2" fill="currentColor" stroke="none"/><rect x="14" y="14" width="2" height="2" fill="currentColor" stroke="none"/><rect x="18" y="14" width="2" height="2" fill="currentColor" stroke="none"/><rect x="14" y="18" width="2" height="2" fill="currentColor" stroke="none"/><rect x="18" y="18" width="2" height="2" fill="currentColor" stroke="none"/></svg></button>' : '';
 
-      return `
-        <div class="rc-config-card" data-config-id="${cfg.configId}">
-          ${qrBtn}
-          <div class="rc-card-name">
-            ${cfg.nickname || 'Unnamed Config'}
-            ${hasMultipleUniqueSsids ? '<span class="rc-multi-ssid-badge">Multi-SSID</span>' : ''}
-            ${count > 0 ? `<span class="rc-default-badge">${count} router${count > 1 ? 's' : ''}</span>` : ''}
-          </div>
-          ${ssidSections}
-        </div>
-      `;
+      return '<div class="rc-config-card" data-config-id="' + cfg.configId + '">'
+        + qrBtn
+        + '<div class="rc-card-name">'
+        + (cfg.nickname || 'Unnamed Config')
+        + (hasMultipleUniqueSsids ? ' <span class="rc-multi-ssid-badge">Multi-SSID</span>' : '')
+        + (count > 0 ? ' <span class="rc-default-badge">' + count + ' router' + (count > 1 ? 's' : '') + '</span>' : '')
+        + '</div>'
+        + ssidSections
+        + '</div>';
     }).join('');
 
     // Wire up password toggles on config cards
-    grid.querySelectorAll('.rc-card-eye').forEach(btn => {
-      const code = btn.previousElementSibling;
-      btn.addEventListener('click', () => {
-        const pw = code.dataset.pw;
-        code.textContent = code.textContent === pw ? '•'.repeat(pw.length) : pw;
+    grid.querySelectorAll('.rc-card-eye').forEach(function(btn) {
+      var code = btn.previousElementSibling;
+      btn.addEventListener('click', function() {
+        var pw = code.dataset.pw;
+        code.textContent = code.textContent === pw ? '\u2022'.repeat(pw.length) : pw;
       });
     });
 
     // Wire up QR code buttons
-    grid.querySelectorAll('.rc-qr-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        showWifiQrCode(btn.dataset.ssid, btn.dataset.pw, btn.dataset.auth, btn.dataset.name);
+    grid.querySelectorAll('.rc-qr-btn').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        showWifiQrCode(btn.dataset.configId, btn.dataset.name);
       });
     });
 
     // Wire up SSID delete buttons
-    grid.querySelectorAll('.rc-ssid-delete-btn').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const configId = btn.dataset.configId;
-        const ssidToRemove = btn.dataset.ssid;
-        if (!confirm(`Remove SSID "${ssidToRemove}" from this config?`)) return;
+    grid.querySelectorAll('.rc-ssid-delete-btn').forEach(function(btn) {
+      btn.addEventListener('click', async function() {
+        var configId = btn.dataset.configId;
+        var ssidToRemove = btn.dataset.ssid;
+        if (!confirm('Remove SSID "' + ssidToRemove + '" from this config?')) return;
         await removeSsidFromConfig(configId, ssidToRemove);
       });
     });
   }
 
-  function showWifiQrCode(ssid, password, auth, configName) {
-    // Standard WiFi QR format: WIFI:T:<auth>;S:<ssid>;P:<password>;;
-    const authType = auth === 'Open' ? 'nopass' : 'WPA';
-    const escaped = (s) => s.replace(/[\\;,:\"]/g, '\\$&');
-    const wifiString = `WIFI:T:${authType};S:${escaped(ssid)};P:${escaped(password)};;`;
+  function showWifiQrCode(configId, configName) {
+    var cfg = state.routerConfigs.find(function(c) { return c.configId === configId; });
+    if (!cfg) return;
+    var parsed = parseConfigJson(cfg.routerConfigJson);
+    var ssids = parsed.allSsids;
+    if (ssids.length === 0) return;
 
     $('qr-modal-title').textContent = configName;
-    $('qr-modal-subtitle').textContent = `SSID: ${ssid}`;
+    var track = $('qr-carousel-track');
+    var dotsContainer = $('qr-carousel-dots');
+    track.innerHTML = '';
+    dotsContainer.innerHTML = '';
+    var currentSlide = 0;
 
-    const container = $('qr-code-container');
-    container.innerHTML = '';
+    ssids.forEach(function(s, i) {
+      var slide = document.createElement('div');
+      slide.className = 'qr-slide' + (i === 0 ? ' qr-slide-active' : '');
 
-    // Generate QR code
-    new QRCode(container, {
-      text: wifiString,
-      width: 256,
-      height: 256,
-      colorDark: '#232428',
-      colorLight: '#ffffff',
-      correctLevel: QRCode.CorrectLevel.H,
+      var label = document.createElement('div');
+      label.className = 'qr-slide-label';
+      label.textContent = s.ssid;
+      slide.appendChild(label);
+
+      var qrBox = document.createElement('div');
+      qrBox.className = 'qr-slide-code';
+      slide.appendChild(qrBox);
+
+      var esc = function(str) { return str.replace(/[\\;,:"]/g, '\\$&'); };
+      var aType = s.auth === 'Open' ? 'nopass' : 'WPA';
+      var wStr = 'WIFI:T:' + aType + ';S:' + esc(s.ssid) + ';P:' + esc(s.password || '') + ';;';
+
+      new QRCode(qrBox, {
+        text: wStr,
+        width: 240,
+        height: 240,
+        colorDark: '#232428',
+        colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.H,
+      });
+
+      track.appendChild(slide);
+
+      var dot = document.createElement('button');
+      dot.className = 'qr-dot' + (i === 0 ? ' qr-dot-active' : '');
+      dot.title = s.ssid;
+      dot.addEventListener('click', function() { goToSlide(i); });
+      dotsContainer.appendChild(dot);
     });
 
-    // Download button
-    $('qr-download-btn').onclick = () => {
-      setTimeout(() => {
-        const canvas = container.querySelector('canvas');
+    var slides = track.querySelectorAll('.qr-slide');
+    var dots = dotsContainer.querySelectorAll('.qr-dot');
+    var isMulti = ssids.length > 1;
+
+    $('qr-prev').style.display = isMulti ? '' : 'none';
+    $('qr-next').style.display = isMulti ? '' : 'none';
+    dotsContainer.style.display = isMulti ? '' : 'none';
+    $('qr-modal-subtitle').textContent = 'SSID: ' + ssids[0].ssid;
+
+    function goToSlide(idx) {
+      slides[currentSlide].classList.remove('qr-slide-active');
+      dots[currentSlide].classList.remove('qr-dot-active');
+      currentSlide = idx;
+      slides[currentSlide].classList.add('qr-slide-active');
+      dots[currentSlide].classList.add('qr-dot-active');
+      $('qr-modal-subtitle').textContent = 'SSID: ' + ssids[currentSlide].ssid;
+    }
+
+    $('qr-prev').onclick = function() { goToSlide((currentSlide - 1 + ssids.length) % ssids.length); };
+    $('qr-next').onclick = function() { goToSlide((currentSlide + 1) % ssids.length); };
+
+    $('qr-download-btn').onclick = function() {
+      setTimeout(function() {
+        var activeSlide = slides[currentSlide];
+        var canvas = activeSlide.querySelector('canvas');
         if (canvas) {
-          const link = document.createElement('a');
-          link.download = `${configName.replace(/[^a-zA-Z0-9]/g, '_')}_wifi_qr.png`;
+          var link = document.createElement('a');
+          var safeName = (configName + '_' + ssids[currentSlide].ssid).replace(/[^a-zA-Z0-9]/g, '_');
+          link.download = safeName + '_wifi_qr.png';
           link.href = canvas.toDataURL('image/png');
           link.click();
         }
