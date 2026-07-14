@@ -24,6 +24,9 @@
     rcLoaded: false,         // whether router config data has been loaded
     rcSortCol: null,         // current sort column: 'terminal' | 'default' | 'ssid' | 'status'
     rcSortDir: 'asc',        // sort direction: 'asc' | 'desc'
+    fleetPairings: [],       // dish-to-router pairings from fleet-pairings.json
+    pairingByRouterId: {},   // routerId → { dish, router, routerId }
+    pairingByDish: {},       // dishName → { dish, router, routerId }
   };
 
   // ── Constants ───────────────────────────────────────────────────────
@@ -1275,6 +1278,23 @@
       state.routerConfigs = configs;
       state.rcLoaded = true;
 
+      // Load fleet pairing data
+      try {
+        const pRes = await fetch('/fleet-pairings.json');
+        if (pRes.ok) {
+          state.fleetPairings = await pRes.json();
+          // Build lookup indexes — use suffix matching for routerId (last 10 chars)
+          // to handle potential leading-zero differences
+          state.pairingByRouterId = {};
+          state.pairingByDish = {};
+          state.fleetPairings.forEach(p => {
+            const suffix = p.routerId.slice(-10).toUpperCase();
+            state.pairingByRouterId[suffix] = p;
+            state.pairingByDish[p.dish] = p;
+          });
+        }
+      } catch (e) { console.warn('Fleet pairings not loaded:', e); }
+
       // Build router list from user terminals
       await buildRouterList(terminals);
 
@@ -1298,6 +1318,24 @@
     const defaultCfgId = getRouterDefaultConfigId(router.routerId);
     if (!defaultCfgId) return false;
     return router.configId !== defaultCfgId;
+  }
+
+  // Look up fleet pairing by routerId (suffix match)
+  function getPairingForRouter(routerId) {
+    if (!routerId) return null;
+    const suffix = routerId.slice(-10).toUpperCase();
+    return state.pairingByRouterId[suffix] || null;
+  }
+
+  // Check if a terminal-router pairing matches the fleet assignment
+  function isPairingMatch(terminal, routerId) {
+    const pairing = getPairingForRouter(routerId);
+    if (!pairing) return null; // unknown router, can't determine
+    // Check if the terminal's nickname contains the expected dish name
+    const dishName = pairing.dish;
+    const termName = terminal.terminalNickname || terminal.nickname || '';
+    // Match if terminal nickname contains the dish identifier
+    return termName.includes(dishName) || dishName.includes(termName);
   }
 
   async function fetchAllRouterConfigs() {
@@ -1509,7 +1547,7 @@
   function renderRouterTable() {
     const tbody = $('rc-router-body');
     if (state.routerList.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="7" class="rc-loading-row">No routers found on this account</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="8" class="rc-loading-row">No routers found on this account</td></tr>';
       return;
     }
 
@@ -1523,7 +1561,15 @@
       const modified = isRouterModified(router);
       const terminalName = router.terminalNickname || router.dishSerialNumber || router.userTerminalId || '';
       const statusVal = modified ? 'modified' : defaultCfgId ? 'default' : 'nodefault';
-      return { router, cfg, parsed, defaultCfgId, defaultCfg, defaultName, modified, terminalName, statusVal };
+
+      // Fleet pairing info
+      const pairing = getPairingForRouter(router.routerId);
+      const pairingMatch = isPairingMatch(router, router.routerId);
+      const dishName = pairing?.dish || terminalName;
+      const routerName = pairing?.router || router.routerId?.slice(0, 12) || '—';
+      const pairingVal = pairingMatch === true ? 'match' : pairingMatch === false ? 'mismatch' : 'unknown';
+
+      return { router, cfg, parsed, defaultCfgId, defaultCfg, defaultName, modified, terminalName, statusVal, pairing, pairingMatch, dishName, routerName, pairingVal };
     });
 
     // Sort if a column is active
@@ -1532,7 +1578,8 @@
       rows.sort((a, b) => {
         let va, vb;
         switch (state.rcSortCol) {
-          case 'terminal': va = a.terminalName.toLowerCase(); vb = b.terminalName.toLowerCase(); break;
+          case 'terminal': va = a.dishName.toLowerCase(); vb = b.dishName.toLowerCase(); break;
+          case 'pairing':  va = a.pairingVal; vb = b.pairingVal; break;
           case 'default':  va = a.defaultName.toLowerCase();  vb = b.defaultName.toLowerCase();  break;
           case 'ssid':     va = (a.parsed.ssid || '').toLowerCase(); vb = (b.parsed.ssid || '').toLowerCase(); break;
           case 'status':   va = a.statusVal; vb = b.statusVal; break;
@@ -1556,25 +1603,28 @@
       }
     });
 
-    tbody.innerHTML = rows.map(({ router, parsed, defaultCfgId, defaultName, modified }) => {
+    tbody.innerHTML = rows.map(({ router, parsed, defaultCfgId, defaultName, modified, dishName, routerName, pairingMatch }) => {
       const hasDefault = !!defaultCfgId;
       const checked = state.selectedRouterIds.has(router.routerId) ? 'checked' : '';
-      const deviceInfo = Object.values(state.deviceMap).find(d =>
-        d.kitSerial === router.kitSerialNumber || d.dishSerial === router.dishSerialNumber
-      );
-      const terminalName = router.terminalNickname || deviceInfo?.slNickname || deviceInfo?.utNickname || router.dishSerialNumber || router.userTerminalId || '';
-      const routerLabel = router.routerId?.slice(0, 12) || '—';
       const pwId = 'pw-' + router.routerId?.replace(/[^a-zA-Z0-9]/g, '');
 
+      // Pairing indicator
+      const pairingLight = pairingMatch === true
+        ? '<span class="rc-pairing-light rc-pair-match" title="Dish and router match">●</span>'
+        : pairingMatch === false
+          ? '<span class="rc-pairing-light rc-pair-mismatch" title="Dish and router DO NOT match!">●</span>'
+          : '<span class="rc-pairing-light rc-pair-unknown" title="Unknown pairing">●</span>';
+
       return `
-        <tr class="${modified ? 'rc-row-modified' : ''}">
+        <tr class="${modified ? 'rc-row-modified' : ''} ${pairingMatch === false ? 'rc-row-mismatch' : ''}">
           <td class="rc-th-check"><input type="checkbox" class="rc-router-check" data-router-id="${router.routerId}" ${checked}></td>
           <td>
             <div class="rc-router-identity">
-              <span class="rc-router-id">${routerLabel}</span>
-              ${terminalName ? `<span class="rc-router-terminal">${terminalName}</span>` : ''}
+              <span class="rc-dish-name">${dishName}</span>
+              <span class="rc-router-name">${routerName}</span>
             </div>
           </td>
+          <td class="rc-pairing-cell">${pairingLight}</td>
           <td>
             ${defaultName
               ? `<span class="rc-config-name-cell">${defaultName}</span>`

@@ -1864,17 +1864,57 @@ body {
   gap: 2px;
 }
 
-.rc-router-id {
+.rc-dish-name {
   font-size: 13px;
   font-weight: 600;
   color: var(--black);
-  font-family: monospace;
 }
 
-.rc-router-terminal {
+.rc-router-name {
   font-size: 12px;
   color: var(--dark-gray-shade);
   font-weight: 400;
+  font-family: monospace;
+}
+
+/* Pairing indicator light */
+.rc-pairing-cell {
+  text-align: center;
+}
+
+.rc-pairing-light {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.rc-pair-match {
+  color: #05ac3f;
+  text-shadow: 0 0 6px rgba(5, 172, 63, 0.5);
+}
+
+.rc-pair-mismatch {
+  color: #ff4d41;
+  text-shadow: 0 0 6px rgba(255, 77, 65, 0.5);
+  animation: rc-pulse-red 1.5s ease-in-out infinite;
+}
+
+.rc-pair-unknown {
+  color: var(--dark-gray-shade);
+  opacity: 0.4;
+}
+
+@keyframes rc-pulse-red {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.rc-row-mismatch {
+  background: rgba(255, 77, 65, 0.04) !important;
+}
+
+.rc-th-pairing {
+  width: 80px;
+  text-align: center;
 }
 
 /* SSID cell */
