@@ -162,6 +162,10 @@ app.get('/api/user-terminals', async (req, res) => {
     }
 
     const data = await response.json();
+    if (data?.content?.results?.length > 0) {
+      console.log('Terminal result[0] keys:', Object.keys(data.content.results[0]));
+      console.log('Terminal result[0]:', JSON.stringify(data.content.results[0]).slice(0, 1500));
+    }
     return res.json(data);
   } catch (err) {
     console.error('User terminals proxy error:', err.message);
@@ -223,6 +227,11 @@ app.get('/api/router-configs', async (req, res) => {
     }
 
     const data = await response.json();
+    // DEBUG: log first result's full keys to find router IDs
+    if (data?.content?.results?.length > 0) {
+      console.log('Config result[0] keys:', Object.keys(data.content.results[0]));
+      console.log('Config result[0]:', JSON.stringify(data.content.results[0]).slice(0, 1000));
+    }
     return res.json(data);
   } catch (err) {
     console.error('Router configs proxy error:', err.message);
@@ -324,23 +333,29 @@ app.put('/api/router-configs/assign', async (req, res) => {
   }
 
   try {
-    const response = await fetch('https://starlink.com/api/public/v2/routers/configs/assign', {
+    const body = req.body;  // Pass through as-is: { configId, routerIds }
+    const url = 'https://starlink.com/api/public/v2/routers/configs/assign';
+    console.log('Assign URL:', url);
+    console.log('Assign body:', JSON.stringify(body));
+    const response = await fetch(url, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
         Authorization: authHeader,
       },
-      body: JSON.stringify(req.body),
+      body: JSON.stringify(body),
     });
     console.log('Assign config request body:', JSON.stringify(req.body));
+    console.log('Assign config response status:', response.status);
+    const responseText = await response.text();
+    console.log('Assign config response body:', responseText);
 
     if (!response.ok) {
-      const text = await response.text();
-      console.error('Assign config API error:', response.status, text);
-      return res.status(response.status).json({ error: text });
+      return res.status(response.status).json({ error: responseText || `API returned ${response.status}` });
     }
 
-    const data = await response.json();
+    let data;
+    try { data = JSON.parse(responseText); } catch { data = { raw: responseText }; }
     return res.json(data);
   } catch (err) {
     console.error('Assign router config proxy error:', err.message);

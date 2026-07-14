@@ -22,6 +22,8 @@
     routerList: [],          // routers with their current config assignments
     selectedRouterIds: new Set(),
     rcLoaded: false,         // whether router config data has been loaded
+    rcSortCol: null,         // current sort column: 'terminal' | 'default' | 'ssid' | 'status'
+    rcSortDir: 'asc',        // sort direction: 'asc' | 'desc'
   };
 
   // ── Constants ───────────────────────────────────────────────────────
@@ -1224,6 +1226,21 @@
     });
     $('create-config-submit').addEventListener('click', handleCreateConfig);
     $('rc-select-all').addEventListener('change', handleSelectAllRouters);
+    $('rc-thead-select-all').addEventListener('change', handleSelectAllRouters);
+
+    // Sortable column headers
+    document.querySelectorAll('.rc-sortable').forEach(th => {
+      th.addEventListener('click', () => {
+        const col = th.dataset.sort;
+        if (state.rcSortCol === col) {
+          state.rcSortDir = state.rcSortDir === 'asc' ? 'desc' : 'asc';
+        } else {
+          state.rcSortCol = col;
+          state.rcSortDir = 'asc';
+        }
+        renderRouterTable();
+      });
+    });
     $('rc-bulk-revert').addEventListener('click', handleBulkRevertToDefault);
     $('rc-bulk-assign').addEventListener('click', () => {
       openAssignConfigModal();
@@ -1320,31 +1337,33 @@
   async function buildRouterList(terminals) {
     const routers = [];
     for (const ut of terminals) {
-      const routerId = ut.routerId || ut.kitSerialNumber;
-      if (!routerId) continue;
-
-      let configId = null;
-      let nickname = null;
-      try {
-        const res = await fetch(`/api/routers/${routerId}`, {
-          headers: { Authorization: `Bearer ${state.token}` },
-        });
-        if (res.ok) {
-          const data = await res.json();
-          configId = data?.content?.configId || null;
-          nickname = data?.content?.nickname || null;
+      // Each terminal has a routers[] array with the real routerId and configId
+      if (ut.routers && Array.isArray(ut.routers) && ut.routers.length > 0) {
+        for (const router of ut.routers) {
+          routers.push({
+            routerId: router.routerId,
+            routerNickname: router.nickname || null,
+            configId: router.configId || null,
+            userTerminalId: ut.userTerminalId || ut.dishSerialNumber,
+            kitSerialNumber: ut.kitSerialNumber,
+            dishSerialNumber: ut.dishSerialNumber,
+            serviceLineNumber: ut.serviceLineNumber,
+            terminalNickname: ut.nickname,
+          });
         }
-      } catch (e) {}
-
-      routers.push({
-        routerId: routerId,
-        routerNickname: nickname,
-        userTerminalId: ut.userTerminalId || ut.dishSerialNumber,
-        kitSerialNumber: ut.kitSerialNumber,
-        dishSerialNumber: ut.dishSerialNumber,
-        configId: configId,
-        serviceLineNumber: ut.serviceLineNumber,
-      });
+      } else {
+        // Fallback: terminal with no routers array
+        routers.push({
+          routerId: ut.kitSerialNumber,
+          routerNickname: null,
+          configId: null,
+          userTerminalId: ut.userTerminalId || ut.dishSerialNumber,
+          kitSerialNumber: ut.kitSerialNumber,
+          dishSerialNumber: ut.dishSerialNumber,
+          serviceLineNumber: ut.serviceLineNumber,
+          terminalNickname: ut.nickname,
+        });
+      }
     }
     state.routerList = routers;
   }
@@ -1494,24 +1513,57 @@
       return;
     }
 
-    tbody.innerHTML = state.routerList.map(router => {
+    // Build sortable list with precomputed values
+    let rows = state.routerList.map(router => {
       const cfg = router.configId ? state.routerConfigs.find(c => c.configId === router.configId) : null;
       const parsed = cfg ? parseConfigJson(cfg.routerConfigJson) : { ssid: null, password: null, auth: null };
-
       const defaultCfgId = getRouterDefaultConfigId(router.routerId);
       const defaultCfg = defaultCfgId ? state.routerConfigs.find(c => c.configId === defaultCfgId) : null;
-      const defaultName = defaultCfg?.nickname || null;
+      const defaultName = defaultCfg?.nickname || '';
       const modified = isRouterModified(router);
+      const terminalName = router.terminalNickname || router.dishSerialNumber || router.userTerminalId || '';
+      const statusVal = modified ? 'modified' : defaultCfgId ? 'default' : 'nodefault';
+      return { router, cfg, parsed, defaultCfgId, defaultCfg, defaultName, modified, terminalName, statusVal };
+    });
+
+    // Sort if a column is active
+    if (state.rcSortCol) {
+      const dir = state.rcSortDir === 'asc' ? 1 : -1;
+      rows.sort((a, b) => {
+        let va, vb;
+        switch (state.rcSortCol) {
+          case 'terminal': va = a.terminalName.toLowerCase(); vb = b.terminalName.toLowerCase(); break;
+          case 'default':  va = a.defaultName.toLowerCase();  vb = b.defaultName.toLowerCase();  break;
+          case 'ssid':     va = (a.parsed.ssid || '').toLowerCase(); vb = (b.parsed.ssid || '').toLowerCase(); break;
+          case 'status':   va = a.statusVal; vb = b.statusVal; break;
+          default: return 0;
+        }
+        if (va < vb) return -1 * dir;
+        if (va > vb) return 1 * dir;
+        return 0;
+      });
+    }
+
+    // Update sort icons in thead
+    document.querySelectorAll('.rc-sortable').forEach(th => {
+      const icon = th.querySelector('.rc-sort-icon');
+      if (th.dataset.sort === state.rcSortCol) {
+        icon.textContent = state.rcSortDir === 'asc' ? '↑' : '↓';
+        th.classList.add('rc-sort-active');
+      } else {
+        icon.textContent = '⇅';
+        th.classList.remove('rc-sort-active');
+      }
+    });
+
+    tbody.innerHTML = rows.map(({ router, parsed, defaultCfgId, defaultName, modified }) => {
       const hasDefault = !!defaultCfgId;
-
       const checked = state.selectedRouterIds.has(router.routerId) ? 'checked' : '';
-
       const deviceInfo = Object.values(state.deviceMap).find(d =>
         d.kitSerial === router.kitSerialNumber || d.dishSerial === router.dishSerialNumber
       );
-      const terminalName = deviceInfo?.slNickname || deviceInfo?.utNickname || router.dishSerialNumber || router.userTerminalId || '';
+      const terminalName = router.terminalNickname || deviceInfo?.slNickname || deviceInfo?.utNickname || router.dishSerialNumber || router.userTerminalId || '';
       const routerLabel = router.routerId?.slice(0, 12) || '—';
-
       const pwId = 'pw-' + router.routerId?.replace(/[^a-zA-Z0-9]/g, '');
 
       return `
@@ -1588,12 +1640,13 @@
 
   function handleSelectAllRouters(e) {
     const checked = e.target.checked;
+    // Sync both select-all checkboxes
+    $('rc-select-all').checked = checked;
+    $('rc-thead-select-all').checked = checked;
     state.selectedRouterIds.clear();
     if (checked) {
       state.routerList.forEach(r => {
-        if (isRouterModified(r)) {
-          state.selectedRouterIds.add(r.routerId);
-        }
+        state.selectedRouterIds.add(r.routerId);
       });
     }
     renderRouterTable();
@@ -1787,7 +1840,14 @@
         body: JSON.stringify({ configId, routerIds }),
       });
 
-      if (!res.ok) throw new Error('Failed to assign config');
+      console.log('Assign response status:', res.status);
+      const resText = await res.text();
+      console.log('Assign response body:', resText);
+
+      if (!res.ok) {
+        const errMsg = resText || `API returned ${res.status}`;
+        throw new Error(errMsg);
+      }
 
       const configName = getConfigName(configId);
       showToast(`"${configName}" assigned to ${routerIds.length} router${routerIds.length > 1 ? 's' : ''}!`, 'success');

@@ -190,7 +190,7 @@
             <h2 class="section-title">Router Fleet</h2>
             <div class="rc-fleet-actions">
               <label class="rc-select-all-label" for="rc-select-all">
-                <input type="checkbox" id="rc-select-all"> Select All Modified
+                <input type="checkbox" id="rc-select-all"> Select All
               </label>
             </div>
           </div>
@@ -199,12 +199,12 @@
             <table class="data-table" id="rc-router-table">
               <thead>
                 <tr>
-                  <th class="rc-th-check"></th>
-                  <th>Router / Terminal</th>
-                  <th>Default Profile</th>
-                  <th>Current SSID</th>
+                  <th class="rc-th-check"><input type="checkbox" id="rc-thead-select-all"></th>
+                  <th class="rc-sortable" data-sort="terminal">Router / Terminal <span class="rc-sort-icon">⇅</span></th>
+                  <th class="rc-sortable" data-sort="default">Default Profile <span class="rc-sort-icon">⇅</span></th>
+                  <th class="rc-sortable" data-sort="ssid">Current SSID <span class="rc-sort-icon">⇅</span></th>
                   <th>Current Password</th>
-                  <th>Status</th>
+                  <th class="rc-sortable" data-sort="status">Status <span class="rc-sort-icon">⇅</span></th>
                   <th>Actions</th>
                 </tr>
               </thead>
