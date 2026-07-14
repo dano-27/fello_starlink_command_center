@@ -1973,14 +1973,14 @@
 
     errorEl.style.display = 'none';
 
-    // Build the new BSS entry
-    const newBss = { ssid };
+    // Build auth object for the new BSS
+    const authObj = {};
     if (authType === 'WPA2') {
-      newBss.authWpa2 = { password };
+      authObj.authWpa2 = { password };
     } else if (authType === 'WPA3') {
-      newBss.authWpa3 = { password };
+      authObj.authWpa3 = { password };
     } else {
-      newBss.authOpen = {};
+      authObj.authOpen = {};
     }
 
     // Show loading
@@ -1997,7 +1997,7 @@
       if (!cfg) continue;
 
       try {
-        const raw = typeof cfg.routerConfigJson === 'string' ? JSON.parse(cfg.routerConfigJson) : { ...cfg.routerConfigJson };
+        const raw = typeof cfg.routerConfigJson === 'string' ? JSON.parse(cfg.routerConfigJson) : JSON.parse(JSON.stringify(cfg.routerConfigJson));
 
         // Ensure networks array exists
         if (!raw.networks || !Array.isArray(raw.networks)) {
@@ -2011,18 +2011,44 @@
 
         if (alreadyExists) {
           console.log(`SSID "${ssid}" already exists in ${cfg.nickname}, skipping`);
-          successCount++; // Don't count as failure
+          successCount++;
           continue;
         }
 
-        // Add to first network's basicServiceSets, or create a new network
+        // Discover which bands this config uses (e.g. RF_2GHZ, RF_5GHZ)
+        const existingBands = new Set();
+        for (const net of raw.networks) {
+          if (net.basicServiceSets) {
+            for (const bss of net.basicServiceSets) {
+              if (bss.band) existingBands.add(bss.band);
+            }
+          }
+        }
+        // Default to both bands if none found
+        const bands = existingBands.size > 0
+          ? [...existingBands]
+          : ['RF_2GHZ', 'RF_5GHZ'];
+
+        // Add a BSS entry for each band to the first network
         if (raw.networks.length > 0) {
           if (!raw.networks[0].basicServiceSets) {
             raw.networks[0].basicServiceSets = [];
           }
-          raw.networks[0].basicServiceSets.push(newBss);
+          for (const band of bands) {
+            raw.networks[0].basicServiceSets.push({
+              ssid,
+              band,
+              ...authObj,
+            });
+          }
         } else {
-          raw.networks.push({ basicServiceSets: [newBss] });
+          raw.networks.push({
+            basicServiceSets: bands.map(band => ({
+              ssid,
+              band,
+              ...authObj,
+            })),
+          });
         }
 
         const res = await fetch(`/api/router-configs/${configId}`, {
