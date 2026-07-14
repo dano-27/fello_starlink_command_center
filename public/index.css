@@ -1807,3 +1807,57 @@ body {
 .rc-eye-btn:hover {
   opacity: 1;
 }
+
+/* Router identity cell (stacked) */
+.rc-router-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.rc-router-id {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--black);
+  font-family: monospace;
+}
+
+.rc-router-terminal {
+  font-size: 12px;
+  color: var(--dark-gray-shade);
+  font-weight: 400;
+}
+
+/* SSID cell */
+.rc-ssid-cell {
+  font-weight: 600;
+  color: var(--black);
+  font-size: 13px;
+}
+
+/* Password cell */
+.rc-pw-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.rc-pw-masked {
+  font-family: monospace;
+  font-size: 13px;
+  letter-spacing: 1px;
+  color: var(--charcol);
+  background: var(--light-blue);
+  padding: 2px 8px;
+  border-radius: 6px;
+}
+
+.rc-no-val {
+  color: var(--dark-gray-shade);
+  font-size: 13px;
+}
+
+/* Table horizontal scroll on mobile */
+.rc-router-table-wrap {
+  overflow-x: auto;
+}

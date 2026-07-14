@@ -1466,31 +1466,53 @@
   function renderRouterTable() {
     const tbody = $('rc-router-body');
     if (state.routerList.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="5" class="rc-loading-row">No routers found on this account</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="7" class="rc-loading-row">No routers found on this account</td></tr>';
       return;
     }
 
     tbody.innerHTML = state.routerList.map(router => {
-      const configName = router.configId ? getConfigName(router.configId) : null;
-      const isDefault = router.configId === state.defaultConfigId;
+      const cfg = router.configId ? state.routerConfigs.find(c => c.configId === router.configId) : null;
+      const parsed = cfg ? parseConfigJson(cfg.routerConfigJson) : { ssid: null, password: null, auth: null };
+      const configName = cfg?.nickname || null;
+      const isDefault = router.configId && router.configId === state.defaultConfigId;
       const checked = state.selectedRouterIds.has(router.routerId) ? 'checked' : '';
 
       // Find friendly name from device map
       const deviceInfo = Object.values(state.deviceMap).find(d =>
         d.kitSerial === router.kitSerialNumber || d.dishSerial === router.dishSerialNumber
       );
-      const terminalName = deviceInfo?.slNickname || deviceInfo?.utNickname || router.dishSerialNumber || router.userTerminalId || '—';
+      const terminalName = deviceInfo?.slNickname || deviceInfo?.utNickname || router.dishSerialNumber || router.userTerminalId || '';
+      const routerLabel = router.routerId?.slice(0, 12) || '—';
+
+      // Unique ID for password toggle
+      const pwId = 'pw-' + router.routerId?.replace(/[^a-zA-Z0-9]/g, '');
 
       return `
         <tr>
           <td class="rc-th-check"><input type="checkbox" class="rc-router-check" data-router-id="${router.routerId}" ${checked}></td>
-          <td>${router.routerId?.slice(0, 12) || '—'}${router.routerNickname ? ` <small>(${router.routerNickname})</small>` : ''}</td>
-          <td>${terminalName}</td>
           <td>
-            <span class="rc-config-name-cell">
-              ${configName
-                ? `${configName} <span class="rc-config-badge ${isDefault ? 'is-default' : ''}">${isDefault ? 'Default' : 'Custom'}</span>`
-                : '<span class="rc-config-badge no-config">No Config</span>'}
+            <div class="rc-router-identity">
+              <span class="rc-router-id">${routerLabel}</span>
+              ${terminalName ? `<span class="rc-router-terminal">${terminalName}</span>` : ''}
+            </div>
+          </td>
+          <td>
+            ${configName
+              ? `<span class="rc-config-name-cell">${configName}</span>`
+              : '<span class="rc-config-badge no-config">None</span>'}
+          </td>
+          <td class="rc-ssid-cell">${parsed.ssid || '<span class="rc-no-val">—</span>'}</td>
+          <td>
+            ${parsed.password
+              ? `<span class="rc-pw-cell">
+                  <code class="rc-pw-masked" id="${pwId}">${'•'.repeat(parsed.password.length)}</code>
+                  <button class="rc-eye-btn" data-pw-id="${pwId}" data-pw="${parsed.password}" title="Toggle password">👁</button>
+                </span>`
+              : '<span class="rc-no-val">—</span>'}
+          </td>
+          <td>
+            <span class="rc-config-badge ${isDefault ? 'is-default' : cfg ? '' : 'no-config'}">
+              ${isDefault ? '★ Default' : cfg ? 'Custom' : 'No Config'}
             </span>
           </td>
           <td>
@@ -1506,6 +1528,20 @@
         if (cb.checked) state.selectedRouterIds.add(cb.dataset.routerId);
         else state.selectedRouterIds.delete(cb.dataset.routerId);
         updateBulkBar();
+      });
+    });
+
+    // Add password toggle listeners
+    tbody.querySelectorAll('.rc-eye-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const el = document.getElementById(btn.dataset.pwId);
+        if (!el) return;
+        const realPw = btn.dataset.pw;
+        if (el.textContent === realPw) {
+          el.textContent = '•'.repeat(realPw.length);
+        } else {
+          el.textContent = realPw;
+        }
       });
     });
   }
