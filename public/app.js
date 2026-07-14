@@ -1177,6 +1177,7 @@
         else if ($('settings-modal').style.display !== 'none') handleSettingsClose();
         else if ($('create-config-modal').style.display !== 'none') $('create-config-modal').style.display = 'none';
         else if ($('assign-config-modal').style.display !== 'none') $('assign-config-modal').style.display = 'none';
+        else if ($('qr-modal').style.display !== 'none') $('qr-modal').style.display = 'none';
       }
     });
 
@@ -1226,6 +1227,12 @@
     $('rc-bulk-revert').addEventListener('click', handleBulkRevertToDefault);
     $('rc-bulk-assign').addEventListener('click', () => {
       openAssignConfigModal();
+    });
+    $('qr-close').addEventListener('click', () => {
+      $('qr-modal').style.display = 'none';
+    });
+    $('qr-modal').addEventListener('click', (e) => {
+      if (e.target === $('qr-modal')) $('qr-modal').style.display = 'none';
     });
 
     checkSavedCredentials();
@@ -1420,6 +1427,10 @@
             <span class="rc-field-label">Security</span>
             <span class="rc-field-value">${parsed.auth}</span>
           </div>` : ''}
+          ${parsed.ssid ? `
+          <div class="rc-card-actions">
+            <button class="btn btn-secondary btn-sm rc-qr-btn" data-ssid="${parsed.ssid}" data-pw="${parsed.password || ''}" data-auth="${parsed.auth || 'WPA'}" data-name="${cfg.nickname || 'WiFi'}">⊞ QR Code</button>
+          </div>` : ''}
         </div>
       `;
     }).join('');
@@ -1432,6 +1443,51 @@
         code.textContent = code.textContent === pw ? '•'.repeat(pw.length) : pw;
       });
     });
+
+    // Wire up QR code buttons
+    grid.querySelectorAll('.rc-qr-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        showWifiQrCode(btn.dataset.ssid, btn.dataset.pw, btn.dataset.auth, btn.dataset.name);
+      });
+    });
+  }
+
+  function showWifiQrCode(ssid, password, auth, configName) {
+    // Standard WiFi QR format: WIFI:T:<auth>;S:<ssid>;P:<password>;;
+    const authType = auth === 'Open' ? 'nopass' : 'WPA';
+    const escaped = (s) => s.replace(/[\\;,:\"]/g, '\\$&');
+    const wifiString = `WIFI:T:${authType};S:${escaped(ssid)};P:${escaped(password)};;`;
+
+    $('qr-modal-title').textContent = configName;
+    $('qr-modal-subtitle').textContent = `SSID: ${ssid}`;
+
+    const container = $('qr-code-container');
+    container.innerHTML = '';
+
+    // Generate QR code
+    new QRCode(container, {
+      text: wifiString,
+      width: 256,
+      height: 256,
+      colorDark: '#232428',
+      colorLight: '#ffffff',
+      correctLevel: QRCode.CorrectLevel.H,
+    });
+
+    // Download button
+    $('qr-download-btn').onclick = () => {
+      setTimeout(() => {
+        const canvas = container.querySelector('canvas');
+        if (canvas) {
+          const link = document.createElement('a');
+          link.download = `${configName.replace(/[^a-zA-Z0-9]/g, '_')}_wifi_qr.png`;
+          link.href = canvas.toDataURL('image/png');
+          link.click();
+        }
+      }, 100);
+    };
+
+    $('qr-modal').style.display = 'flex';
   }
 
   function renderRouterTable() {
