@@ -2521,24 +2521,7 @@
   }
 
   async function loadUptimeData() {
-    try {
-      var now = new Date();
-      var ago = new Date(now.getTime() - 30 * 86400000);
-      var res = await fetch('/api/telemetry/uptime', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + state.token },
-        body: JSON.stringify({ startDate: ago.toISOString().split('T')[0], endDate: now.toISOString().split('T')[0] }),
-      });
-      if (!res.ok) { console.warn('Uptime API: ' + res.status); return; }
-      var data = await res.json();
-      var results = data.results || data.content || data || [];
-      if (Array.isArray(results)) {
-        results.forEach(function(r) {
-          if (r.userTerminalId && r.uptimePercent != null) state.uptimeData[r.userTerminalId] = r.uptimePercent;
-        });
-        renderOpsTable();
-      }
-    } catch (err) { console.warn('Uptime fetch:', err.message); }
+    // Telemetry uptime endpoint not available on this plan
   }
 
   // ══════════════════════════════════════════════════════════════════════
