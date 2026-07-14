@@ -1578,6 +1578,28 @@ body {
   background: var(--light-blue);
 }
 
+.rc-qr-icon-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px;
+  cursor: pointer;
+  color: var(--dark-gray-shade);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.rc-qr-icon-btn:hover {
+  color: var(--blue);
+  border-color: var(--blue);
+  background: var(--light-blue);
+}
+
 .rc-config-card .rc-card-name {
   font-size: 16px;
   font-weight: 600;

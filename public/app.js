@@ -1405,6 +1405,7 @@
       const count = defaultCounts[cfg.configId] || 0;
       return `
         <div class="rc-config-card" data-config-id="${cfg.configId}">
+          ${parsed.ssid ? `<button class="rc-qr-icon-btn rc-qr-btn" data-ssid="${parsed.ssid}" data-pw="${parsed.password || ''}" data-auth="${parsed.auth || 'WPA'}" data-name="${cfg.nickname || 'WiFi'}" title="Generate QR Code"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="8" height="8" rx="1"/><rect x="14" y="2" width="8" height="8" rx="1"/><rect x="2" y="14" width="8" height="8" rx="1"/><rect x="5" y="5" width="2" height="2" fill="currentColor" stroke="none"/><rect x="17" y="5" width="2" height="2" fill="currentColor" stroke="none"/><rect x="5" y="17" width="2" height="2" fill="currentColor" stroke="none"/><rect x="14" y="14" width="2" height="2" fill="currentColor" stroke="none"/><rect x="18" y="14" width="2" height="2" fill="currentColor" stroke="none"/><rect x="14" y="18" width="2" height="2" fill="currentColor" stroke="none"/><rect x="18" y="18" width="2" height="2" fill="currentColor" stroke="none"/></svg></button>` : ''}
           <div class="rc-card-name">
             ${cfg.nickname || 'Unnamed Config'}
             ${count > 0 ? `<span class="rc-default-badge">${count} router${count > 1 ? 's' : ''}</span>` : ''}
@@ -1426,10 +1427,6 @@
           <div class="rc-card-field">
             <span class="rc-field-label">Security</span>
             <span class="rc-field-value">${parsed.auth}</span>
-          </div>` : ''}
-          ${parsed.ssid ? `
-          <div class="rc-card-actions">
-            <button class="btn btn-secondary btn-sm rc-qr-btn" data-ssid="${parsed.ssid}" data-pw="${parsed.password || ''}" data-auth="${parsed.auth || 'WPA'}" data-name="${cfg.nickname || 'WiFi'}">⊞ QR Code</button>
           </div>` : ''}
         </div>
       `;
