@@ -1265,7 +1265,7 @@
       renderRouterTable();
     } catch (err) {
       console.error('Router config load error:', err);
-      toast('Failed to load router configs: ' + err.message, 'error');
+      showToast('Failed to load router configs: ' + err.message, 'error');
     }
   }
 
@@ -1658,7 +1658,7 @@
         throw new Error(err.error || 'Failed to create config');
       }
 
-      toast('Config "' + nickname + '" created successfully!', 'success');
+      showToast('Config "' + nickname + '" created successfully!', 'success');
       $('create-config-modal').style.display = 'none';
       $('config-nickname').value = '';
       $('config-ssid').value = '';
@@ -1680,7 +1680,7 @@
   window.handleSetRouterDefault = function(routerId) {
     const router = state.routerList.find(r => r.routerId === routerId);
     if (!router || !router.configId) {
-      toast('This router has no config assigned. Assign a config first, then set it as default.', 'error');
+      showToast('This router has no config assigned. Assign a config first, then set it as default.', 'error');
       return;
     }
     const configName = getConfigName(router.configId);
@@ -1688,7 +1688,7 @@
 
     state.routerDefaults[routerId] = router.configId;
     saveRouterDefaults();
-    toast(`Default saved for router ${routerId.slice(0, 12)}`, 'success');
+    showToast(`Default saved for router ${routerId.slice(0, 12)}`, 'success');
     renderConfigCards();
     renderRouterTable();
   };
@@ -1696,7 +1696,7 @@
   window.handleRevertSingleRouter = async function(routerId) {
     const defaultCfgId = getRouterDefaultConfigId(routerId);
     if (!defaultCfgId) {
-      toast('No default set for this router.', 'error');
+      showToast('No default set for this router.', 'error');
       return;
     }
     const configName = getConfigName(defaultCfgId);
@@ -1716,10 +1716,10 @@
       const router = state.routerList.find(r => r.routerId === routerId);
       if (router) router.configId = defaultCfgId;
 
-      toast(`Router reverted to "${configName}"!`, 'success');
+      showToast(`Router reverted to "${configName}"!`, 'success');
       renderRouterTable();
     } catch (err) {
-      toast('Error: ' + err.message, 'error');
+      showToast('Error: ' + err.message, 'error');
     }
   };
 
@@ -1749,8 +1749,24 @@
     list.querySelectorAll('.rc-assign-option').forEach(opt => {
       opt.addEventListener('click', async () => {
         const configId = opt.dataset.configId;
-        await assignConfigToSelectedRouters(configId);
-        $('assign-config-modal').style.display = 'none';
+        // Visual feedback
+        list.querySelectorAll('.rc-assign-option').forEach(o => o.style.pointerEvents = 'none');
+        opt.style.opacity = '0.6';
+        opt.textContent = 'Assigning...';
+        const errorEl = $('assign-config-error');
+        errorEl.style.display = 'none';
+        try {
+          await assignConfigToSelectedRouters(configId);
+          $('assign-config-modal').style.display = 'none';
+        } catch (err) {
+          errorEl.textContent = 'Error: ' + err.message;
+          errorEl.style.display = 'block';
+          opt.style.opacity = '1';
+          list.querySelectorAll('.rc-assign-option').forEach(o => o.style.pointerEvents = 'auto');
+          // Re-render the option text
+          const parsed = parseConfigJson(state.routerConfigs.find(c => c.configId === configId)?.routerConfigJson);
+          opt.innerHTML = `<div><div class="rc-assign-name">${state.routerConfigs.find(c => c.configId === configId)?.nickname || 'Unnamed'}</div><div class="rc-assign-ssid">SSID: ${parsed.ssid || 'N/A'}</div></div>`;
+        }
       });
     });
 
@@ -1774,7 +1790,7 @@
       if (!res.ok) throw new Error('Failed to assign config');
 
       const configName = getConfigName(configId);
-      toast(`"${configName}" assigned to ${routerIds.length} router${routerIds.length > 1 ? 's' : ''}!`, 'success');
+      showToast(`"${configName}" assigned to ${routerIds.length} router${routerIds.length > 1 ? 's' : ''}!`, 'success');
 
       // Update local state
       routerIds.forEach(id => {
@@ -1787,13 +1803,13 @@
       updateBulkBar();
       $('rc-select-all').checked = false;
     } catch (err) {
-      toast('Error assigning config: ' + err.message, 'error');
+      showToast('Error assigning config: ' + err.message, 'error');
     }
   }
 
   async function handleBulkRevertToDefault() {
     if (!state.defaultConfigId) {
-      toast('No default config set. Please set a default first.', 'error');
+      showToast('No default config set. Please set a default first.', 'error');
       return;
     }
     const count = state.selectedRouterIds.size;

@@ -332,9 +332,11 @@ app.put('/api/router-configs/assign', async (req, res) => {
       },
       body: JSON.stringify(req.body),
     });
+    console.log('Assign config request body:', JSON.stringify(req.body));
 
     if (!response.ok) {
       const text = await response.text();
+      console.error('Assign config API error:', response.status, text);
       return res.status(response.status).json({ error: text });
     }
 
