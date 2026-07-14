@@ -10,8 +10,6 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="index.css">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 </head>
 <body>
@@ -83,9 +81,6 @@
         </button>
         <button class="tab-btn" data-tab="router-config" id="tab-router-config">
           <span class="tab-icon">📡</span> Router Config
-        </button>
-        <button class="tab-btn" data-tab="fleet-map" id="tab-fleet-map">
-          <span class="tab-icon">🗺️</span> Fleet Map
         </button>
         <button class="tab-btn" data-tab="fleet-ops" id="tab-fleet-ops">
           <span class="tab-icon">🔧</span> Fleet Ops
@@ -245,27 +240,6 @@
         </div>
 
       </div><!-- end panel-router-config -->
-
-      <!-- ═══ TAB: Fleet Map ═══ -->
-      <div class="tab-panel" id="panel-fleet-map" style="display:none">
-        <section class="rc-section">
-          <div class="section-header">
-            <h2 class="section-title">Fleet Map</h2>
-            <div class="fleet-map-actions">
-              <button class="btn btn-secondary btn-sm" id="map-refresh-btn">↻ Refresh Locations</button>
-            </div>
-          </div>
-          <p class="rc-section-hint">Live locations of your Starlink terminals. Green = online, Red = offline, Yellow = degraded.</p>
-          <div class="fleet-map-container" id="fleet-map-container">
-            <div id="fleet-map" style="height:500px; border-radius:12px;"></div>
-          </div>
-          <div class="fleet-map-legend">
-            <span class="map-legend-item"><span class="map-dot map-dot-online"></span> Online</span>
-            <span class="map-legend-item"><span class="map-dot map-dot-offline"></span> Offline</span>
-            <span class="map-legend-item"><span class="map-dot map-dot-degraded"></span> Degraded</span>
-          </div>
-        </section>
-      </div><!-- end panel-fleet-map -->
 
       <!-- ═══ TAB: Fleet Ops ═══ -->
       <div class="tab-panel" id="panel-fleet-ops" style="display:none">

@@ -27,9 +27,7 @@
     fleetPairings: [],       // dish-to-router pairings from fleet-pairings.json
     pairingByRouterId: {},   // routerId → { dish, router, routerId }
     pairingByDish: {},       // dishName → { dish, router, routerId }
-    mapLoaded: false,        // whether fleet map has been initialized
-    mapInstance: null,        // Leaflet map instance
-    mapMarkers: [],          // Leaflet markers
+    mapLoaded: false,        // removed — no GPS from API
     opsLoaded: false,        // whether fleet ops has been loaded
     opsSelected: new Set(),  // selected terminal IDs for bulk ops
     uptimeData: {},          // userTerminalId → uptime %
@@ -1219,10 +1217,6 @@
         if (tab === 'router-config' && !state.rcLoaded) {
           loadRouterConfigData();
         }
-        // Load fleet map on first visit
-        if (tab === 'fleet-map' && !state.mapLoaded) {
-          initFleetMap();
-        }
         // Load fleet ops on first visit
         if (tab === 'fleet-ops' && !state.opsLoaded) {
           loadFleetOps();
@@ -2405,84 +2399,6 @@
     }
 
     await assignConfigToSelectedRouters(state.defaultConfigId);
-  }
-
-  // ══════════════════════════════════════════════════════════════════════
-  // ███  FLEET MAP
-  // ══════════════════════════════════════════════════════════════════════
-
-  async function initFleetMap() {
-    state.mapLoaded = true;
-    var map = L.map('fleet-map').setView([39.8, -98.5], 4);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap contributors',
-      maxZoom: 18,
-    }).addTo(map);
-    state.mapInstance = map;
-    setTimeout(function() { map.invalidateSize(); }, 200);
-    await loadMapLocations();
-    $('map-refresh-btn').addEventListener('click', loadMapLocations);
-  }
-
-  async function loadMapLocations() {
-    // Telemetry location endpoint not available on this plan — use fallback
-    plotTerminalsFromState();
-  }
-
-  function plotLocations(locations) {
-    var map = state.mapInstance;
-    state.mapMarkers.forEach(function(m) { map.removeLayer(m); });
-    state.mapMarkers = [];
-    var bounds = [];
-    locations.forEach(function(loc) {
-      var lat = loc.latitude || loc.lat;
-      var lng = loc.longitude || loc.lng || loc.lon;
-      if (!lat || !lng) return;
-      var name = loc.nickname || loc.userTerminalId || 'Terminal';
-      var online = loc.active !== false;
-      var color = online ? '#05ac3f' : '#ff4d41';
-      var icon = L.divIcon({
-        className: 'map-marker-icon',
-        html: '<div style="width:14px;height:14px;border-radius:50%;background:' + color + ';border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3)"></div>',
-        iconSize: [14, 14],
-      });
-      var marker = L.marker([lat, lng], { icon: icon })
-        .addTo(map)
-        .bindPopup('<strong>' + name + '</strong><br>' + (online ? '🟢 Online' : '🔴 Offline'));
-      state.mapMarkers.push(marker);
-      bounds.push([lat, lng]);
-    });
-    if (bounds.length > 0) map.fitBounds(bounds, { padding: [40, 40] });
-  }
-
-  function plotTerminalsFromState() {
-    var map = state.mapInstance;
-    state.mapMarkers.forEach(function(m) { map.removeLayer(m); });
-    state.mapMarkers = [];
-    var entries = Object.keys(state.deviceMap).map(function(sln) {
-      var d = state.deviceMap[sln];
-      return { sln: sln, name: d.utNickname || d.slNickname || sln, userTerminalId: d.userTerminalId };
-    });
-    if (entries.length === 0) return;
-    var bounds = [];
-    var baseLat = 39.0, baseLng = -95.0;
-    entries.forEach(function(e, i) {
-      var lat = baseLat + (Math.floor(i / 6) * 1.5);
-      var lng = baseLng + ((i % 6) * 2.5);
-      var color = '#05ac3f';
-      var icon = L.divIcon({
-        className: 'map-marker-icon',
-        html: '<div style="width:14px;height:14px;border-radius:50%;background:' + color + ';border:2px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3)"></div>',
-        iconSize: [14, 14],
-      });
-      var marker = L.marker([lat, lng], { icon: icon })
-        .addTo(map)
-        .bindPopup('<strong>' + e.name + '</strong><br><em>Approximate position</em>');
-      state.mapMarkers.push(marker);
-      bounds.push([lat, lng]);
-    });
-    if (bounds.length > 0) map.fitBounds(bounds, { padding: [40, 40] });
-    showToast('GPS data not available — showing approximate positions', 'info');
   }
 
   // ══════════════════════════════════════════════════════════════════════
