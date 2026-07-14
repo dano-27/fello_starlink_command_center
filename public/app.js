@@ -292,6 +292,8 @@
           utNickname: ut.nickname || '',
           userTerminalId: ut.userTerminalId || '',
           slNickname: '',
+          latitude: ut.latitude || ut.lat || null,
+          longitude: ut.longitude || ut.lng || ut.lon || null,
         };
       }
     });
