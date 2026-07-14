@@ -73,6 +73,19 @@
         </div>
       </nav>
 
+      <!-- Tab Navigation -->
+      <div class="tab-bar" id="tab-bar">
+        <button class="tab-btn active" data-tab="data-usage" id="tab-data-usage">
+          <span class="tab-icon">📊</span> Data Usage
+        </button>
+        <button class="tab-btn" data-tab="router-config" id="tab-router-config">
+          <span class="tab-icon">📡</span> Router Config
+        </button>
+      </div>
+
+      <!-- ═══ TAB: Data Usage ═══ -->
+      <div class="tab-panel active" id="panel-data-usage">
+
       <!-- Fleet Summary -->
       <section class="fleet-summary" id="fleet-summary">
         <div class="stat-card">
@@ -149,7 +162,76 @@
         <div class="terminal-card skeleton-card"><div class="skeleton skeleton-header"></div><div class="skeleton skeleton-gauge"></div><div class="skeleton skeleton-bar"></div><div class="skeleton skeleton-bar"></div></div>
         <div class="terminal-card skeleton-card"><div class="skeleton skeleton-header"></div><div class="skeleton skeleton-gauge"></div><div class="skeleton skeleton-bar"></div><div class="skeleton skeleton-bar"></div></div>
       </div>
-    </div>
+
+      </div><!-- end panel-data-usage -->
+
+      <!-- ═══ TAB: Router Config ═══ -->
+      <div class="tab-panel" id="panel-router-config" style="display:none">
+
+        <!-- Default Config Card -->
+        <section class="rc-section">
+          <div class="section-header">
+            <h2 class="section-title">Default Configuration</h2>
+            <span class="rc-hint">This is the config that matches your QR code labels</span>
+          </div>
+          <div class="rc-default-card" id="rc-default-card">
+            <div class="rc-default-loading">
+              <span class="btn-loader" style="display:inline-block"></span>
+              Loading default config...
+            </div>
+          </div>
+        </section>
+
+        <!-- Saved Configs -->
+        <section class="rc-section">
+          <div class="section-header">
+            <h2 class="section-title">Saved Configs</h2>
+            <button class="btn btn-primary btn-sm" id="rc-create-btn">+ Create Config</button>
+          </div>
+          <div class="rc-configs-grid" id="rc-configs-grid">
+            <div class="rc-empty-configs">
+              <span class="btn-loader" style="display:inline-block"></span>
+              Loading configs...
+            </div>
+          </div>
+        </section>
+
+        <!-- Router Fleet -->
+        <section class="rc-section">
+          <div class="section-header">
+            <h2 class="section-title">Router Fleet</h2>
+            <div class="rc-fleet-actions">
+              <label class="rc-select-all-label" for="rc-select-all">
+                <input type="checkbox" id="rc-select-all"> Select All
+              </label>
+            </div>
+          </div>
+          <div class="rc-router-table-wrap">
+            <table class="data-table" id="rc-router-table">
+              <thead>
+                <tr>
+                  <th class="rc-th-check"></th>
+                  <th>Router ID</th>
+                  <th>Terminal</th>
+                  <th>Current Config</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="rc-router-body">
+                <tr><td colspan="5" class="rc-loading-row"><span class="btn-loader" style="display:inline-block"></span> Loading routers...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Bulk Actions Bar -->
+        <div class="rc-bulk-bar" id="rc-bulk-bar" style="display:none">
+          <span class="rc-bulk-count" id="rc-bulk-count">0 selected</span>
+          <button class="btn btn-primary btn-sm" id="rc-bulk-revert">⟲ Revert to Default</button>
+          <button class="btn btn-secondary btn-sm" id="rc-bulk-assign">Assign Config ▾</button>
+        </div>
+
+      </div><!-- end panel-router-config -->
 
     <!-- Terminal Detail Modal -->
     <div class="modal-overlay" id="detail-modal" style="display:none">
@@ -261,6 +343,60 @@
           <hr class="modal-divider">
           <h3>Danger Zone</h3>
           <button class="btn btn-danger" id="clear-data-btn">Clear All Local Data</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Create Config Modal -->
+    <div class="modal-overlay" id="create-config-modal" style="display:none">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Create WiFi Config</h2>
+          <button class="modal-close" id="create-config-close" aria-label="Close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label" for="config-nickname">Config Name</label>
+            <input class="form-input" type="text" id="config-nickname" placeholder="e.g. Fello Default, Event WiFi" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="config-ssid">WiFi Network Name (SSID)</label>
+            <input class="form-input" type="text" id="config-ssid" placeholder="e.g. FELLO-STARLINK" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="config-password">WiFi Password</label>
+            <input class="form-input" type="text" id="config-password" placeholder="Minimum 8 characters" required minlength="8">
+          </div>
+          <div class="form-group">
+            <label class="form-label" for="config-auth">Security</label>
+            <select class="form-input" id="config-auth">
+              <option value="WPA2">WPA2 (Recommended)</option>
+              <option value="WPA3">WPA3</option>
+              <option value="OPEN">Open (No Password)</option>
+            </select>
+          </div>
+          <div id="create-config-error" class="error-message" style="display:none"></div>
+          <button class="btn btn-primary btn-full" id="create-config-submit">
+            <span class="btn-text">Create Config</span>
+            <span class="btn-loader" style="display:none"></span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Assign Config Modal -->
+    <div class="modal-overlay" id="assign-config-modal" style="display:none">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Assign Config to Selected Routers</h2>
+          <button class="modal-close" id="assign-config-close" aria-label="Close">&times;</button>
+        </div>
+        <div class="modal-body">
+          <p class="modal-hint" id="assign-router-count">Assigning to 0 routers</p>
+          <div class="rc-assign-list" id="rc-assign-list">
+            <!-- Config options rendered here -->
+          </div>
+          <div id="assign-config-error" class="error-message" style="display:none"></div>
         </div>
       </div>
     </div>

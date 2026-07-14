@@ -15,6 +15,13 @@
     refreshCountdown: null,
     tokenRefreshTimer: null,
     nextRefreshAt: null,
+    // Router config state
+    activeTab: 'data-usage',
+    routerConfigs: [],       // all saved configs
+    defaultConfigId: null,   // account default config id
+    routerList: [],          // routers with their config assignments
+    selectedRouterIds: new Set(),
+    rcLoaded: false,         // whether router config data has been loaded
   };
 
   // ── Constants ───────────────────────────────────────────────────────
@@ -1167,9 +1174,550 @@
       if (e.key === 'Escape') {
         if ($('detail-modal').style.display !== 'none') closeDetailModal();
         else if ($('settings-modal').style.display !== 'none') handleSettingsClose();
+        else if ($('create-config-modal').style.display !== 'none') $('create-config-modal').style.display = 'none';
+        else if ($('assign-config-modal').style.display !== 'none') $('assign-config-modal').style.display = 'none';
       }
+    });
+
+    // ── Tab Switching ───────────────────────────────────────────────
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tab = btn.dataset.tab;
+        if (tab === state.activeTab) return;
+        state.activeTab = tab;
+
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+
+        document.querySelectorAll('.tab-panel').forEach(p => {
+          p.classList.remove('active');
+          p.style.display = 'none';
+        });
+        const panel = $('panel-' + tab);
+        panel.classList.add('active');
+        panel.style.display = 'block';
+
+        // Load router config data on first visit
+        if (tab === 'router-config' && !state.rcLoaded) {
+          loadRouterConfigData();
+        }
+      });
+    });
+
+    // ── Router Config Event Listeners ───────────────────────────────
+    $('rc-create-btn').addEventListener('click', () => {
+      $('create-config-modal').style.display = 'flex';
+    });
+    $('create-config-close').addEventListener('click', () => {
+      $('create-config-modal').style.display = 'none';
+    });
+    $('create-config-modal').addEventListener('click', (e) => {
+      if (e.target === $('create-config-modal')) $('create-config-modal').style.display = 'none';
+    });
+    $('assign-config-close').addEventListener('click', () => {
+      $('assign-config-modal').style.display = 'none';
+    });
+    $('assign-config-modal').addEventListener('click', (e) => {
+      if (e.target === $('assign-config-modal')) $('assign-config-modal').style.display = 'none';
+    });
+    $('create-config-submit').addEventListener('click', handleCreateConfig);
+    $('rc-select-all').addEventListener('change', handleSelectAllRouters);
+    $('rc-bulk-revert').addEventListener('click', handleBulkRevertToDefault);
+    $('rc-bulk-assign').addEventListener('click', () => {
+      openAssignConfigModal();
     });
 
     checkSavedCredentials();
   });
+
+  // ══════════════════════════════════════════════════════════════════
+  // ══ ROUTER CONFIG MODULE ═════════════════════════════════════════
+  // ══════════════════════════════════════════════════════════════════
+
+  async function loadRouterConfigData() {
+    try {
+      const [configs, defaultCfg, terminals] = await Promise.all([
+        fetchAllRouterConfigs(),
+        fetchDefaultConfig(),
+        fetchAllUserTerminals(),
+      ]);
+
+      state.routerConfigs = configs;
+      state.defaultConfigId = defaultCfg;
+      state.rcLoaded = true;
+
+      // Build router list from user terminals
+      await buildRouterList(terminals);
+
+      renderDefaultConfigCard();
+      renderConfigCards();
+      renderRouterTable();
+    } catch (err) {
+      console.error('Router config load error:', err);
+      toast('Failed to load router configs: ' + err.message, 'error');
+    }
+  }
+
+  async function fetchAllRouterConfigs() {
+    const allConfigs = [];
+    let page = 0;
+    while (true) {
+      const res = await fetch(`/api/router-configs?page=${page}`, {
+        headers: { Authorization: `Bearer ${state.token}` },
+      });
+      if (!res.ok) throw new Error('Failed to fetch router configs');
+      const data = await res.json();
+      const results = data?.content?.results || [];
+      allConfigs.push(...results);
+      if (data?.content?.isLastPage) break;
+      page++;
+    }
+    return allConfigs;
+  }
+
+  async function fetchDefaultConfig() {
+    const res = await fetch('/api/router-configs/default', {
+      headers: { Authorization: `Bearer ${state.token}` },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data?.content?.configId || null;
+  }
+
+  async function fetchAllUserTerminals() {
+    // We already have user terminal data from the data-usage flow
+    // But we need router info — let's re-fetch to get routerId linkage
+    const allTerminals = [];
+    let page = 0;
+    while (true) {
+      const res = await fetch(`/api/user-terminals?page=${page}`, {
+        headers: { Authorization: `Bearer ${state.token}` },
+      });
+      if (!res.ok) throw new Error('Failed to fetch user terminals');
+      const data = await res.json();
+      const results = data?.content?.results || [];
+      allTerminals.push(...results);
+      if (data?.content?.isLastPage) break;
+      page++;
+    }
+    return allTerminals;
+  }
+
+  async function buildRouterList(terminals) {
+    const routers = [];
+    for (const ut of terminals) {
+      const routerId = ut.routerId || ut.kitSerialNumber;
+      if (!routerId) continue;
+
+      // Try to get router details to find its config assignment
+      let configId = null;
+      let nickname = null;
+      try {
+        const res = await fetch(`/api/routers/${routerId}`, {
+          headers: { Authorization: `Bearer ${state.token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          configId = data?.content?.configId || null;
+          nickname = data?.content?.nickname || null;
+        }
+      } catch (e) {
+        // Router detail fetch failed, that's ok
+      }
+
+      routers.push({
+        routerId: routerId,
+        routerNickname: nickname,
+        userTerminalId: ut.userTerminalId || ut.dishSerialNumber,
+        kitSerialNumber: ut.kitSerialNumber,
+        dishSerialNumber: ut.dishSerialNumber,
+        configId: configId,
+        serviceLineNumber: ut.serviceLineNumber,
+      });
+    }
+    state.routerList = routers;
+  }
+
+  function parseConfigJson(routerConfigJson) {
+    try {
+      const cfg = typeof routerConfigJson === 'string' ? JSON.parse(routerConfigJson) : routerConfigJson;
+      // Try to extract WiFi network info from common structures
+      // The Starlink config JSON can vary, but commonly has networks array
+      let ssid = null, password = null, auth = null;
+
+      if (cfg.networks && Array.isArray(cfg.networks)) {
+        const net = cfg.networks[0];
+        ssid = net?.ssid || net?.name || null;
+        password = net?.password || net?.psk || null;
+        auth = net?.auth || net?.security || null;
+      } else if (cfg.wifi) {
+        ssid = cfg.wifi.ssid || cfg.wifi.name || null;
+        password = cfg.wifi.password || cfg.wifi.psk || null;
+        auth = cfg.wifi.auth || cfg.wifi.security || null;
+      } else if (cfg.ssid) {
+        ssid = cfg.ssid;
+        password = cfg.password || cfg.psk || null;
+        auth = cfg.auth || cfg.security || null;
+      }
+
+      return { ssid, password, auth, raw: cfg };
+    } catch {
+      return { ssid: null, password: null, auth: null, raw: routerConfigJson };
+    }
+  }
+
+  function getConfigName(configId) {
+    const cfg = state.routerConfigs.find(c => c.configId === configId);
+    return cfg?.nickname || configId?.slice(0, 8) || 'Unknown';
+  }
+
+  function renderDefaultConfigCard() {
+    const card = $('rc-default-card');
+    if (!state.defaultConfigId) {
+      card.innerHTML = `
+        <div class="rc-no-default">
+          No default config set. Create a config and set it as default to enable bulk revert.
+        </div>
+      `;
+      return;
+    }
+
+    const cfg = state.routerConfigs.find(c => c.configId === state.defaultConfigId);
+    if (!cfg) {
+      card.innerHTML = `
+        <div class="rc-no-default">
+          Default config ID set (${state.defaultConfigId.slice(0, 12)}...) but config details not found.
+        </div>
+      `;
+      return;
+    }
+
+    const parsed = parseConfigJson(cfg.routerConfigJson);
+    card.innerHTML = `
+      <div class="rc-default-info">
+        <div class="rc-default-detail">
+          <span class="rc-label">Config Name</span>
+          <span class="rc-value">${cfg.nickname || 'Unnamed'}</span>
+        </div>
+        <div class="rc-default-detail">
+          <span class="rc-label">WiFi Name (SSID)</span>
+          <span class="rc-value">${parsed.ssid || 'N/A'}</span>
+        </div>
+        <div class="rc-default-detail">
+          <span class="rc-label">Password</span>
+          <span class="rc-value rc-password">
+            <span id="default-pw-display">••••••••</span>
+            <button class="rc-eye-btn" onclick="document.getElementById('default-pw-display').textContent = document.getElementById('default-pw-display').textContent === '••••••••' ? '${parsed.password || 'N/A'}' : '••••••••'">👁</button>
+          </span>
+        </div>
+        ${parsed.auth ? `
+        <div class="rc-default-detail">
+          <span class="rc-label">Security</span>
+          <span class="rc-value">${parsed.auth}</span>
+        </div>` : ''}
+        <div class="rc-default-actions">
+          <button class="btn btn-secondary btn-sm" onclick="handleChangeDefault()">Change Default</button>
+        </div>
+      </div>
+    `;
+  }
+
+  function renderConfigCards() {
+    const grid = $('rc-configs-grid');
+    if (state.routerConfigs.length === 0) {
+      grid.innerHTML = `
+        <div class="rc-empty-configs">
+          No configs found. Create your first WiFi configuration.
+        </div>
+      `;
+      return;
+    }
+
+    grid.innerHTML = state.routerConfigs.map(cfg => {
+      const parsed = parseConfigJson(cfg.routerConfigJson);
+      const isDefault = cfg.configId === state.defaultConfigId;
+      return `
+        <div class="rc-config-card ${isDefault ? 'is-default' : ''}" data-config-id="${cfg.configId}">
+          <div class="rc-card-name">
+            ${cfg.nickname || 'Unnamed Config'}
+            ${isDefault ? '<span class="rc-default-badge">Default</span>' : ''}
+          </div>
+          <div class="rc-card-field">
+            <span class="rc-field-label">SSID</span>
+            <span class="rc-field-value">${parsed.ssid || 'N/A'}</span>
+          </div>
+          <div class="rc-card-field">
+            <span class="rc-field-label">Password</span>
+            <span class="rc-field-value">${parsed.password ? '•'.repeat(parsed.password.length) : 'N/A'}</span>
+          </div>
+          ${parsed.auth ? `
+          <div class="rc-card-field">
+            <span class="rc-field-label">Security</span>
+            <span class="rc-field-value">${parsed.auth}</span>
+          </div>` : ''}
+          <div class="rc-card-actions">
+            ${!isDefault ? `<button class="btn btn-primary btn-sm" onclick="handleSetAsDefault('${cfg.configId}')">Set as Default</button>` : ''}
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  function renderRouterTable() {
+    const tbody = $('rc-router-body');
+    if (state.routerList.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="5" class="rc-loading-row">No routers found on this account</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = state.routerList.map(router => {
+      const configName = router.configId ? getConfigName(router.configId) : null;
+      const isDefault = router.configId === state.defaultConfigId;
+      const checked = state.selectedRouterIds.has(router.routerId) ? 'checked' : '';
+
+      // Find friendly name from device map
+      const deviceInfo = Object.values(state.deviceMap).find(d =>
+        d.kitSerial === router.kitSerialNumber || d.dishSerial === router.dishSerialNumber
+      );
+      const terminalName = deviceInfo?.slNickname || deviceInfo?.utNickname || router.dishSerialNumber || router.userTerminalId || '—';
+
+      return `
+        <tr>
+          <td class="rc-th-check"><input type="checkbox" class="rc-router-check" data-router-id="${router.routerId}" ${checked}></td>
+          <td>${router.routerId?.slice(0, 12) || '—'}${router.routerNickname ? ` <small>(${router.routerNickname})</small>` : ''}</td>
+          <td>${terminalName}</td>
+          <td>
+            <span class="rc-config-name-cell">
+              ${configName
+                ? `${configName} <span class="rc-config-badge ${isDefault ? 'is-default' : ''}">${isDefault ? 'Default' : 'Custom'}</span>`
+                : '<span class="rc-config-badge no-config">No Config</span>'}
+            </span>
+          </td>
+          <td>
+            <button class="btn btn-secondary btn-sm" onclick="handleAssignSingleRouter('${router.routerId}')">Assign</button>
+          </td>
+        </tr>
+      `;
+    }).join('');
+
+    // Add checkbox listeners
+    tbody.querySelectorAll('.rc-router-check').forEach(cb => {
+      cb.addEventListener('change', () => {
+        if (cb.checked) state.selectedRouterIds.add(cb.dataset.routerId);
+        else state.selectedRouterIds.delete(cb.dataset.routerId);
+        updateBulkBar();
+      });
+    });
+  }
+
+  function updateBulkBar() {
+    const bar = $('rc-bulk-bar');
+    const count = state.selectedRouterIds.size;
+    if (count === 0) {
+      bar.style.display = 'none';
+    } else {
+      bar.style.display = 'flex';
+      $('rc-bulk-count').textContent = `${count} router${count > 1 ? 's' : ''} selected`;
+    }
+  }
+
+  function handleSelectAllRouters(e) {
+    const checked = e.target.checked;
+    state.selectedRouterIds.clear();
+    if (checked) {
+      state.routerList.forEach(r => state.selectedRouterIds.add(r.routerId));
+    }
+    renderRouterTable();
+    updateBulkBar();
+  }
+
+  async function handleCreateConfig() {
+    const nickname = $('config-nickname').value.trim();
+    const ssid = $('config-ssid').value.trim();
+    const password = $('config-password').value.trim();
+    const auth = $('config-auth').value;
+    const errorEl = $('create-config-error');
+
+    if (!nickname || !ssid) {
+      errorEl.textContent = 'Config name and SSID are required';
+      errorEl.style.display = 'block';
+      return;
+    }
+    if (auth !== 'OPEN' && password.length < 8) {
+      errorEl.textContent = 'Password must be at least 8 characters';
+      errorEl.style.display = 'block';
+      return;
+    }
+
+    errorEl.style.display = 'none';
+    const btn = $('create-config-submit');
+    btn.querySelector('.btn-text').style.display = 'none';
+    btn.querySelector('.btn-loader').style.display = 'inline-block';
+
+    try {
+      const configJson = {
+        networks: [{
+          ssid: ssid,
+          password: auth !== 'OPEN' ? password : undefined,
+          auth: auth,
+        }],
+      };
+
+      const res = await fetch('/api/router-configs', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${state.token}`,
+        },
+        body: JSON.stringify({
+          nickname: nickname,
+          routerConfigJson: JSON.stringify(configJson),
+        }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || 'Failed to create config');
+      }
+
+      toast('Config "' + nickname + '" created successfully!', 'success');
+      $('create-config-modal').style.display = 'none';
+      $('config-nickname').value = '';
+      $('config-ssid').value = '';
+      $('config-password').value = '';
+
+      // Reload configs
+      state.routerConfigs = await fetchAllRouterConfigs();
+      renderConfigCards();
+    } catch (err) {
+      errorEl.textContent = err.message;
+      errorEl.style.display = 'block';
+    } finally {
+      btn.querySelector('.btn-text').style.display = 'inline';
+      btn.querySelector('.btn-loader').style.display = 'none';
+    }
+  }
+
+  // Expose to onclick handlers in HTML
+  window.handleSetAsDefault = async function(configId) {
+    if (!confirm('Set this config as the account default? All new routers will receive this config.')) return;
+    try {
+      const res = await fetch('/api/router-configs/default', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${state.token}`,
+        },
+        body: JSON.stringify({ configId }),
+      });
+      if (!res.ok) throw new Error('Failed to set default config');
+      state.defaultConfigId = configId;
+      toast('Default config updated!', 'success');
+      renderDefaultConfigCard();
+      renderConfigCards();
+      renderRouterTable();
+    } catch (err) {
+      toast('Error: ' + err.message, 'error');
+    }
+  };
+
+  window.handleChangeDefault = function() {
+    openAssignConfigModal(true);
+  };
+
+  window.handleAssignSingleRouter = function(routerId) {
+    state.selectedRouterIds.clear();
+    state.selectedRouterIds.add(routerId);
+    openAssignConfigModal();
+  };
+
+  function openAssignConfigModal(isSettingDefault = false) {
+    const list = $('rc-assign-list');
+    const count = state.selectedRouterIds.size;
+    $('assign-router-count').textContent = isSettingDefault
+      ? 'Select the new default config'
+      : `Assigning to ${count} router${count > 1 ? 's' : ''}`;
+
+    list.innerHTML = state.routerConfigs.map(cfg => {
+      const parsed = parseConfigJson(cfg.routerConfigJson);
+      const isDefault = cfg.configId === state.defaultConfigId;
+      return `
+        <div class="rc-assign-option" data-config-id="${cfg.configId}" data-is-default-action="${isSettingDefault}">
+          <div>
+            <div class="rc-assign-name">${cfg.nickname || 'Unnamed'}</div>
+            <div class="rc-assign-ssid">SSID: ${parsed.ssid || 'N/A'}</div>
+          </div>
+          ${isDefault ? '<span class="rc-assign-badge">Current Default</span>' : ''}
+        </div>
+      `;
+    }).join('');
+
+    // Add click handlers to options
+    list.querySelectorAll('.rc-assign-option').forEach(opt => {
+      opt.addEventListener('click', async () => {
+        const configId = opt.dataset.configId;
+        const isDefaultAction = opt.dataset.isDefaultAction === 'true';
+
+        if (isDefaultAction) {
+          await window.handleSetAsDefault(configId);
+        } else {
+          await assignConfigToSelectedRouters(configId);
+        }
+        $('assign-config-modal').style.display = 'none';
+      });
+    });
+
+    $('assign-config-modal').style.display = 'flex';
+  }
+
+  async function assignConfigToSelectedRouters(configId) {
+    const routerIds = Array.from(state.selectedRouterIds);
+    if (routerIds.length === 0) return;
+
+    try {
+      const res = await fetch('/api/router-configs/assign', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${state.token}`,
+        },
+        body: JSON.stringify({ configId, routerIds }),
+      });
+
+      if (!res.ok) throw new Error('Failed to assign config');
+
+      const configName = getConfigName(configId);
+      toast(`"${configName}" assigned to ${routerIds.length} router${routerIds.length > 1 ? 's' : ''}!`, 'success');
+
+      // Update local state
+      routerIds.forEach(id => {
+        const router = state.routerList.find(r => r.routerId === id);
+        if (router) router.configId = configId;
+      });
+
+      state.selectedRouterIds.clear();
+      renderRouterTable();
+      updateBulkBar();
+      $('rc-select-all').checked = false;
+    } catch (err) {
+      toast('Error assigning config: ' + err.message, 'error');
+    }
+  }
+
+  async function handleBulkRevertToDefault() {
+    if (!state.defaultConfigId) {
+      toast('No default config set. Please set a default first.', 'error');
+      return;
+    }
+    const count = state.selectedRouterIds.size;
+    if (count === 0) return;
+
+    const configName = getConfigName(state.defaultConfigId);
+    if (!confirm(`Revert ${count} router${count > 1 ? 's' : ''} to default config "${configName}"?\n\nThis will push the config to online routers within 1-2 minutes.`)) {
+      return;
+    }
+
+    await assignConfigToSelectedRouters(state.defaultConfigId);
+  }
+
 })();
