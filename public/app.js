@@ -2029,27 +2029,14 @@
           ? [...existingBands]
           : ['RF_2GHZ', 'RF_5GHZ'];
 
-        // Add a BSS entry for each band to the first network
-        if (raw.networks.length > 0) {
-          if (!raw.networks[0].basicServiceSets) {
-            raw.networks[0].basicServiceSets = [];
-          }
-          for (const band of bands) {
-            raw.networks[0].basicServiceSets.push({
-              ssid,
-              band,
-              ...authObj,
-            });
-          }
-        } else {
-          raw.networks.push({
-            basicServiceSets: bands.map(band => ({
-              ssid,
-              band,
-              ...authObj,
-            })),
-          });
-        }
+        // Add a NEW network with one BSS per band (Starlink only allows 1 BSS per band per network)
+        raw.networks.push({
+          basicServiceSets: bands.map(band => ({
+            ssid,
+            band,
+            ...authObj,
+          })),
+        });
 
         const res = await fetch(`/api/router-configs/${configId}`, {
           method: 'PUT',
