@@ -478,15 +478,47 @@
                     <h3 class="group-card-name">${escapeHtml(name)}</h3>
                     <span class="group-card-count">${count} device${count !== 1 ? 's' : ''}</span>
                 </div>
+                <button class="group-delete-btn" title="Delete group" aria-label="Delete group">🗑</button>
                 <div class="group-card-arrow">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 6 15 12 9 18"/></svg>
                 </div>
             `;
+            // Delete button — stop propagation so it doesn't drill into the group
+            card.querySelector('.group-delete-btn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                deleteGroup(group);
+            });
             card.addEventListener('click', () => navigateToGroupDevices(group));
             dom.groupsGrid.appendChild(card);
         });
 
         showGroupsState('grid');
+    }
+
+    async function deleteGroup(group) {
+        const name = getGroupName(group);
+        const count = state.groupDeviceCounts[group.id] || 0;
+
+        const msg = count > 0
+            ? `This group has ${count} device${count !== 1 ? 's' : ''} assigned. Deleting it will unassign them. Continue?`
+            : `Are you sure you want to delete "${name}"?`;
+
+        const confirmed = await showConfirm('Delete Group?', msg, '🗑');
+        if (!confirmed) return;
+
+        try {
+            showToast(`Deleting "${name}"…`, 'info');
+            await apiRequest(`/assignment_groups/${group.id}`, { method: 'DELETE' });
+            showToast(`"${name}" deleted successfully.`, 'success');
+            // Remove from state and re-render
+            state.groups = state.groups.filter(g => g.id !== group.id);
+            state.filteredGroups = state.filteredGroups.filter(g => g.id !== group.id);
+            delete state.groupDeviceCounts[group.id];
+            updateGroupsStats();
+            renderGroupsGrid();
+        } catch (err) {
+            showToast(`Failed to delete group: ${err.message}`, 'error');
+        }
     }
 
     // ---- Filter groups ----
