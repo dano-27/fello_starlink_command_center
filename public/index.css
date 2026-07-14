@@ -1620,6 +1620,36 @@ body {
   text-transform: uppercase;
 }
 
+.rc-multi-ssid-badge {
+  font-size: 10px;
+  font-weight: 700;
+  background: var(--sky);
+  color: var(--blue);
+  padding: 2px 8px;
+  border-radius: 40px;
+  text-transform: uppercase;
+}
+
+.rc-ssid-block {
+  padding: 2px 0;
+}
+
+.rc-ssid-divider {
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 2px dashed var(--border);
+}
+
+.rc-band-badge {
+  font-size: 10px;
+  font-weight: 600;
+  background: var(--light-blue);
+  color: var(--dark-gray);
+  padding: 1px 6px;
+  border-radius: 4px;
+  margin-left: 6px;
+}
+
 .rc-config-card .rc-card-field {
   display: flex;
   justify-content: space-between;

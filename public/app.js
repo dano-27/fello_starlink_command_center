@@ -1417,29 +1417,55 @@
     try {
       const cfg = typeof routerConfigJson === 'string' ? JSON.parse(routerConfigJson) : routerConfigJson;
       let ssid = null, password = null, auth = null;
+      const allSsids = []; // { ssid, password, auth, band }
 
-      // Starlink format: networks[0].basicServiceSets[0].ssid / authWpa2.password
-      if (cfg.networks && Array.isArray(cfg.networks) && cfg.networks.length > 0) {
-        const net = cfg.networks[0];
-        if (net.basicServiceSets && Array.isArray(net.basicServiceSets) && net.basicServiceSets.length > 0) {
-          const bss = net.basicServiceSets[0];
-          ssid = bss.ssid || null;
-          // Auth can be authWpa2, authWpa3, or authOpen
-          if (bss.authWpa3) {
-            password = bss.authWpa3.password || null;
-            auth = 'WPA3';
-          } else if (bss.authWpa2) {
-            password = bss.authWpa2.password || null;
-            auth = 'WPA2';
-          } else if (bss.authOpen !== undefined) {
-            auth = 'Open';
+      // Starlink format: networks[].basicServiceSets[].ssid / authWpa2.password
+      if (cfg.networks && Array.isArray(cfg.networks)) {
+        for (const net of cfg.networks) {
+          if (!net.basicServiceSets || !Array.isArray(net.basicServiceSets)) continue;
+          for (const bss of net.basicServiceSets) {
+            let bssAuth = null, bssPw = null;
+            if (bss.authWpa3) {
+              bssPw = bss.authWpa3.password || null;
+              bssAuth = 'WPA3';
+            } else if (bss.authWpa2) {
+              bssPw = bss.authWpa2.password || null;
+              bssAuth = 'WPA2';
+            } else if (bss.authOpen !== undefined) {
+              bssAuth = 'Open';
+            }
+
+            if (bss.ssid) {
+              allSsids.push({
+                ssid: bss.ssid,
+                password: bssPw,
+                auth: bssAuth,
+                band: bss.band || null,
+              });
+            }
+
+            // First BSS becomes the primary
+            if (!ssid && bss.ssid) {
+              ssid = bss.ssid;
+              password = bssPw;
+              auth = bssAuth;
+            }
           }
         }
       }
 
-      return { ssid, password, auth, raw: cfg };
+      // Deduplicate SSIDs (keep unique SSID+password combos)
+      const seen = new Set();
+      const uniqueSsids = allSsids.filter(s => {
+        const key = `${s.ssid}|${s.password || ''}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+
+      return { ssid, password, auth, allSsids: uniqueSsids, raw: cfg };
     } catch {
-      return { ssid: null, password: null, auth: null, raw: routerConfigJson };
+      return { ssid: null, password: null, auth: null, allSsids: [], raw: routerConfigJson };
     }
   }
 
@@ -1467,16 +1493,45 @@
     grid.innerHTML = state.routerConfigs.map(cfg => {
       const parsed = parseConfigJson(cfg.routerConfigJson);
       const count = defaultCounts[cfg.configId] || 0;
-      return `
-        <div class="rc-config-card" data-config-id="${cfg.configId}">
-          ${parsed.ssid ? `<button class="rc-qr-icon-btn rc-qr-btn" data-ssid="${parsed.ssid}" data-pw="${parsed.password || ''}" data-auth="${parsed.auth || 'WPA'}" data-name="${cfg.nickname || 'WiFi'}" title="Generate QR Code"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="8" height="8" rx="1"/><rect x="14" y="2" width="8" height="8" rx="1"/><rect x="2" y="14" width="8" height="8" rx="1"/><rect x="5" y="5" width="2" height="2" fill="currentColor" stroke="none"/><rect x="17" y="5" width="2" height="2" fill="currentColor" stroke="none"/><rect x="5" y="17" width="2" height="2" fill="currentColor" stroke="none"/><rect x="14" y="14" width="2" height="2" fill="currentColor" stroke="none"/><rect x="18" y="14" width="2" height="2" fill="currentColor" stroke="none"/><rect x="14" y="18" width="2" height="2" fill="currentColor" stroke="none"/><rect x="18" y="18" width="2" height="2" fill="currentColor" stroke="none"/></svg></button>` : ''}
-          <div class="rc-card-name">
-            ${cfg.nickname || 'Unnamed Config'}
-            ${count > 0 ? `<span class="rc-default-badge">${count} router${count > 1 ? 's' : ''}</span>` : ''}
-          </div>
+      const hasMultipleSsids = parsed.allSsids.length > 1;
+      const uniqueSsidNames = [...new Set(parsed.allSsids.map(s => s.ssid))];
+      const hasMultipleUniqueSsids = uniqueSsidNames.length > 1;
+
+      // Build SSID sections
+      let ssidSections = '';
+      if (hasMultipleUniqueSsids) {
+        // Multiple different SSIDs
+        ssidSections = parsed.allSsids.map((s, i) => {
+          const bandLabel = s.band ? s.band.replace('RF_', '').replace('GHZ', ' GHz') : '';
+          return `
+            <div class="rc-ssid-block ${i > 0 ? 'rc-ssid-divider' : ''}">
+              <div class="rc-card-field">
+                <span class="rc-field-label">SSID${bandLabel ? ` (${bandLabel})` : ''}</span>
+                <span class="rc-field-value">${s.ssid}</span>
+              </div>
+              <div class="rc-card-field">
+                <span class="rc-field-label">Password</span>
+                <span class="rc-field-value">${s.password
+                  ? `<span class="rc-pw-cell">
+                      <code class="rc-pw-masked rc-card-pw" data-pw="${s.password}">${'•'.repeat(s.password.length)}</code>
+                      <button class="rc-eye-btn rc-card-eye" title="Show/hide password">👁</button>
+                    </span>`
+                  : 'N/A'}</span>
+              </div>
+              ${s.auth ? `<div class="rc-card-field">
+                <span class="rc-field-label">Security</span>
+                <span class="rc-field-value">${s.auth}</span>
+              </div>` : ''}
+            </div>`;
+        }).join('');
+      } else {
+        // Single SSID (or same SSID on multiple bands)
+        const bandCount = parsed.allSsids.length;
+        const bands = parsed.allSsids.map(s => s.band?.replace('RF_', '').replace('GHZ', ' GHz')).filter(Boolean);
+        ssidSections = `
           <div class="rc-card-field">
             <span class="rc-field-label">SSID</span>
-            <span class="rc-field-value">${parsed.ssid || 'N/A'}</span>
+            <span class="rc-field-value">${parsed.ssid || 'N/A'}${bands.length > 1 ? ` <span class="rc-band-badge">${bands.join(' + ')}</span>` : ''}</span>
           </div>
           <div class="rc-card-field">
             <span class="rc-field-label">Password</span>
@@ -1487,11 +1542,24 @@
                 </span>`
               : 'N/A'}</span>
           </div>
-          ${parsed.auth ? `
-          <div class="rc-card-field">
+          ${parsed.auth ? `<div class="rc-card-field">
             <span class="rc-field-label">Security</span>
             <span class="rc-field-value">${parsed.auth}</span>
-          </div>` : ''}
+          </div>` : ''}`;
+      }
+
+      // QR button for first SSID
+      const qrBtn = parsed.ssid ? `<button class="rc-qr-icon-btn rc-qr-btn" data-ssid="${parsed.ssid}" data-pw="${parsed.password || ''}" data-auth="${parsed.auth || 'WPA'}" data-name="${cfg.nickname || 'WiFi'}" title="Generate QR Code"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="8" height="8" rx="1"/><rect x="14" y="2" width="8" height="8" rx="1"/><rect x="2" y="14" width="8" height="8" rx="1"/><rect x="5" y="5" width="2" height="2" fill="currentColor" stroke="none"/><rect x="17" y="5" width="2" height="2" fill="currentColor" stroke="none"/><rect x="5" y="17" width="2" height="2" fill="currentColor" stroke="none"/><rect x="14" y="14" width="2" height="2" fill="currentColor" stroke="none"/><rect x="18" y="14" width="2" height="2" fill="currentColor" stroke="none"/><rect x="14" y="18" width="2" height="2" fill="currentColor" stroke="none"/><rect x="18" y="18" width="2" height="2" fill="currentColor" stroke="none"/></svg></button>` : '';
+
+      return `
+        <div class="rc-config-card" data-config-id="${cfg.configId}">
+          ${qrBtn}
+          <div class="rc-card-name">
+            ${cfg.nickname || 'Unnamed Config'}
+            ${hasMultipleUniqueSsids ? '<span class="rc-multi-ssid-badge">Multi-SSID</span>' : ''}
+            ${count > 0 ? `<span class="rc-default-badge">${count} router${count > 1 ? 's' : ''}</span>` : ''}
+          </div>
+          ${ssidSections}
         </div>
       `;
     }).join('');
