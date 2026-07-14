@@ -1,6 +1,6 @@
 /* ================================================
    SimpleMDM Dashboard — app.js
-   Single-page app for SimpleMDM device management
+   Group-first view with drill-in to devices
    ================================================ */
 
 (function () {
@@ -16,69 +16,95 @@
 
     const dom = {
         // Screens
-        loginScreen:       $('#login-screen'),
-        dashboard:         $('#dashboard'),
+        loginScreen:         $('#login-screen'),
+        dashboard:           $('#dashboard'),
 
         // Login
-        loginForm:         $('#login-form'),
-        apiKeyInput:       $('#api-key-input'),
-        toggleKey:         $('#toggle-key'),
-        loginBtn:          $('#login-btn'),
-        loginBtnText:      $('#login-btn .btn-text'),
-        loginBtnSpinner:   $('#login-btn .btn-spinner'),
+        loginForm:           $('#login-form'),
+        apiKeyInput:         $('#api-key-input'),
+        toggleKey:           $('#toggle-key'),
+        loginBtn:            $('#login-btn'),
+        loginBtnText:        $('#login-btn .btn-text'),
+        loginBtnSpinner:     $('#login-btn .btn-spinner'),
 
         // Topbar
-        refreshBtn:        $('#refresh-btn'),
-        logoutBtn:         $('#logout-btn'),
+        refreshBtn:          $('#refresh-btn'),
+        logoutBtn:           $('#logout-btn'),
 
         // Stats
-        statTotal:         $('#stat-total'),
-        statEnrolled:      $('#stat-enrolled'),
-        statUnenrolled:    $('#stat-unenrolled'),
+        statPrimary:         $('#stat-primary'),
+        statPrimaryLabel:    $('#stat-primary-label'),
+        statSecondary:       $('#stat-secondary'),
+        statSecondaryLabel:  $('#stat-secondary-label'),
+
+        // Breadcrumb
+        breadcrumbBar:       $('#breadcrumb-bar'),
+        breadcrumbBack:      $('#breadcrumb-back'),
+        breadcrumbGroups:    $('#breadcrumb-groups'),
+        breadcrumbGroupName: $('#breadcrumb-group-name'),
 
         // Search
-        searchInput:       $('#search-input'),
-        searchClear:       $('#search-clear'),
-        deviceCountLabel:  $('#device-count-label'),
+        searchInput:         $('#search-input'),
+        searchClear:         $('#search-clear'),
+        countLabel:          $('#count-label'),
 
-        // Table
-        loadingState:      $('#loading-state'),
-        emptyState:        $('#empty-state'),
-        errorState:        $('#error-state'),
-        errorMessage:      $('#error-message'),
-        retryBtn:          $('#retry-btn'),
-        deviceTable:       $('#device-table'),
-        deviceTbody:       $('#device-tbody'),
+        // Groups View
+        groupsView:          $('#groups-view'),
+        groupsLoading:       $('#groups-loading'),
+        groupsEmpty:         $('#groups-empty'),
+        groupsError:         $('#groups-error'),
+        groupsErrorMessage:  $('#groups-error-message'),
+        groupsRetryBtn:      $('#groups-retry-btn'),
+        groupsGrid:          $('#groups-grid'),
+
+        // Devices View
+        devicesView:         $('#devices-view'),
+        devicesLoading:      $('#devices-loading'),
+        devicesEmpty:        $('#devices-empty'),
+        devicesError:        $('#devices-error'),
+        devicesErrorMessage: $('#devices-error-message'),
+        devicesRetryBtn:     $('#devices-retry-btn'),
+        deviceTable:         $('#device-table'),
+        deviceTbody:         $('#device-tbody'),
 
         // Device Modal
-        modalOverlay:      $('#device-modal-overlay'),
-        modalClose:        $('#modal-close'),
-        modalDeviceName:   $('#modal-device-name'),
-        modalDeviceStatus: $('#modal-device-status'),
-        modalBody:         $('#modal-body'),
-        actionLock:        $('#action-lock'),
-        actionRestart:     $('#action-restart'),
-        actionShutdown:    $('#action-shutdown'),
+        modalOverlay:        $('#device-modal-overlay'),
+        modalClose:          $('#modal-close'),
+        modalDeviceName:     $('#modal-device-name'),
+        modalDeviceStatus:   $('#modal-device-status'),
+        modalBody:           $('#modal-body'),
+        actionLock:          $('#action-lock'),
+        actionRestart:       $('#action-restart'),
+        actionShutdown:      $('#action-shutdown'),
 
         // Confirm
-        confirmOverlay:    $('#confirm-overlay'),
-        confirmIcon:       $('#confirm-icon'),
-        confirmTitle:      $('#confirm-title'),
-        confirmMessage:    $('#confirm-message'),
-        confirmCancel:     $('#confirm-cancel'),
-        confirmProceed:    $('#confirm-proceed'),
+        confirmOverlay:      $('#confirm-overlay'),
+        confirmIcon:         $('#confirm-icon'),
+        confirmTitle:        $('#confirm-title'),
+        confirmMessage:      $('#confirm-message'),
+        confirmCancel:       $('#confirm-cancel'),
+        confirmProceed:      $('#confirm-proceed'),
 
         // Toast
-        toastContainer:    $('#toast-container'),
+        toastContainer:      $('#toast-container'),
     };
 
     // ---- State ----
     let state = {
         apiKey: '',
+        // Current view: 'groups' | 'devices'
+        currentView: 'groups',
+        // Groups
+        groups: [],
+        filteredGroups: [],
+        groupDeviceCounts: {},   // groupId -> count
+        // Current group detail
+        currentGroup: null,
         devices: [],
         filteredDevices: [],
         sortField: 'name',
         sortDir: 'asc',
+        // Modal
         currentDevice: null,
     };
 
@@ -113,6 +139,12 @@
             return res.json();
         }
         return res.text();
+    }
+
+    function escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
     }
 
     // ================================================
@@ -209,8 +241,11 @@
         dom.dashboard.classList.add('hidden');
         dom.loginScreen.classList.remove('hidden');
         state.apiKey = '';
+        state.groups = [];
+        state.filteredGroups = [];
         state.devices = [];
         state.filteredDevices = [];
+        state.currentGroup = null;
     }
 
     function showDashboard() {
@@ -241,12 +276,12 @@
         setLoginLoading(true);
 
         try {
-            // Test the API key by fetching devices (limit 1)
-            await apiRequest('/devices?limit=1');
+            // Test the API key by fetching assignment groups (limit 1)
+            await apiRequest('/assignment_groups?limit=1');
             saveCredentials(apiKey);
             showDashboard();
             showToast('Connected to SimpleMDM', 'success');
-            fetchDevices();
+            navigateToGroups();
         } catch (err) {
             state.apiKey = '';
             if (err.status === 401) {
@@ -260,24 +295,265 @@
     }
 
     // ================================================
-    //  DEVICES
+    //  VIEW NAVIGATION
     // ================================================
 
-    function showTableState(stateName) {
-        dom.loadingState.classList.add('hidden');
-        dom.emptyState.classList.add('hidden');
-        dom.errorState.classList.add('hidden');
+    function navigateToGroups() {
+        state.currentView = 'groups';
+        state.currentGroup = null;
+        state.devices = [];
+        state.filteredDevices = [];
+
+        // UI updates
+        dom.breadcrumbBar.classList.add('hidden');
+        dom.devicesView.classList.add('hidden');
+        dom.groupsView.classList.remove('hidden');
+
+        // Search
+        dom.searchInput.value = '';
+        dom.searchClear.classList.add('hidden');
+        dom.searchInput.placeholder = 'Search groups by name…';
+
+        fetchGroups();
+    }
+
+    function navigateToGroupDevices(group) {
+        state.currentView = 'devices';
+        state.currentGroup = group;
+        state.devices = [];
+        state.filteredDevices = [];
+        state.sortField = 'name';
+        state.sortDir = 'asc';
+
+        const groupName = getGroupName(group);
+
+        // UI updates
+        dom.groupsView.classList.add('hidden');
+        dom.devicesView.classList.remove('hidden');
+        dom.breadcrumbBar.classList.remove('hidden');
+        dom.breadcrumbGroupName.textContent = groupName;
+
+        // Search
+        dom.searchInput.value = '';
+        dom.searchClear.classList.add('hidden');
+        dom.searchInput.placeholder = 'Search by name, model, or serial…';
+
+        fetchGroupDevices(group);
+    }
+
+    // ================================================
+    //  GROUP HELPERS
+    // ================================================
+
+    function getGroupName(group) {
+        if (group.attributes && group.attributes.name) {
+            return group.attributes.name;
+        }
+        if (group.name) {
+            return group.name;
+        }
+        return 'Unnamed Group';
+    }
+
+    function getGroupType(group) {
+        return group.type || 'assignment_group';
+    }
+
+    // ================================================
+    //  FETCH GROUPS
+    // ================================================
+
+    function showGroupsState(stateName) {
+        dom.groupsLoading.classList.add('hidden');
+        dom.groupsEmpty.classList.add('hidden');
+        dom.groupsError.classList.add('hidden');
+        dom.groupsGrid.classList.add('hidden');
+
+        switch (stateName) {
+            case 'loading':
+                dom.groupsLoading.classList.remove('hidden');
+                break;
+            case 'empty':
+                dom.groupsEmpty.classList.remove('hidden');
+                break;
+            case 'error':
+                dom.groupsError.classList.remove('hidden');
+                break;
+            case 'grid':
+                dom.groupsGrid.classList.remove('hidden');
+                break;
+        }
+    }
+
+    async function fetchGroups() {
+        showGroupsState('loading');
+
+        try {
+            let allGroups = [];
+            let hasMore = true;
+            let startingAfter = 0;
+
+            while (hasMore) {
+                const response = await apiRequest(`/assignment_groups?limit=100&starting_after=${startingAfter}`);
+                const groups = response.data || response;
+
+                if (Array.isArray(groups) && groups.length > 0) {
+                    allGroups = allGroups.concat(groups);
+                    if (groups.length < 100) {
+                        hasMore = false;
+                    } else {
+                        startingAfter = groups[groups.length - 1].id;
+                    }
+                } else {
+                    hasMore = false;
+                }
+            }
+
+            state.groups = allGroups;
+            state.filteredGroups = [...allGroups];
+
+            // Fetch device counts for each group (in parallel, batched)
+            await fetchGroupDeviceCounts(allGroups);
+
+            updateGroupsStats();
+            renderGroupsGrid();
+        } catch (err) {
+            if (err.status === 401) {
+                showToast('Session expired. Please log in again.', 'error');
+                clearCredentials();
+                showLogin();
+                return;
+            }
+            dom.groupsErrorMessage.textContent = err.message || 'An unknown error occurred.';
+            showGroupsState('error');
+        }
+    }
+
+    async function fetchGroupDeviceCounts(groups) {
+        // Fetch device list (limit=1) for each group just to get a count
+        // We do them in parallel with a concurrency limit
+        const BATCH_SIZE = 10;
+        state.groupDeviceCounts = {};
+
+        for (let i = 0; i < groups.length; i += BATCH_SIZE) {
+            const batch = groups.slice(i, i + BATCH_SIZE);
+            const promises = batch.map(async (group) => {
+                try {
+                    // Fetch all devices to count them
+                    let count = 0;
+                    let hasMore = true;
+                    let startingAfter = 0;
+
+                    while (hasMore) {
+                        const resp = await apiRequest(`/assignment_groups/${group.id}/devices?limit=100&starting_after=${startingAfter}`);
+                        const devices = resp.data || resp;
+                        if (Array.isArray(devices) && devices.length > 0) {
+                            count += devices.length;
+                            if (devices.length < 100) {
+                                hasMore = false;
+                            } else {
+                                startingAfter = devices[devices.length - 1].id;
+                            }
+                        } else {
+                            hasMore = false;
+                        }
+                    }
+
+                    state.groupDeviceCounts[group.id] = count;
+                } catch (e) {
+                    state.groupDeviceCounts[group.id] = 0;
+                }
+            });
+            await Promise.all(promises);
+        }
+    }
+
+    function updateGroupsStats() {
+        const totalGroups = state.groups.length;
+        let totalDevices = 0;
+        for (const gid in state.groupDeviceCounts) {
+            totalDevices += state.groupDeviceCounts[gid];
+        }
+
+        dom.statPrimary.textContent = totalGroups;
+        dom.statPrimaryLabel.textContent = 'Total Groups';
+        dom.statSecondary.textContent = totalDevices;
+        dom.statSecondaryLabel.textContent = 'Total Devices';
+    }
+
+    function renderGroupsGrid() {
+        const groups = state.filteredGroups;
+
+        dom.countLabel.textContent = `${groups.length} group${groups.length !== 1 ? 's' : ''}`;
+
+        if (groups.length === 0) {
+            showGroupsState('empty');
+            return;
+        }
+
+        dom.groupsGrid.innerHTML = '';
+
+        groups.forEach((group, index) => {
+            const name = getGroupName(group);
+            const type = getGroupType(group);
+            const count = state.groupDeviceCounts[group.id] || 0;
+            const icon = count > 0 ? '📱' : '📋';
+
+            const card = document.createElement('div');
+            card.className = 'group-card';
+            card.style.animationDelay = `${index * 0.04}s`;
+            card.innerHTML = `
+                <div class="group-card-icon">${icon}</div>
+                <div class="group-card-body">
+                    <h3 class="group-card-name">${escapeHtml(name)}</h3>
+                    <span class="group-card-count">${count} device${count !== 1 ? 's' : ''}</span>
+                </div>
+                <span class="group-card-badge">${escapeHtml(type.replace(/_/g, ' '))}</span>
+                <div class="group-card-arrow">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 6 15 12 9 18"/></svg>
+                </div>
+            `;
+            card.addEventListener('click', () => navigateToGroupDevices(group));
+            dom.groupsGrid.appendChild(card);
+        });
+
+        showGroupsState('grid');
+    }
+
+    // ---- Filter groups ----
+    function filterGroups(query) {
+        const q = query.toLowerCase().trim();
+
+        if (!q) {
+            state.filteredGroups = [...state.groups];
+        } else {
+            state.filteredGroups = state.groups.filter(g => {
+                return getGroupName(g).toLowerCase().includes(q);
+            });
+        }
+
+        renderGroupsGrid();
+    }
+
+    // ================================================
+    //  FETCH DEVICES FOR A GROUP
+    // ================================================
+
+    function showDevicesState(stateName) {
+        dom.devicesLoading.classList.add('hidden');
+        dom.devicesEmpty.classList.add('hidden');
+        dom.devicesError.classList.add('hidden');
         dom.deviceTable.classList.add('hidden');
 
         switch (stateName) {
             case 'loading':
-                dom.loadingState.classList.remove('hidden');
+                dom.devicesLoading.classList.remove('hidden');
                 break;
             case 'empty':
-                dom.emptyState.classList.remove('hidden');
+                dom.devicesEmpty.classList.remove('hidden');
                 break;
             case 'error':
-                dom.errorState.classList.remove('hidden');
+                dom.devicesError.classList.remove('hidden');
                 break;
             case 'table':
                 dom.deviceTable.classList.remove('hidden');
@@ -285,19 +561,16 @@
         }
     }
 
-    async function fetchDevices() {
-        showTableState('loading');
-        dom.searchInput.value = '';
-        dom.searchClear.classList.add('hidden');
+    async function fetchGroupDevices(group) {
+        showDevicesState('loading');
 
         try {
-            // Fetch all devices (paginated — SimpleMDM returns up to 100 per page)
             let allDevices = [];
             let hasMore = true;
             let startingAfter = 0;
 
             while (hasMore) {
-                const response = await apiRequest(`/devices?limit=100&starting_after=${startingAfter}`);
+                const response = await apiRequest(`/assignment_groups/${group.id}/devices?limit=100&starting_after=${startingAfter}`);
                 const devices = response.data || response;
 
                 if (Array.isArray(devices) && devices.length > 0) {
@@ -314,7 +587,7 @@
 
             state.devices = allDevices;
             state.filteredDevices = [...allDevices];
-            updateStats();
+            updateDevicesStats();
             sortAndRender();
         } catch (err) {
             if (err.status === 401) {
@@ -323,20 +596,29 @@
                 showLogin();
                 return;
             }
-            dom.errorMessage.textContent = err.message || 'An unknown error occurred.';
-            showTableState('error');
+            dom.devicesErrorMessage.textContent = err.message || 'An unknown error occurred.';
+            showDevicesState('error');
         }
     }
 
-    function updateStats() {
-        const total = state.devices.length;
-        const enrolled = state.devices.filter(d => getEnrollmentStatus(d) === 'enrolled').length;
-        const unenrolled = total - enrolled;
+    function updateDevicesStats() {
+        const groupName = state.currentGroup ? getGroupName(state.currentGroup) : 'Group';
+        const count = state.devices.length;
 
-        dom.statTotal.textContent = total;
-        dom.statEnrolled.textContent = enrolled;
-        dom.statUnenrolled.textContent = unenrolled;
+        dom.statPrimary.textContent = escapeHtml(groupName);
+        dom.statPrimary.style.fontSize = '1.2rem';
+        dom.statPrimaryLabel.textContent = 'Assignment Group';
+        dom.statSecondary.textContent = count;
+        dom.statSecondaryLabel.textContent = count === 1 ? 'Device' : 'Devices';
     }
+
+    function resetStatFontSize() {
+        dom.statPrimary.style.fontSize = '';
+    }
+
+    // ================================================
+    //  DEVICE HELPERS
+    // ================================================
 
     function getAttr(device, key) {
         if (device.attributes && device.attributes[key] !== undefined) {
@@ -404,7 +686,7 @@
         renderDeviceTable();
     }
 
-    // ---- Search ----
+    // ---- Search devices ----
     function filterDevices(query) {
         const q = query.toLowerCase().trim();
 
@@ -427,7 +709,7 @@
     function renderDeviceTable() {
         const devices = state.filteredDevices;
 
-        dom.deviceCountLabel.textContent = `${devices.length} device${devices.length !== 1 ? 's' : ''}`;
+        dom.countLabel.textContent = `${devices.length} device${devices.length !== 1 ? 's' : ''}`;
 
         // Update sort arrows
         $$('.device-table thead th.sortable').forEach(th => {
@@ -443,7 +725,7 @@
         });
 
         if (devices.length === 0) {
-            showTableState('empty');
+            showDevicesState('empty');
             return;
         }
 
@@ -469,13 +751,7 @@
             dom.deviceTbody.appendChild(tr);
         });
 
-        showTableState('table');
-    }
-
-    function escapeHtml(str) {
-        const div = document.createElement('div');
-        div.textContent = str;
-        return div.innerHTML;
+        showDevicesState('table');
     }
 
     // ================================================
@@ -619,20 +895,26 @@
             input.type = input.type === 'password' ? 'text' : 'password';
         });
 
-        // Refresh
+        // Refresh — context-aware
         dom.refreshBtn.addEventListener('click', () => {
-            fetchDevices();
-            showToast('Refreshing devices…', 'info');
+            if (state.currentView === 'groups') {
+                fetchGroups();
+                showToast('Refreshing groups…', 'info');
+            } else if (state.currentView === 'devices' && state.currentGroup) {
+                fetchGroupDevices(state.currentGroup);
+                showToast('Refreshing devices…', 'info');
+            }
         });
 
         // Logout
         dom.logoutBtn.addEventListener('click', () => {
             clearCredentials();
+            resetStatFontSize();
             showLogin();
             showToast('Disconnected from SimpleMDM', 'info');
         });
 
-        // Search
+        // Search — context-aware
         let searchDebounce;
         dom.searchInput.addEventListener('input', (e) => {
             clearTimeout(searchDebounce);
@@ -640,18 +922,26 @@
             dom.searchClear.classList.toggle('hidden', !q);
 
             searchDebounce = setTimeout(() => {
-                filterDevices(q);
+                if (state.currentView === 'groups') {
+                    filterGroups(q);
+                } else {
+                    filterDevices(q);
+                }
             }, 200);
         });
 
         dom.searchClear.addEventListener('click', () => {
             dom.searchInput.value = '';
             dom.searchClear.classList.add('hidden');
-            filterDevices('');
+            if (state.currentView === 'groups') {
+                filterGroups('');
+            } else {
+                filterDevices('');
+            }
             dom.searchInput.focus();
         });
 
-        // Sort
+        // Sort (for device table)
         $$('.device-table thead th.sortable').forEach(th => {
             th.addEventListener('click', () => {
                 const field = th.dataset.sort;
@@ -665,8 +955,26 @@
             });
         });
 
-        // Retry
-        dom.retryBtn.addEventListener('click', fetchDevices);
+        // Retry buttons
+        dom.groupsRetryBtn.addEventListener('click', fetchGroups);
+        dom.devicesRetryBtn.addEventListener('click', () => {
+            if (state.currentGroup) {
+                fetchGroupDevices(state.currentGroup);
+            }
+        });
+
+        // Breadcrumb — back to groups
+        dom.breadcrumbBack.addEventListener('click', (e) => {
+            e.preventDefault();
+            resetStatFontSize();
+            navigateToGroups();
+        });
+
+        dom.breadcrumbGroups.addEventListener('click', (e) => {
+            e.preventDefault();
+            resetStatFontSize();
+            navigateToGroups();
+        });
 
         // Close modal
         dom.modalClose.addEventListener('click', closeDeviceModal);
@@ -677,7 +985,7 @@
         // Remote actions
         dom.actionLock.addEventListener('click', () => executeRemoteAction('lock', 'Lock'));
         dom.actionRestart.addEventListener('click', () => executeRemoteAction('restart', 'Restart'));
-        dom.actionShutdown.addEventListener('click', () => executeRemoteAction('shutdown', 'shutdown'));
+        dom.actionShutdown.addEventListener('click', () => executeRemoteAction('shutdown', 'Shutdown'));
 
         // Keyboard
         document.addEventListener('keydown', (e) => {
