@@ -1408,7 +1408,12 @@
           </div>
           <div class="rc-card-field">
             <span class="rc-field-label">Password</span>
-            <span class="rc-field-value">${parsed.password ? '•'.repeat(parsed.password.length) : 'N/A'}</span>
+            <span class="rc-field-value">${parsed.password
+              ? `<span class="rc-pw-cell">
+                  <code class="rc-pw-masked rc-card-pw" data-pw="${parsed.password}">${'•'.repeat(parsed.password.length)}</code>
+                  <button class="rc-eye-btn rc-card-eye" title="Show/hide password">👁</button>
+                </span>`
+              : 'N/A'}</span>
           </div>
           ${parsed.auth ? `
           <div class="rc-card-field">
@@ -1418,6 +1423,15 @@
         </div>
       `;
     }).join('');
+
+    // Wire up password toggles on config cards
+    grid.querySelectorAll('.rc-card-eye').forEach(btn => {
+      const code = btn.previousElementSibling;
+      btn.addEventListener('click', () => {
+        const pw = code.dataset.pw;
+        code.textContent = code.textContent === pw ? '•'.repeat(pw.length) : pw;
+      });
+    });
   }
 
   function renderRouterTable() {
