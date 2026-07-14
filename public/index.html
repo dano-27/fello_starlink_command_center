@@ -173,7 +173,10 @@
         <section class="rc-section">
           <div class="section-header">
             <h2 class="section-title">Saved WiFi Configs</h2>
-            <button class="btn btn-primary btn-sm" id="rc-create-btn">+ Create Config</button>
+            <div class="rc-profile-actions">
+              <button class="btn btn-secondary btn-sm" id="rc-bulk-clean-btn" title="Remove all non-Fello-IP SSIDs from configs">🧹 Clean Extra SSIDs</button>
+              <button class="btn btn-primary btn-sm" id="rc-create-btn">+ Create Config</button>
+            </div>
           </div>
           <p class="rc-section-hint">These are your reusable WiFi profiles. Set one as each router's default to match its QR code label.</p>
           <div class="rc-configs-grid" id="rc-configs-grid">

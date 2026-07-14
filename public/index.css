@@ -1650,6 +1650,37 @@ body {
   margin-left: 6px;
 }
 
+.rc-profile-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.rc-ssid-delete-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: rgba(255, 77, 65, 0.1);
+  color: var(--light-red);
+  border-radius: 50%;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  margin-left: 6px;
+  transition: all 0.2s ease;
+  line-height: 1;
+  padding: 0;
+}
+
+.rc-ssid-delete-btn:hover {
+  background: var(--light-red);
+  color: white;
+  transform: scale(1.15);
+}
+
 .rc-config-card .rc-card-field {
   display: flex;
   justify-content: space-between;

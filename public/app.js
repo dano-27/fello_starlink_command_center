@@ -1212,6 +1212,7 @@
     });
 
     // ── Router Config Event Listeners ───────────────────────────────
+    $('rc-bulk-clean-btn').addEventListener('click', bulkCleanExtraSsids);
     $('rc-create-btn').addEventListener('click', () => {
       $('create-config-modal').style.display = 'flex';
     });
@@ -1503,11 +1504,15 @@
         // Multiple different SSIDs
         ssidSections = parsed.allSsids.map((s, i) => {
           const bandLabel = s.band ? s.band.replace('RF_', '').replace('GHZ', ' GHz') : '';
+          const isFello = s.ssid.toLowerCase().includes('fello');
+          const deleteBtn = !isFello
+            ? `<button class="rc-ssid-delete-btn" data-config-id="${cfg.configId}" data-ssid="${s.ssid}" title="Remove this SSID from config">✕</button>`
+            : '';
           return `
             <div class="rc-ssid-block ${i > 0 ? 'rc-ssid-divider' : ''}">
               <div class="rc-card-field">
                 <span class="rc-field-label">SSID${bandLabel ? ` (${bandLabel})` : ''}</span>
-                <span class="rc-field-value">${s.ssid}</span>
+                <span class="rc-field-value">${s.ssid} ${deleteBtn}</span>
               </div>
               <div class="rc-card-field">
                 <span class="rc-field-label">Password</span>
@@ -1577,6 +1582,16 @@
     grid.querySelectorAll('.rc-qr-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         showWifiQrCode(btn.dataset.ssid, btn.dataset.pw, btn.dataset.auth, btn.dataset.name);
+      });
+    });
+
+    // Wire up SSID delete buttons
+    grid.querySelectorAll('.rc-ssid-delete-btn').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const configId = btn.dataset.configId;
+        const ssidToRemove = btn.dataset.ssid;
+        if (!confirm(`Remove SSID "${ssidToRemove}" from this config?`)) return;
+        await removeSsidFromConfig(configId, ssidToRemove);
       });
     });
   }
@@ -1776,6 +1791,122 @@
     }
     renderRouterTable();
     updateBulkBar();
+  }
+
+  // Remove a specific SSID from a config's basicServiceSets
+  async function removeSsidFromConfig(configId, ssidToRemove) {
+    const cfg = state.routerConfigs.find(c => c.configId === configId);
+    if (!cfg) { showToast('Config not found', 'error'); return; }
+
+    try {
+      const raw = typeof cfg.routerConfigJson === 'string' ? JSON.parse(cfg.routerConfigJson) : { ...cfg.routerConfigJson };
+
+      if (raw.networks && Array.isArray(raw.networks)) {
+        for (const net of raw.networks) {
+          if (net.basicServiceSets && Array.isArray(net.basicServiceSets)) {
+            net.basicServiceSets = net.basicServiceSets.filter(bss => bss.ssid !== ssidToRemove);
+          }
+        }
+        // Remove empty networks
+        raw.networks = raw.networks.filter(net => net.basicServiceSets && net.basicServiceSets.length > 0);
+      }
+
+      const res = await fetch(`/api/router-configs/${configId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${state.token}`,
+        },
+        body: JSON.stringify({
+          nickname: cfg.nickname,
+          routerConfigJson: JSON.stringify(raw),
+        }),
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(errText || `API returned ${res.status}`);
+      }
+
+      showToast(`Removed "${ssidToRemove}" from ${cfg.nickname}`, 'success');
+
+      // Refresh configs
+      state.routerConfigs = await fetchAllRouterConfigs();
+      renderConfigCards();
+      renderRouterTable();
+    } catch (err) {
+      showToast(`Failed to update config: ${err.message}`, 'error');
+    }
+  }
+
+  // Bulk remove all non-Fello SSIDs from all configs
+  async function bulkCleanExtraSsids() {
+    // Find configs that have extra (non-Fello) SSIDs
+    const dirtyConfigs = state.routerConfigs.filter(cfg => {
+      const parsed = parseConfigJson(cfg.routerConfigJson);
+      return parsed.allSsids.some(s => !s.ssid.toLowerCase().includes('fello'));
+    });
+
+    if (dirtyConfigs.length === 0) {
+      showToast('All configs are already clean — no extra SSIDs found', 'success');
+      return;
+    }
+
+    const extraCount = dirtyConfigs.reduce((sum, cfg) => {
+      const parsed = parseConfigJson(cfg.routerConfigJson);
+      return sum + parsed.allSsids.filter(s => !s.ssid.toLowerCase().includes('fello')).length;
+    }, 0);
+
+    if (!confirm(`Remove ${extraCount} extra SSID${extraCount > 1 ? 's' : ''} from ${dirtyConfigs.length} config${dirtyConfigs.length > 1 ? 's' : ''}?\n\nOnly "Fello IP" SSIDs will be kept.`)) return;
+
+    let successCount = 0;
+    let failCount = 0;
+
+    for (const cfg of dirtyConfigs) {
+      try {
+        const raw = typeof cfg.routerConfigJson === 'string' ? JSON.parse(cfg.routerConfigJson) : { ...cfg.routerConfigJson };
+
+        if (raw.networks && Array.isArray(raw.networks)) {
+          for (const net of raw.networks) {
+            if (net.basicServiceSets && Array.isArray(net.basicServiceSets)) {
+              net.basicServiceSets = net.basicServiceSets.filter(bss =>
+                bss.ssid && bss.ssid.toLowerCase().includes('fello')
+              );
+            }
+          }
+          raw.networks = raw.networks.filter(net => net.basicServiceSets && net.basicServiceSets.length > 0);
+        }
+
+        const res = await fetch(`/api/router-configs/${cfg.configId}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${state.token}`,
+          },
+          body: JSON.stringify({
+            nickname: cfg.nickname,
+            routerConfigJson: JSON.stringify(raw),
+          }),
+        });
+
+        if (!res.ok) throw new Error(`${res.status}`);
+        successCount++;
+      } catch (err) {
+        console.error(`Failed to clean ${cfg.nickname}:`, err);
+        failCount++;
+      }
+    }
+
+    if (failCount > 0) {
+      showToast(`Cleaned ${successCount} configs, ${failCount} failed`, 'error');
+    } else {
+      showToast(`Cleaned ${successCount} config${successCount > 1 ? 's' : ''} — extra SSIDs removed`, 'success');
+    }
+
+    // Refresh
+    state.routerConfigs = await fetchAllRouterConfigs();
+    renderConfigCards();
+    renderRouterTable();
   }
 
   async function handleCreateConfig() {
