@@ -1,5 +1,146 @@
 [
   {
+    "id": "prov-1784136311435-54tdei",
+    "timestamp": "2026-07-15T17:25:11.435Z",
+    "eventName": "CES 2026 Demo Booth",
+    "orderNumber": "CES-001",
+    "configMode": "Kiosk Mode",
+    "contactName": "",
+    "company": "",
+    "status": "partial",
+    "groupId": 2396842,
+    "groupName": "CES 2026 Demo Booth — CES-001",
+    "appsRequested": [
+      "Safari"
+    ],
+    "appsMatched": [],
+    "appsFailed": [
+      "Safari"
+    ],
+    "profilesAssigned": [
+      {
+        "name": "Default Restrictions",
+        "id": 142210,
+        "reason": "Always applied"
+      },
+      {
+        "name": "Fello Wi-Fi",
+        "id": 133014,
+        "reason": "Always applied"
+      },
+      {
+        "name": "Safari Lock (Single App)",
+        "id": 145745,
+        "reason": "Kiosk Single App Mode"
+      },
+      {
+        "name": "CES 2026 Demo Booth — Custom Config",
+        "id": 230422,
+        "reason": "Bundled config (Wi-Fi: CES-ExhibitorNet, Passcode Policy (Kiosk), Web Content Filter (Whitelist))"
+      }
+    ],
+    "layoutMatched": {
+      "name": "Chrome/Safari homescreen ",
+      "id": 228691
+    },
+    "errors": [],
+    "manualSetupNeeded": [],
+    "dcrPayload": {
+      "eventName": "CES 2026 Demo Booth",
+      "orderNumber": "CES-001",
+      "configMode": "Kiosk Mode",
+      "apps": [
+        "Safari"
+      ],
+      "lockdownMode": "Single App Mode",
+      "wifiEnabled": "Yes",
+      "wifiSsid": "CES-ExhibitorNet",
+      "wifiPassword": "ces2026booth!",
+      "wifiSecurity": "WPA2",
+      "wifiHidden": "No",
+      "restrictionsEnabled": "Yes",
+      "restrictionType": "Whitelist",
+      "restrictionUrls": [
+        "https://demo.fello.com",
+        "https://ces.tech"
+      ],
+      "homeScreenLayout": "Standard"
+    },
+    "customConfigCreated": {
+      "id": 230422,
+      "name": "CES 2026 Demo Booth — Custom Config",
+      "payloads": [
+        "Wi-Fi: CES-ExhibitorNet",
+        "Passcode Policy (Kiosk)",
+        "Web Content Filter (Whitelist)"
+      ]
+    }
+  },
+  {
+    "id": "prov-1784135695590-9swj1u",
+    "timestamp": "2026-07-15T17:14:55.590Z",
+    "eventName": "WiFi Test v2",
+    "orderNumber": "WIFI-002",
+    "configMode": "POS Mode",
+    "contactName": "",
+    "company": "",
+    "status": "success",
+    "groupId": 2396807,
+    "groupName": "WiFi Test v2 — WIFI-002",
+    "appsRequested": [
+      "Square POS"
+    ],
+    "appsMatched": [
+      {
+        "requested": "Square POS",
+        "matched": "Square Point of Sale (POS)",
+        "id": 129311
+      }
+    ],
+    "appsFailed": [],
+    "profilesAssigned": [
+      {
+        "name": "Default Restrictions",
+        "id": 142210,
+        "reason": "Always applied"
+      },
+      {
+        "name": "Fello Wi-Fi",
+        "id": 133014,
+        "reason": "Always applied"
+      },
+      {
+        "name": "EventVenue-5G Wi-Fi",
+        "id": 230419,
+        "reason": "Custom Wi-Fi: \"EventVenue-5G\""
+      }
+    ],
+    "layoutMatched": {
+      "name": "Square POS & Eventbrite Organizer",
+      "id": 147544
+    },
+    "errors": [],
+    "manualSetupNeeded": [],
+    "dcrPayload": {
+      "eventName": "WiFi Test v2",
+      "orderNumber": "WIFI-002",
+      "configMode": "POS Mode",
+      "apps": [
+        "Square POS"
+      ],
+      "wifiEnabled": "Yes",
+      "wifiSsid": "EventVenue-5G",
+      "wifiPassword": "guestpass2026",
+      "wifiSecurity": "WPA2",
+      "wifiHidden": "No"
+    },
+    "wifiProfileCreated": {
+      "id": 230419,
+      "name": "EventVenue-5G Wi-Fi",
+      "ssid": "EventVenue-5G"
+    }
+  },
+  {
     "id": "prov-1784135395166-j26vaw",
     "timestamp": "2026-07-15T17:09:55.166Z",
     "eventName": "WiFi Profile Test",

@@ -974,86 +974,165 @@ function matchHomeScreenLayout(appNames, layouts) {
   return bestScore >= 1 ? best : null;
 }
 
-// ── Auto-create WiFi profile via SimpleMDM API ─────────────────────
-function generateWifiMobileconfig(ssid, password, securityType, hidden) {
-  const uuid1 = crypto.randomUUID();
-  const uuid2 = crypto.randomUUID();
-  const identifier = `com.fello.wifi.${ssid.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()}`;
+// ── Bundled Mobileconfig Generator ──────────────────────────────────
+// Generates a single .mobileconfig with multiple payloads per event,
+// then uploads it to SimpleMDM as a custom configuration profile.
 
-  // Map DCR security types to Apple config values
-  const encryptionMap = {
-    'WPA2': 'WPA2',
-    'WPA2/WPA3': 'WPA3',
-    'WPA3': 'WPA3',
-    'WEP': 'WEP',
-    'None': 'None',
-  };
-  const encryption = encryptionMap[securityType] || 'WPA2';
+const crypto = require('crypto');
 
-  let xml = `<?xml version="1.0" encoding="UTF-8"?>
+function escapeXml(str) {
+  return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function buildMobileconfig(eventName, dcrData, payloads) {
+  const rootUuid = crypto.randomUUID();
+  const slug = eventName.replace(/[^a-zA-Z0-9]/g, '').toLowerCase().slice(0, 30);
+  const rootIdentifier = `com.fello.event.${slug}`;
+
+  const payloadXml = payloads.map(p => p.xml).join('\n');
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>PayloadContent</key>
     <array>
-        <dict>
+${payloadXml}
+    </array>
+    <key>PayloadDisplayName</key>
+    <string>${escapeXml(eventName)} — Custom Config</string>
+    <key>PayloadIdentifier</key>
+    <string>${rootIdentifier}</string>
+    <key>PayloadType</key>
+    <string>Configuration</string>
+    <key>PayloadUUID</key>
+    <string>${rootUuid}</string>
+    <key>PayloadVersion</key>
+    <integer>1</integer>
+</dict>
+</plist>`;
+}
+
+// ── Payload Generators ──────────────────────────────────────────────
+
+function wifiPayload(ssid, password, securityType, hidden) {
+  const uuid = crypto.randomUUID();
+  const encryptionMap = { 'WPA2': 'WPA2', 'WPA2/WPA3': 'WPA3', 'WPA3': 'WPA3', 'WEP': 'WEP', 'None': 'None' };
+  const encryption = encryptionMap[securityType] || 'WPA2';
+
+  let xml = `        <dict>
             <key>AutoJoin</key>
             <true/>
             <key>EncryptionType</key>
             <string>${encryption}</string>
             <key>HIDDEN_NETWORK</key>
             <${hidden ? 'true' : 'false'}/>
+            <key>PayloadDisplayName</key>
+            <string>${escapeXml(ssid)} Wi-Fi</string>
             <key>PayloadIdentifier</key>
-            <string>${identifier}.wifi</string>
+            <string>com.fello.wifi.${ssid.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()}</string>
             <key>PayloadType</key>
             <string>com.apple.wifi.managed</string>
             <key>PayloadUUID</key>
-            <string>${uuid1}</string>
+            <string>${uuid}</string>
             <key>PayloadVersion</key>
             <integer>1</integer>
             <key>SSID_STR</key>
-            <string>${ssid}</string>`;
+            <string>${escapeXml(ssid)}</string>`;
 
-  if (encryption !== 'None') {
+  if (encryption !== 'None' && password) {
     xml += `
             <key>Password</key>
-            <string>${password}</string>`;
+            <string>${escapeXml(password)}</string>`;
   }
 
   xml += `
-        </dict>
-    </array>
-    <key>PayloadDisplayName</key>
-    <string>${ssid} Wi-Fi</string>
-    <key>PayloadIdentifier</key>
-    <string>${identifier}</string>
-    <key>PayloadType</key>
-    <string>Configuration</string>
-    <key>PayloadUUID</key>
-    <string>${uuid2}</string>
-    <key>PayloadVersion</key>
-    <integer>1</integer>
-</dict>
-</plist>`;
-  return xml;
+        </dict>`;
+  return { name: `Wi-Fi: ${ssid}`, xml };
 }
 
-async function createWifiProfile(apiKey, ssid, password, securityType, hidden) {
-  const mobileconfig = generateWifiMobileconfig(ssid, password, securityType, hidden);
-  const profileName = `${ssid} Wi-Fi`;
+function passcodePayload(mode) {
+  const uuid = crypto.randomUUID();
+  // Check-in/Kiosk modes get a simple 6-digit passcode requirement
+  return {
+    name: `Passcode Policy (${mode})`,
+    xml: `        <dict>
+            <key>PayloadDisplayName</key>
+            <string>Passcode Policy</string>
+            <key>PayloadIdentifier</key>
+            <string>com.fello.passcode.${mode.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()}</string>
+            <key>PayloadType</key>
+            <string>com.apple.mobiledevice.passwordpolicy</string>
+            <key>PayloadUUID</key>
+            <string>${uuid}</string>
+            <key>PayloadVersion</key>
+            <integer>1</integer>
+            <key>allowSimple</key>
+            <true/>
+            <key>forcePIN</key>
+            <true/>
+            <key>maxPINAgeInDays</key>
+            <integer>0</integer>
+            <key>minLength</key>
+            <integer>6</integer>
+            <key>requireAlphanumeric</key>
+            <false/>
+        </dict>`,
+  };
+}
 
-  // Use multipart/form-data to upload the mobileconfig
-  const boundary = '----FormBoundary' + Date.now().toString(36);
+function webContentFilterPayload(filterType, urls) {
+  const uuid = crypto.randomUUID();
+  const isWhitelist = filterType === 'Whitelist';
+
+  let urlEntries = urls.map(u => `                <string>${escapeXml(u)}</string>`).join('\n');
+
+  return {
+    name: `Web Content Filter (${filterType})`,
+    xml: `        <dict>
+            <key>PayloadDisplayName</key>
+            <string>Web Content Filter (${filterType})</string>
+            <key>PayloadIdentifier</key>
+            <string>com.fello.webfilter.${filterType.toLowerCase()}</string>
+            <key>PayloadType</key>
+            <string>com.apple.webcontent-filter</string>
+            <key>PayloadUUID</key>
+            <string>${uuid}</string>
+            <key>PayloadVersion</key>
+            <integer>1</integer>
+            <key>AutoFilterEnabled</key>
+            <false/>
+            <key>FilterType</key>
+            <string>BuiltIn</string>
+            <key>${isWhitelist ? 'WhitelistedBookmarks' : 'BlacklistedURLs'}</key>
+            <array>
+${isWhitelist
+  ? urls.map(u => `                <dict>
+                    <key>Title</key>
+                    <string>${escapeXml(u)}</string>
+                    <key>URL</key>
+                    <string>${escapeXml(u)}</string>
+                </dict>`).join('\n')
+  : urlEntries}
+            </array>
+        </dict>`,
+  };
+}
+
+// ── Upload to SimpleMDM ─────────────────────────────────────────────
+
+async function uploadCustomProfile(apiKey, profileName, mobileconfigXml) {
+  const boundary = '----FormBoundary' + Date.now().toString(36) + crypto.randomUUID().slice(0, 8);
   const body = [
     `--${boundary}`,
     `Content-Disposition: form-data; name="name"`,
     '',
     profileName,
     `--${boundary}`,
-    `Content-Disposition: form-data; name="mobileconfig"; filename="wifi.mobileconfig"`,
+    `Content-Disposition: form-data; name="mobileconfig"; filename="config.mobileconfig"`,
     'Content-Type: application/x-apple-aspen-config',
     '',
-    mobileconfig,
+    mobileconfigXml,
     `--${boundary}--`,
   ].join('\r\n');
 
@@ -1068,28 +1147,18 @@ async function createWifiProfile(apiKey, ssid, password, securityType, hidden) {
 
   if (!res.ok) {
     const errText = await res.text().catch(() => '');
-    throw new Error(`Failed to create WiFi profile: HTTP ${res.status} — ${errText}`);
+    throw new Error(`Failed to create custom profile: HTTP ${res.status} — ${errText}`);
   }
 
   const data = await res.json();
-  return { id: data.data.id, name: profileName, type: 'custom_configuration_profile' };
+  return { id: data.data.id, name: profileName };
 }
 
-const crypto = require('crypto');
-
-// ── Known profile IDs ───────────────────────────────────────────────
+// ── Known profile IDs (reusable, always-applied) ────────────────────
 const PROFILE_IDS = {
-  // Always applied
   DEFAULT_RESTRICTIONS: 142210,
   FELLO_WIFI: 133014,
-  // Mode-specific
-  DEFAULT_RESTRICTIONS_HOTSPOT: 160622,
-  EVENTBRITE_PASSCODE: 160284,
-  SAFARI_LOCK: 145745,
-  ADOBE_READER_SAM: 152634,
-  // Kiosk web content filters
-  GOOGLE_ACCOUNTS_WHITELIST: 83240,
-  SYSTEM_APP_BLACKLIST: 147124,
+  SAFARI_LOCK: 145745,  // Single App Lock (Kiosk mode)
 };
 
 // ── Provisioning endpoint ───────────────────────────────────────────
@@ -1207,7 +1276,25 @@ app.post('/api/automation/provision', async (req, res) => {
 
       // ── Step 3: Assign Profiles ──
       const profilesToAssign = [];
-      const manualSetupNeeded = [];  // Items that can't be auto-provisioned
+      const manualSetupNeeded = [];
+      const eventName = dcrData.eventName || dcrData.orderNumber || 'Event';
+      const mode = (dcrData.configMode || '').toLowerCase();
+
+      // ═══ Always applied (existing SimpleMDM profiles) ═══
+      profilesToAssign.push({ id: PROFILE_IDS.DEFAULT_RESTRICTIONS, name: 'Default Restrictions', reason: 'Always applied' });
+      profilesToAssign.push({ id: PROFILE_IDS.FELLO_WIFI, name: 'Fello Wi-Fi', reason: 'Always applied' });
+
+      // ═══ Kiosk Single App Lock (native SimpleMDM profile) ═══
+      if (mode.includes('kiosk')) {
+        if (dcrData.lockdownMode === 'Single App Mode') {
+          profilesToAssign.push({ id: PROFILE_IDS.SAFARI_LOCK, name: 'Safari Lock (Single App)', reason: 'Kiosk Single App Mode' });
+        } else if (dcrData.lockdownMode === 'Guided Access') {
+          manualSetupNeeded.push('Guided Access passcode must be configured per-device' + (dcrData.guidedAccessPasscode ? ` (passcode: ${dcrData.guidedAccessPasscode})` : ''));
+        }
+      }
+
+      // ═══ Build bundled mobileconfig (event-specific payloads) ═══
+      const bundledPayloads = [];
 
       // Helper: check if an app name is in the requested list
       const hasApp = (keyword) => {
@@ -1215,72 +1302,65 @@ app.post('/api/automation/provision', async (req, res) => {
         return allApps.some(a => normalize(a).includes(keyword));
       };
 
-      // ═══ Always applied ═══
-      profilesToAssign.push({ id: PROFILE_IDS.DEFAULT_RESTRICTIONS, name: 'Default Restrictions', reason: 'Always applied' });
-      profilesToAssign.push({ id: PROFILE_IDS.FELLO_WIFI, name: 'Fello Wi-Fi', reason: 'Always applied' });
-
-      // ═══ Mode-specific profiles ═══
-      const mode = (dcrData.configMode || '').toLowerCase();
-
-      // ── Check-in Mode ──
-      if (mode.includes('check-in') || mode.includes('checkin')) {
-        if (hasApp('eventbrite')) {
-          profilesToAssign.push({ id: PROFILE_IDS.EVENTBRITE_PASSCODE, name: 'Eventbrite Passcode Policy', reason: 'Check-in mode + Eventbrite' });
-        }
-      }
-
-      // ── Kiosk Mode ──
-      if (mode.includes('kiosk')) {
-        // Lockdown mode
-        if (dcrData.lockdownMode === 'Single App Mode') {
-          profilesToAssign.push({ id: PROFILE_IDS.SAFARI_LOCK, name: 'Safari Lock (Single App)', reason: 'Kiosk Single App Mode' });
-        } else if (dcrData.lockdownMode === 'Guided Access') {
-          manualSetupNeeded.push('Guided Access passcode must be configured per-device' + (dcrData.guidedAccessPasscode ? ` (passcode: ${dcrData.guidedAccessPasscode})` : ''));
-        }
-
-        // Web content restrictions (Kiosk-specific)
-        if (dcrData.restrictionsEnabled === 'Yes' && dcrData.restrictionType) {
-          if (dcrData.restrictionType === 'Whitelist') {
-            profilesToAssign.push({ id: PROFILE_IDS.GOOGLE_ACCOUNTS_WHITELIST, name: 'Google Accounts Whitelist', reason: 'Kiosk Whitelist restrictions' });
-          } else if (dcrData.restrictionType === 'Blacklist') {
-            profilesToAssign.push({ id: PROFILE_IDS.SYSTEM_APP_BLACKLIST, name: 'System App Blacklist', reason: 'Kiosk Blacklist restrictions' });
-          }
-          if (dcrData.restrictionUrls && dcrData.restrictionUrls.length > 0) {
-            manualSetupNeeded.push(`Custom ${dcrData.restrictionType} URLs need manual configuration: ${dcrData.restrictionUrls.join(', ')}`);
-          }
-        }
-
-        // Web clips
-        if (dcrData.webClips && dcrData.webClips.length > 0) {
-          manualSetupNeeded.push(`Web clips need manual profile creation: ${dcrData.webClips.join(', ')}`);
-        }
-      }
-
-      // ═══ Cross-mode options ═══
-
-      // Custom Wi-Fi profile (auto-create if customer provided their own SSID)
+      // -- Custom Wi-Fi --
       if (dcrData.wifiEnabled === 'Yes' && dcrData.wifiSsid && dcrData.wifiSsid.trim()) {
-        const ssid = dcrData.wifiSsid.trim();
-        const password = dcrData.wifiPassword || '';
-        const security = dcrData.wifiSecurity || 'WPA2';
-        const hidden = dcrData.wifiHidden === 'Yes';
+        bundledPayloads.push(wifiPayload(
+          dcrData.wifiSsid.trim(),
+          dcrData.wifiPassword || '',
+          dcrData.wifiSecurity || 'WPA2',
+          dcrData.wifiHidden === 'Yes'
+        ));
+      }
 
+      // -- Passcode Policy --
+      // Check-in + Eventbrite, or Kiosk mode
+      if ((mode.includes('check-in') || mode.includes('checkin')) && hasApp('eventbrite')) {
+        bundledPayloads.push(passcodePayload('Check-in'));
+      } else if (mode.includes('kiosk')) {
+        bundledPayloads.push(passcodePayload('Kiosk'));
+      }
+
+      // -- Web Content Filter (Kiosk only) --
+      if (mode.includes('kiosk') && dcrData.restrictionsEnabled === 'Yes' &&
+          dcrData.restrictionType && dcrData.restrictionUrls && dcrData.restrictionUrls.length > 0) {
+        bundledPayloads.push(webContentFilterPayload(dcrData.restrictionType, dcrData.restrictionUrls));
+      }
+
+      // ═══ Upload bundled mobileconfig if there are payloads ═══
+      if (bundledPayloads.length > 0) {
+        const profileName = `${eventName} — Custom Config`;
         try {
-          const wifiProfile = await createWifiProfile(rawKey, ssid, password, security, hidden);
-          profilesToAssign.push({ id: wifiProfile.id, name: wifiProfile.name, reason: `Custom Wi-Fi: "${ssid}"` });
-          run.wifiProfileCreated = { id: wifiProfile.id, name: wifiProfile.name, ssid };
-          console.log(`[PROVISION]   ✓ Created Wi-Fi profile: "${wifiProfile.name}" (ID: ${wifiProfile.id})`);
+          const mobileconfigXml = buildMobileconfig(eventName, dcrData, bundledPayloads);
+          const uploaded = await uploadCustomProfile(rawKey, profileName, mobileconfigXml);
+          profilesToAssign.push({ id: uploaded.id, name: uploaded.name, reason: `Bundled config (${bundledPayloads.map(p => p.name).join(', ')})` });
+          run.customConfigCreated = {
+            id: uploaded.id,
+            name: uploaded.name,
+            payloads: bundledPayloads.map(p => p.name),
+          };
+          console.log(`[PROVISION]   ✓ Created bundled config: "${profileName}" (ID: ${uploaded.id})`);
+          console.log(`[PROVISION]     Payloads: ${bundledPayloads.map(p => p.name).join(', ')}`);
         } catch (e) {
-          console.error(`[PROVISION]   ✗ Failed to create Wi-Fi profile for "${ssid}":`, e.message);
-          manualSetupNeeded.push(`Custom Wi-Fi profile creation failed for "${ssid}": ${e.message}`);
+          console.error(`[PROVISION]   ✗ Failed to create bundled config:`, e.message);
+          manualSetupNeeded.push(`Bundled config creation failed: ${e.message}`);
+          // List individual payloads that need manual setup
+          bundledPayloads.forEach(p => manualSetupNeeded.push(`  → ${p.name} needs manual configuration`));
         }
       }
-      // Custom wallpaper (any mode)
+
+      // ═══ Items that still need manual setup ═══
+
+      // Custom wallpaper (requires image upload — can't do via mobileconfig)
       if (dcrData.customWallpaper === 'Yes') {
-        manualSetupNeeded.push('Custom wallpaper requested — upload image and create wallpaper profile in SimpleMDM');
+        manualSetupNeeded.push('Custom wallpaper requested — upload image in SimpleMDM');
       }
 
-      // App login credentials (any mode)
+      // Web clips (Kiosk — could be bundled but need icon assets)
+      if (dcrData.webClips && dcrData.webClips.length > 0) {
+        manualSetupNeeded.push(`Web clips need manual setup: ${dcrData.webClips.join(', ')}`);
+      }
+
+      // App login credentials
       if (dcrData.appLoginEnabled === 'Yes') {
         const loginApps = dcrData.appLoginApps || [];
         manualSetupNeeded.push(`App login credentials needed for: ${loginApps.length > 0 ? loginApps.join(', ') : 'selected apps'}`);
@@ -1288,7 +1368,7 @@ app.post('/api/automation/provision', async (req, res) => {
 
       // Custom home screen layout
       if (dcrData.homeScreenLayout === 'Custom') {
-        manualSetupNeeded.push('Custom home screen layout requested — create layout profile manually in SimpleMDM');
+        manualSetupNeeded.push('Custom home screen layout — create layout profile manually');
       }
 
       // Store manual setup items in the run
@@ -1298,7 +1378,7 @@ app.post('/api/automation/provision', async (req, res) => {
         manualSetupNeeded.forEach(item => console.log(`[PROVISION]     • ${item}`));
       }
 
-      // Assign all matched profiles
+      // Assign all profiles to the group
       for (const prof of profilesToAssign) {
         try {
           await smdmRequest(rawKey, `/assignment_groups/${groupId}/profiles/${prof.id}`, 'POST');
