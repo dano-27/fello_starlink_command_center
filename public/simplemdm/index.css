@@ -1971,3 +1971,129 @@ select.prov-input {
 .wp-preview.hidden + .wp-dropzone-content {
     display: block;
 }
+
+/* ================================================
+   SERIAL NUMBER ASSIGNMENT
+   ================================================ */
+
+.serial-textarea {
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 0.85rem;
+    resize: vertical;
+    min-height: 140px;
+    line-height: 1.6;
+}
+
+.serial-count {
+    margin-top: 6px;
+    font-size: 0.78rem;
+    color: var(--charcol);
+    opacity: 0.6;
+}
+
+.serial-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.85rem;
+    color: var(--charcol);
+    margin: 12px 0 16px;
+    cursor: pointer;
+}
+
+.serial-checkbox input[type="checkbox"] {
+    accent-color: var(--blue);
+    width: 16px;
+    height: 16px;
+}
+
+.serial-progress-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+    font-size: 0.9rem;
+    color: var(--charcol);
+}
+
+.serial-progress-bar {
+    height: 6px;
+    background: var(--border);
+    border-radius: 3px;
+    overflow: hidden;
+    margin-bottom: 16px;
+}
+
+.serial-progress-fill {
+    height: 100%;
+    background: var(--blue);
+    border-radius: 3px;
+    transition: width 0.3s ease;
+}
+
+.serial-results-list {
+    max-height: 320px;
+    overflow-y: auto;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin-top: 12px;
+}
+
+.serial-result-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    font-size: 0.85rem;
+}
+
+.serial-result-item:last-child {
+    border-bottom: none;
+}
+
+.serial-result-icon {
+    font-size: 1rem;
+    flex-shrink: 0;
+}
+
+.serial-result-sn {
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-weight: 600;
+    min-width: 120px;
+}
+
+.serial-result-info {
+    color: var(--charcol);
+    font-size: 0.78rem;
+}
+
+.serial-result-item.success {
+    background: #f0faf3;
+}
+
+.serial-result-item.warning {
+    background: #fef9ef;
+}
+
+.serial-result-item.error {
+    background: #fef2f2;
+}
+
+.serial-results-summary {
+    display: flex;
+    gap: 16px;
+    margin-bottom: 8px;
+}
+
+.serial-summary-stat {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.serial-summary-stat.success { color: var(--success-color); }
+.serial-summary-stat.warning { color: #d97706; }
+.serial-summary-stat.error { color: var(--light-red); }

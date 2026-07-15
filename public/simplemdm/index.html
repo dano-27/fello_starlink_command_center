@@ -57,6 +57,65 @@
         </div>
     </div>
 
+    <!-- Serial Number Assignment Modal -->
+    <div id="serial-modal-overlay" class="modal-overlay hidden">
+        <div class="modal-container" style="max-width: 560px;">
+            <div class="modal-header">
+                <div class="modal-title-group">
+                    <h2>Add Devices by Serial Number</h2>
+                    <span class="modal-badge status-badge status-running">DEP</span>
+                </div>
+                <button class="modal-close" id="serial-modal-close" aria-label="Close modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <!-- Input Phase -->
+                <div id="serial-input-phase">
+                    <div class="form-group">
+                        <label for="serial-textarea">Paste Serial Numbers</label>
+                        <textarea id="serial-textarea" class="prov-input serial-textarea" rows="8" placeholder="Paste serial numbers here — one per line, comma-separated, or space-separated.
+
+Example:
+GG7YH89UJF88
+F9FQN03GGHMK
+GG7YJ21SJF88"></textarea>
+                        <div class="serial-count" id="serial-count">0 serial numbers detected</div>
+                    </div>
+                    <label class="serial-checkbox">
+                        <input type="checkbox" id="serial-auto-sync" checked>
+                        Auto-sync ABM if devices not found
+                    </label>
+                    <div class="provision-form-actions">
+                        <button type="button" class="btn btn-secondary" id="serial-cancel">Cancel</button>
+                        <button type="button" class="btn btn-primary" id="serial-submit" disabled>
+                            <span class="btn-text">Assign to Group</span>
+                            <span class="btn-spinner hidden"></span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Progress Phase -->
+                <div id="serial-progress-phase" class="hidden">
+                    <div class="serial-progress-header">
+                        <div class="loader" style="width:20px;height:20px;border-width:2px;"></div>
+                        <span id="serial-progress-text">Processing 0 of 0 serials…</span>
+                    </div>
+                    <div class="serial-progress-bar">
+                        <div class="serial-progress-fill" id="serial-progress-fill" style="width: 0%"></div>
+                    </div>
+                </div>
+
+                <!-- Results Phase -->
+                <div id="serial-results-phase" class="hidden">
+                    <div id="serial-results-summary"></div>
+                    <div id="serial-results-list" class="serial-results-list"></div>
+                    <div class="provision-form-actions" style="margin-top: 16px;">
+                        <button type="button" class="btn btn-primary" id="serial-done">Done</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Wallpaper Creator Modal -->
     <div id="wallpaper-modal-overlay" class="modal-overlay hidden">
         <div class="modal-container" style="max-width: 520px;">
@@ -295,6 +354,14 @@
 
             <!-- TAB: Devices -->
             <div class="group-tab-content" id="gtab-devices">
+                <div class="gtab-toolbar">
+                    <h4 class="gtab-title">Enrolled Devices</h4>
+                    <div style="display: flex; gap: 8px;">
+                        <button class="btn btn-outline btn-sm" id="dep-sync-btn">🔄 Sync ABM</button>
+                        <button class="btn btn-primary btn-sm" id="add-by-serial-btn">+ Add by Serial</button>
+                    </div>
+                </div>
+
                 <!-- Loading State -->
                 <div class="loading-state" id="devices-loading">
                     <div class="loader"></div>

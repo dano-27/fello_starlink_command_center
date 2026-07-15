@@ -106,6 +106,24 @@
         wpSubmit:            $('#wp-submit'),
         createWallpaperBtn:  $('#create-wallpaper-btn'),
 
+        // Serial Assignment Modal
+        serialModalOverlay:  $('#serial-modal-overlay'),
+        serialModalClose:    $('#serial-modal-close'),
+        serialTextarea:      $('#serial-textarea'),
+        serialCount:         $('#serial-count'),
+        serialAutoSync:      $('#serial-auto-sync'),
+        serialCancel:        $('#serial-cancel'),
+        serialSubmit:        $('#serial-submit'),
+        serialInputPhase:    $('#serial-input-phase'),
+        serialProgressPhase: $('#serial-progress-phase'),
+        serialProgressText:  $('#serial-progress-text'),
+        serialProgressFill:  $('#serial-progress-fill'),
+        serialResultsPhase:  $('#serial-results-phase'),
+        serialResultsSummary:$('#serial-results-summary'),
+        serialResultsList:   $('#serial-results-list'),
+        serialDone:          $('#serial-done'),
+        addBySerialBtn:      $('#add-by-serial-btn'),
+        depSyncBtn:          $('#dep-sync-btn'),
 
         // Device Modal
         modalOverlay:        $('#device-modal-overlay'),
@@ -1617,6 +1635,10 @@
 
         // Wallpaper creator
         if (dom.createWallpaperBtn) dom.createWallpaperBtn.addEventListener('click', openWallpaperModal);
+
+        // Serial assignment
+        if (dom.addBySerialBtn) dom.addBySerialBtn.addEventListener('click', openSerialModal);
+        if (dom.depSyncBtn) dom.depSyncBtn.addEventListener('click', triggerDepSync);
     }
 
     function switchGroupTab(tab) {
@@ -2077,6 +2099,177 @@
             btnText.textContent = 'Create Profile';
             btnSpinner.classList.add('hidden');
             dom.wpSubmit.disabled = !state.wpImageBase64;
+        }
+    }
+
+    // ================================================
+    //  SERIAL NUMBER ASSIGNMENT
+    // ================================================
+
+    function parseSerials(text) {
+        // Split by newlines, commas, spaces, tabs — filter to non-empty
+        return [...new Set(
+            text.split(/[\n,\s\t]+/)
+                .map(s => s.trim().toUpperCase().replace(/[^A-Z0-9]/g, ''))
+                .filter(s => s.length >= 8) // Apple serials are 10-12 chars
+        )];
+    }
+
+    let serialEventsInit = false;
+    function openSerialModal() {
+        // Reset to input phase
+        dom.serialInputPhase.classList.remove('hidden');
+        dom.serialProgressPhase.classList.add('hidden');
+        dom.serialResultsPhase.classList.add('hidden');
+        dom.serialTextarea.value = '';
+        dom.serialCount.textContent = '0 serial numbers detected';
+        dom.serialSubmit.disabled = true;
+        dom.serialModalOverlay.classList.remove('hidden');
+        dom.serialTextarea.focus();
+
+        if (!serialEventsInit) {
+            serialEventsInit = true;
+
+            // Close
+            dom.serialModalClose.addEventListener('click', closeSerialModal);
+            dom.serialCancel.addEventListener('click', closeSerialModal);
+            dom.serialModalOverlay.addEventListener('click', (e) => {
+                if (e.target === dom.serialModalOverlay) closeSerialModal();
+            });
+            dom.serialDone.addEventListener('click', () => {
+                closeSerialModal();
+                // Refresh device list
+                if (state.currentGroup) fetchGroupDevices(state.currentGroup);
+            });
+
+            // Textarea parsing
+            dom.serialTextarea.addEventListener('input', () => {
+                const serials = parseSerials(dom.serialTextarea.value);
+                dom.serialCount.textContent = `${serials.length} serial number${serials.length !== 1 ? 's' : ''} detected`;
+                dom.serialSubmit.disabled = serials.length === 0;
+            });
+
+            // Submit
+            dom.serialSubmit.addEventListener('click', submitSerials);
+        }
+    }
+
+    function closeSerialModal() {
+        dom.serialModalOverlay.classList.add('hidden');
+    }
+
+    async function submitSerials() {
+        const serials = parseSerials(dom.serialTextarea.value);
+        if (serials.length === 0) return;
+        if (!state.currentGroup) return;
+
+        const groupId = state.currentGroup.id;
+        const autoSync = dom.serialAutoSync.checked;
+
+        // Switch to progress phase
+        dom.serialInputPhase.classList.add('hidden');
+        dom.serialProgressPhase.classList.remove('hidden');
+        dom.serialProgressText.textContent = `Processing ${serials.length} serial${serials.length !== 1 ? 's' : ''}…`;
+        dom.serialProgressFill.style.width = '10%';
+
+        try {
+            const resp = await fetch(`/api/simplemdm/groups/${groupId}/assign-serials`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Basic ${btoa(state.apiKey + ':')}`,
+                },
+                body: JSON.stringify({ serials, autoSync }),
+            });
+
+            dom.serialProgressFill.style.width = '90%';
+
+            const results = await resp.json();
+
+            if (!resp.ok) throw new Error(results.error || 'Assignment failed');
+
+            dom.serialProgressFill.style.width = '100%';
+
+            // Brief pause then show results
+            setTimeout(() => renderSerialResults(results), 300);
+        } catch (err) {
+            showToast('Serial assignment failed: ' + err.message, 'error');
+            // Go back to input phase
+            dom.serialProgressPhase.classList.add('hidden');
+            dom.serialInputPhase.classList.remove('hidden');
+        }
+    }
+
+    function renderSerialResults(results) {
+        dom.serialProgressPhase.classList.add('hidden');
+        dom.serialResultsPhase.classList.remove('hidden');
+
+        const assigned = results.assigned || [];
+        const notFound = results.notFound || [];
+        const errors = results.errors || [];
+
+        // Summary
+        let summaryHtml = '<div class="serial-results-summary">';
+        if (assigned.length > 0) summaryHtml += `<div class="serial-summary-stat success">✅ ${assigned.length} assigned</div>`;
+        if (notFound.length > 0) summaryHtml += `<div class="serial-summary-stat warning">⚠️ ${notFound.length} not found</div>`;
+        if (errors.length > 0) summaryHtml += `<div class="serial-summary-stat error">❌ ${errors.length} error${errors.length !== 1 ? 's' : ''}</div>`;
+        if (results.syncTriggered) summaryHtml += `<div class="serial-summary-stat" style="color:var(--blue)">🔄 ABM sync triggered</div>`;
+        summaryHtml += '</div>';
+        dom.serialResultsSummary.innerHTML = summaryHtml;
+
+        // Result items
+        let listHtml = '';
+        for (const item of assigned) {
+            listHtml += `<div class="serial-result-item success">
+                <span class="serial-result-icon">✅</span>
+                <span class="serial-result-sn">${escapeHtml(item.serial)}</span>
+                <span class="serial-result-info">${escapeHtml(item.name || '')} — assigned (${item.source})</span>
+            </div>`;
+        }
+        for (const item of notFound) {
+            listHtml += `<div class="serial-result-item warning">
+                <span class="serial-result-icon">⚠️</span>
+                <span class="serial-result-sn">${escapeHtml(item.serial)}</span>
+                <span class="serial-result-info">${escapeHtml(item.reason)}</span>
+            </div>`;
+        }
+        for (const item of errors) {
+            listHtml += `<div class="serial-result-item error">
+                <span class="serial-result-icon">❌</span>
+                <span class="serial-result-sn">${escapeHtml(item.serial)}</span>
+                <span class="serial-result-info">${escapeHtml(item.error)}</span>
+            </div>`;
+        }
+        dom.serialResultsList.innerHTML = listHtml;
+
+        // Toast
+        if (assigned.length > 0) {
+            showToast(`${assigned.length} device${assigned.length !== 1 ? 's' : ''} assigned to group`, 'success');
+        }
+    }
+
+    async function triggerDepSync() {
+        dom.depSyncBtn.disabled = true;
+        dom.depSyncBtn.textContent = '🔄 Syncing…';
+
+        try {
+            const resp = await fetch('/api/simplemdm/dep/sync', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Basic ${btoa(state.apiKey + ':')}`,
+                },
+            });
+
+            if (resp.ok || resp.status === 202) {
+                showToast('ABM sync triggered — new devices will appear shortly', 'success');
+            } else {
+                showToast('ABM sync failed', 'error');
+            }
+        } catch (err) {
+            showToast('ABM sync error: ' + err.message, 'error');
+        } finally {
+            dom.depSyncBtn.disabled = false;
+            dom.depSyncBtn.textContent = '🔄 Sync ABM';
         }
     }
 

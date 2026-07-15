@@ -1196,6 +1196,140 @@ const PROFILE_IDS = {
   SAFARI_LOCK: 145745,  // Single App Lock (Kiosk mode)
 };
 
+// ── DEP Sync ────────────────────────────────────────────────────────
+app.post('/api/simplemdm/dep/sync', async (req, res) => {
+  const auth = req.headers.authorization;
+  if (!auth) return res.status(401).json({ error: 'Missing Authorization header' });
+
+  try {
+    const resp = await fetch('https://a.simplemdm.com/api/v1/dep_servers/10650/sync', {
+      method: 'POST',
+      headers: { Authorization: auth },
+    });
+    console.log(`[DEP] Sync triggered — status ${resp.status}`);
+    return res.status(resp.status).json({ status: 'sync_triggered' });
+  } catch (err) {
+    console.error('[DEP] Sync error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Assign Devices by Serial Number ─────────────────────────────────
+app.post('/api/simplemdm/groups/:groupId/assign-serials', async (req, res) => {
+  const auth = req.headers.authorization;
+  if (!auth) return res.status(401).json({ error: 'Missing Authorization header' });
+
+  const { serials, autoSync } = req.body;
+  const groupId = req.params.groupId;
+
+  if (!Array.isArray(serials) || serials.length === 0) {
+    return res.status(400).json({ error: 'No serial numbers provided' });
+  }
+
+  // Deduplicate and clean
+  const cleanSerials = [...new Set(serials.map(s => s.trim().toUpperCase()).filter(Boolean))];
+  console.log(`[ASSIGN] Processing ${cleanSerials.length} serials for group ${groupId}`);
+
+  const results = { assigned: [], notFound: [], errors: [] };
+
+  // Step 1: Try to find each serial in the enrolled devices list
+  for (const sn of cleanSerials) {
+    try {
+      // Search enrolled devices
+      const searchResp = await fetch(`https://a.simplemdm.com/api/v1/devices?search=${encodeURIComponent(sn)}`, {
+        headers: { Authorization: auth },
+      });
+      const searchData = searchResp.ok ? await searchResp.json() : { data: [] };
+      const device = (searchData.data || []).find(d =>
+        d.attributes && d.attributes.serial_number &&
+        d.attributes.serial_number.toUpperCase() === sn
+      );
+
+      if (device) {
+        // Found enrolled device — assign to group
+        const assignResp = await fetch(`https://a.simplemdm.com/api/v1/assignment_groups/${groupId}/devices/${device.id}`, {
+          method: 'POST',
+          headers: { Authorization: auth },
+        });
+        if (assignResp.status === 204 || assignResp.ok) {
+          results.assigned.push({ serial: sn, deviceId: device.id, name: device.attributes.name || sn, source: 'enrolled' });
+          console.log(`[ASSIGN]   ✓ ${sn} → device ${device.id} → group ${groupId}`);
+        } else {
+          results.errors.push({ serial: sn, error: `Assignment failed (${assignResp.status})` });
+        }
+        continue;
+      }
+
+      // Not found in enrolled — search DEP devices
+      let found = false;
+      let depPage = 0;
+      let hasMore = true;
+      while (hasMore && !found) {
+        const depUrl = `https://a.simplemdm.com/api/v1/dep_servers/10650/dep_devices?limit=100${depPage > 0 ? `&starting_after=${depPage * 100}` : ''}`;
+        const depResp = await fetch(depUrl, { headers: { Authorization: auth } });
+        const depData = depResp.ok ? await depResp.json() : { data: [], has_more: false };
+
+        const depDevice = (depData.data || []).find(d =>
+          d.attributes && d.attributes.serial_number &&
+          d.attributes.serial_number.toUpperCase() === sn
+        );
+
+        if (depDevice) {
+          // Found in DEP
+          const linkedDevice = depDevice.relationships && depDevice.relationships.device && depDevice.relationships.device.data;
+          if (linkedDevice && linkedDevice.id) {
+            // Has an enrolled device link — assign that
+            const assignResp = await fetch(`https://a.simplemdm.com/api/v1/assignment_groups/${groupId}/devices/${linkedDevice.id}`, {
+              method: 'POST',
+              headers: { Authorization: auth },
+            });
+            if (assignResp.status === 204 || assignResp.ok) {
+              results.assigned.push({ serial: sn, deviceId: linkedDevice.id, name: sn, source: 'dep_enrolled' });
+              console.log(`[ASSIGN]   ✓ ${sn} → DEP device ${depDevice.id} → enrolled device ${linkedDevice.id} → group`);
+            } else {
+              results.errors.push({ serial: sn, error: `DEP assignment failed (${assignResp.status})` });
+            }
+          } else {
+            // DEP device but not yet enrolled — flag it
+            results.notFound.push({ serial: sn, reason: 'In DEP but not enrolled yet (device needs to be powered on)' });
+            console.log(`[ASSIGN]   ⚠ ${sn} found in DEP but not enrolled`);
+          }
+          found = true;
+        }
+
+        hasMore = depData.has_more === true;
+        depPage++;
+        if (depPage > 20) break; // safety limit
+      }
+
+      if (!found) {
+        results.notFound.push({ serial: sn, reason: 'Not found in SimpleMDM or DEP' });
+        console.log(`[ASSIGN]   ✗ ${sn} not found anywhere`);
+      }
+    } catch (err) {
+      results.errors.push({ serial: sn, error: err.message });
+      console.error(`[ASSIGN]   ✗ ${sn} error:`, err.message);
+    }
+  }
+
+  // If we had notFound items and autoSync is requested, trigger a DEP sync
+  if (autoSync && results.notFound.length > 0) {
+    try {
+      await fetch('https://a.simplemdm.com/api/v1/dep_servers/10650/sync', {
+        method: 'POST',
+        headers: { Authorization: auth },
+      });
+      console.log('[ASSIGN] Triggered DEP sync for unresolved serials');
+      results.syncTriggered = true;
+    } catch (e) {
+      console.error('[ASSIGN] DEP sync failed:', e.message);
+    }
+  }
+
+  console.log(`[ASSIGN] Done: ${results.assigned.length} assigned, ${results.notFound.length} not found, ${results.errors.length} errors`);
+  return res.json(results);
+});
+
 // ── Create Wallpaper Profile ────────────────────────────────────────
 app.post('/api/automation/wallpaper', async (req, res) => {
   const { imageBase64, where, profileName, groupId } = req.body;
