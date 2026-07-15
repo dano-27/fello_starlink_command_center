@@ -976,11 +976,17 @@ function matchHomeScreenLayout(appNames, layouts) {
 
 // ── Known profile IDs ───────────────────────────────────────────────
 const PROFILE_IDS = {
+  // Always applied
   DEFAULT_RESTRICTIONS: 142210,
-  DEFAULT_RESTRICTIONS_HOTSPOT: 160622,
   FELLO_WIFI: 133014,
+  // Mode-specific
+  DEFAULT_RESTRICTIONS_HOTSPOT: 160622,
   EVENTBRITE_PASSCODE: 160284,
   SAFARI_LOCK: 145745,
+  ADOBE_READER_SAM: 152634,
+  // Kiosk web content filters
+  GOOGLE_ACCOUNTS_WHITELIST: 83240,
+  SYSTEM_APP_BLACKLIST: 147124,
 };
 
 // ── Provisioning endpoint ───────────────────────────────────────────
@@ -1015,6 +1021,7 @@ app.post('/api/automation/provision', async (req, res) => {
     profilesAssigned: [],
     layoutMatched: null,
     errors: [],
+    manualSetupNeeded: [],
     dcrPayload: dcrData,
   };
 
@@ -1097,27 +1104,81 @@ app.post('/api/automation/provision', async (req, res) => {
 
       // ── Step 3: Assign Profiles ──
       const profilesToAssign = [];
+      const manualSetupNeeded = [];  // Items that can't be auto-provisioned
 
-      // Always: Default Restrictions + Fello WiFi
+      // Helper: check if an app name is in the requested list
+      const hasApp = (keyword) => {
+        const allApps = [...requestedApps, ...run.appsMatched.map(a => a.matched)];
+        return allApps.some(a => normalize(a).includes(keyword));
+      };
+
+      // ═══ Always applied ═══
       profilesToAssign.push({ id: PROFILE_IDS.DEFAULT_RESTRICTIONS, name: 'Default Restrictions', reason: 'Always applied' });
       profilesToAssign.push({ id: PROFILE_IDS.FELLO_WIFI, name: 'Fello Wi-Fi', reason: 'Always applied' });
 
-      // Mode-specific
+      // ═══ Mode-specific profiles ═══
       const mode = (dcrData.configMode || '').toLowerCase();
+
+      // ── Check-in Mode ──
       if (mode.includes('check-in') || mode.includes('checkin')) {
-        // If Eventbrite is in the app list, add passcode policy
-        const hasEventbrite = requestedApps.some(a => normalize(a).includes('eventbrite'));
-        if (hasEventbrite) {
+        if (hasApp('eventbrite')) {
           profilesToAssign.push({ id: PROFILE_IDS.EVENTBRITE_PASSCODE, name: 'Eventbrite Passcode Policy', reason: 'Check-in mode + Eventbrite' });
         }
       }
 
+      // ── Kiosk Mode ──
       if (mode.includes('kiosk')) {
+        // Lockdown mode
         if (dcrData.lockdownMode === 'Single App Mode') {
           profilesToAssign.push({ id: PROFILE_IDS.SAFARI_LOCK, name: 'Safari Lock (Single App)', reason: 'Kiosk Single App Mode' });
+        } else if (dcrData.lockdownMode === 'Guided Access') {
+          manualSetupNeeded.push('Guided Access passcode must be configured per-device' + (dcrData.guidedAccessPasscode ? ` (passcode: ${dcrData.guidedAccessPasscode})` : ''));
+        }
+
+        // Web content restrictions (Kiosk-specific)
+        if (dcrData.restrictionsEnabled === 'Yes' && dcrData.restrictionType) {
+          if (dcrData.restrictionType === 'Whitelist') {
+            profilesToAssign.push({ id: PROFILE_IDS.GOOGLE_ACCOUNTS_WHITELIST, name: 'Google Accounts Whitelist', reason: 'Kiosk Whitelist restrictions' });
+          } else if (dcrData.restrictionType === 'Blacklist') {
+            profilesToAssign.push({ id: PROFILE_IDS.SYSTEM_APP_BLACKLIST, name: 'System App Blacklist', reason: 'Kiosk Blacklist restrictions' });
+          }
+          if (dcrData.restrictionUrls && dcrData.restrictionUrls.length > 0) {
+            manualSetupNeeded.push(`Custom ${dcrData.restrictionType} URLs need manual configuration: ${dcrData.restrictionUrls.join(', ')}`);
+          }
+        }
+
+        // Web clips
+        if (dcrData.webClips && dcrData.webClips.length > 0) {
+          manualSetupNeeded.push(`Web clips need manual profile creation: ${dcrData.webClips.join(', ')}`);
         }
       }
 
+      // ═══ Cross-mode options ═══
+
+      // Custom wallpaper (any mode)
+      if (dcrData.customWallpaper === 'Yes') {
+        manualSetupNeeded.push('Custom wallpaper requested — upload image and create wallpaper profile in SimpleMDM');
+      }
+
+      // App login credentials (any mode)
+      if (dcrData.appLoginEnabled === 'Yes') {
+        const loginApps = dcrData.appLoginApps || [];
+        manualSetupNeeded.push(`App login credentials needed for: ${loginApps.length > 0 ? loginApps.join(', ') : 'selected apps'}`);
+      }
+
+      // Custom home screen layout
+      if (dcrData.homeScreenLayout === 'Custom') {
+        manualSetupNeeded.push('Custom home screen layout requested — create layout profile manually in SimpleMDM');
+      }
+
+      // Store manual setup items in the run
+      run.manualSetupNeeded = manualSetupNeeded;
+      if (manualSetupNeeded.length > 0) {
+        console.log(`[PROVISION]   ⚙ Manual setup needed (${manualSetupNeeded.length} items):`);
+        manualSetupNeeded.forEach(item => console.log(`[PROVISION]     • ${item}`));
+      }
+
+      // Assign all matched profiles
       for (const prof of profilesToAssign) {
         try {
           await smdmRequest(rawKey, `/assignment_groups/${groupId}/profiles/${prof.id}`, 'POST');
@@ -1148,7 +1209,7 @@ app.post('/api/automation/provision', async (req, res) => {
       }
 
       // ── Done ──
-      run.status = run.appsFailed.length > 0 || run.errors.length > 0 ? 'partial' : 'success';
+      run.status = (run.appsFailed.length > 0 || run.errors.length > 0 || run.manualSetupNeeded.length > 0) ? 'partial' : 'success';
       console.log(`[PROVISION] ✅ Complete: ${run.status} — Group "${groupName}" (ID: ${groupId})`);
 
     } catch (err) {

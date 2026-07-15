@@ -1,5 +1,82 @@
 [
   {
+    "id": "prov-1784130663947-h0po5r",
+    "timestamp": "2026-07-15T15:51:03.947Z",
+    "eventName": "Profile Mapping Test",
+    "orderNumber": "MAP-001",
+    "configMode": "Kiosk Mode",
+    "contactName": "",
+    "company": "",
+    "status": "partial",
+    "groupId": 2396755,
+    "groupName": "Profile Mapping Test — MAP-001",
+    "appsRequested": [
+      "Safari"
+    ],
+    "appsMatched": [],
+    "appsFailed": [
+      "Safari"
+    ],
+    "profilesAssigned": [
+      {
+        "name": "Default Restrictions",
+        "id": 142210,
+        "reason": "Always applied"
+      },
+      {
+        "name": "Fello Wi-Fi",
+        "id": 133014,
+        "reason": "Always applied"
+      },
+      {
+        "name": "Safari Lock (Single App)",
+        "id": 145745,
+        "reason": "Kiosk Single App Mode"
+      },
+      {
+        "name": "Google Accounts Whitelist",
+        "id": 83240,
+        "reason": "Kiosk Whitelist restrictions"
+      }
+    ],
+    "layoutMatched": {
+      "name": "Chrome/Safari homescreen ",
+      "id": 228691
+    },
+    "errors": [],
+    "manualSetupNeeded": [
+      "Custom Whitelist URLs need manual configuration: https://example.com, https://myevent.com",
+      "Web clips need manual profile creation: Event Homepage, Registration",
+      "Custom wallpaper requested — upload image and create wallpaper profile in SimpleMDM",
+      "App login credentials needed for: Safari"
+    ],
+    "dcrPayload": {
+      "eventName": "Profile Mapping Test",
+      "orderNumber": "MAP-001",
+      "configMode": "Kiosk Mode",
+      "apps": [
+        "Safari"
+      ],
+      "lockdownMode": "Single App Mode",
+      "restrictionsEnabled": "Yes",
+      "restrictionType": "Whitelist",
+      "restrictionUrls": [
+        "https://example.com",
+        "https://myevent.com"
+      ],
+      "webClips": [
+        "Event Homepage",
+        "Registration"
+      ],
+      "customWallpaper": "Yes",
+      "appLoginEnabled": "Yes",
+      "appLoginApps": [
+        "Safari"
+      ],
+      "homeScreenLayout": "Standard"
+    }
+  },
+  {
     "id": "prov-1784129423622-jy557m",
     "timestamp": "2026-07-15T15:30:23.622Z",
     "eventName": "DCR Direct Test",

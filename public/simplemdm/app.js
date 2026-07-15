@@ -1313,6 +1313,18 @@
             layoutHtml = '<span class="prov-no-data">None</span>';
         }
 
+        // Manual setup needed
+        let manualHtml = '';
+        if (run.manualSetupNeeded && run.manualSetupNeeded.length > 0) {
+            manualHtml = '<ul class="prov-detail-list">' +
+                run.manualSetupNeeded.map(item =>
+                    `<li><span class="prov-icon">⚠</span> ${escapeHtml(item)}</li>`
+                ).join('') +
+                '</ul>';
+        } else {
+            manualHtml = '<span class="prov-no-data">None — fully automated</span>';
+        }
+
         tr.innerHTML = `
             <td colspan="7">
                 <div class="prov-detail-content">
@@ -1334,6 +1346,11 @@
                             ${layoutHtml}
                         </div>
                     </div>
+                    ${run.manualSetupNeeded && run.manualSetupNeeded.length > 0 ? `
+                    <div class="prov-manual-section">
+                        <h5>⚙ Manual Setup Required</h5>
+                        ${manualHtml}
+                    </div>` : ''}
                 </div>
             </td>
         `;

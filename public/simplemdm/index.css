@@ -1284,6 +1284,27 @@ body {
     color: var(--blue);
 }
 
+.prov-manual-section {
+    margin-top: 16px;
+    padding: 16px;
+    background: #fff8f0;
+    border: 1px solid #f5d9b3;
+    border-radius: var(--radius-sm);
+    border-left: 4px solid var(--orange, #f59231);
+}
+
+.prov-manual-section h5 {
+    color: #a0621a;
+    margin: 0 0 10px 0;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.prov-manual-section .prov-detail-list li {
+    color: #7a5120;
+    font-size: 0.8rem;
+}
+
 .prov-no-data {
     font-size: 0.8rem;
     color: var(--charcol);
