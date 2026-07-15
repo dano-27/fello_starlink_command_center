@@ -87,11 +87,39 @@
 
         // Toast
         toastContainer:      $('#toast-container'),
+
+        // Topbar Tabs
+        tabGroups:           $('#tab-groups'),
+        tabProvisioning:     $('#tab-provisioning'),
+
+        // Provisioning View
+        provisioningView:    $('#provisioning-view'),
+        provLoading:         $('#prov-loading'),
+        provEmpty:           $('#prov-empty'),
+        provError:           $('#prov-error'),
+        provErrorMessage:    $('#prov-error-message'),
+        provRetryBtn:        $('#prov-retry-btn'),
+        provTable:           $('#prov-table'),
+        provTbody:           $('#prov-tbody'),
+        provisionNewBtn:     $('#provision-new-btn'),
+
+        // Provision Modal
+        provModalOverlay:    $('#provision-modal-overlay'),
+        provModalClose:      $('#provision-modal-close'),
+        provForm:            $('#provision-form'),
+        provEventName:       $('#prov-event-name'),
+        provOrderNumber:     $('#prov-order-number'),
+        provConfigMode:      $('#prov-config-mode'),
+        provApps:            $('#prov-apps'),
+        provSubmitBtn:       $('#provision-submit'),
+        provCancelBtn:       $('#provision-cancel'),
     };
 
     // ---- State ----
     let state = {
         apiKey: '',
+        // Current top-level tab: 'groups' | 'provisioning'
+        activeTab: 'groups',
         // Current view: 'groups' | 'devices'
         currentView: 'groups',
         // Groups
@@ -106,6 +134,10 @@
         sortDir: 'asc',
         // Modal
         currentDevice: null,
+        // Provisioning
+        provQueue: [],
+        provExpandedId: null,
+        provAutoRefreshTimer: null,
     };
 
     // ================================================
@@ -903,9 +935,16 @@
             input.type = input.type === 'password' ? 'text' : 'password';
         });
 
+        // Tab switching
+        dom.tabGroups.addEventListener('click', () => switchTab('groups'));
+        dom.tabProvisioning.addEventListener('click', () => switchTab('provisioning'));
+
         // Refresh — context-aware
         dom.refreshBtn.addEventListener('click', () => {
-            if (state.currentView === 'groups') {
+            if (state.activeTab === 'provisioning') {
+                fetchProvQueue();
+                showToast('Refreshing queue…', 'info');
+            } else if (state.currentView === 'groups') {
                 fetchGroups();
                 showToast('Refreshing groups…', 'info');
             } else if (state.currentView === 'devices' && state.currentGroup) {
@@ -995,11 +1034,23 @@
         dom.actionRestart.addEventListener('click', () => executeRemoteAction('restart', 'Restart'));
         dom.actionShutdown.addEventListener('click', () => executeRemoteAction('shutdown', 'Shutdown'));
 
+        // Provisioning buttons
+        dom.provisionNewBtn.addEventListener('click', openProvisionModal);
+        dom.provModalClose.addEventListener('click', closeProvisionModal);
+        dom.provCancelBtn.addEventListener('click', closeProvisionModal);
+        dom.provModalOverlay.addEventListener('click', (e) => {
+            if (e.target === dom.provModalOverlay) closeProvisionModal();
+        });
+        dom.provForm.addEventListener('submit', handleProvisionSubmit);
+        dom.provRetryBtn.addEventListener('click', fetchProvQueue);
+
         // Keyboard
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
                 if (!dom.confirmOverlay.classList.contains('hidden')) {
                     dom.confirmCancel.click();
+                } else if (!dom.provModalOverlay.classList.contains('hidden')) {
+                    closeProvisionModal();
                 } else if (!dom.modalOverlay.classList.contains('hidden')) {
                     closeDeviceModal();
                 }
@@ -1022,6 +1073,348 @@
             attemptLogin(savedKey);
         } else {
             showLogin();
+        }
+    }
+
+    // ================================================
+    //  TAB SWITCHING
+    // ================================================
+
+    function switchTab(tab) {
+        state.activeTab = tab;
+
+        // Update tab buttons
+        dom.tabGroups.classList.toggle('active', tab === 'groups');
+        dom.tabProvisioning.classList.toggle('active', tab === 'provisioning');
+
+        if (tab === 'provisioning') {
+            // Hide groups-related UI
+            dom.groupsView.classList.add('hidden');
+            dom.devicesView.classList.add('hidden');
+            dom.breadcrumbBar.classList.add('hidden');
+            dom.provisioningView.classList.remove('hidden');
+
+            // Hide stats row, search/toolbar for provisioning
+            $('#stats-row').classList.add('hidden');
+            $('.toolbar').classList.add('hidden');
+
+            fetchProvQueue();
+        } else {
+            // Show groups UI
+            dom.provisioningView.classList.add('hidden');
+            $('#stats-row').classList.remove('hidden');
+            $('.toolbar').classList.remove('hidden');
+
+            stopProvAutoRefresh();
+
+            // Restore whatever groups view was active
+            if (state.currentView === 'devices' && state.currentGroup) {
+                dom.devicesView.classList.remove('hidden');
+                dom.breadcrumbBar.classList.remove('hidden');
+            } else {
+                resetStatFontSize();
+                navigateToGroups();
+            }
+        }
+    }
+
+    // ================================================
+    //  PROVISIONING QUEUE
+    // ================================================
+
+    function showProvState(stateName) {
+        dom.provLoading.classList.add('hidden');
+        dom.provEmpty.classList.add('hidden');
+        dom.provError.classList.add('hidden');
+        dom.provTable.classList.add('hidden');
+
+        switch (stateName) {
+            case 'loading':
+                dom.provLoading.classList.remove('hidden');
+                break;
+            case 'empty':
+                dom.provEmpty.classList.remove('hidden');
+                break;
+            case 'error':
+                dom.provError.classList.remove('hidden');
+                break;
+            case 'table':
+                dom.provTable.classList.remove('hidden');
+                break;
+        }
+    }
+
+    async function fetchProvQueue() {
+        showProvState('loading');
+
+        try {
+            const response = await fetch('/api/automation/queue');
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const result = await response.json();
+            const runs = result.data || [];
+
+            state.provQueue = runs;
+            renderProvQueue();
+
+            // Auto-refresh if any run is 'running'
+            const hasRunning = runs.some(r => r.status === 'running');
+            if (hasRunning) {
+                startProvAutoRefresh();
+            } else {
+                stopProvAutoRefresh();
+            }
+        } catch (err) {
+            dom.provErrorMessage.textContent = err.message || 'An unknown error occurred.';
+            showProvState('error');
+            stopProvAutoRefresh();
+        }
+    }
+
+    function startProvAutoRefresh() {
+        stopProvAutoRefresh();
+        state.provAutoRefreshTimer = setInterval(() => {
+            if (state.activeTab === 'provisioning') {
+                fetchProvQueue();
+            }
+        }, 5000);
+    }
+
+    function stopProvAutoRefresh() {
+        if (state.provAutoRefreshTimer) {
+            clearInterval(state.provAutoRefreshTimer);
+            state.provAutoRefreshTimer = null;
+        }
+    }
+
+    function getStatusBadge(status) {
+        const map = {
+            success: { icon: '✅', cls: 'prov-status-success', label: 'Success' },
+            partial: { icon: '⚠️', cls: 'prov-status-partial', label: 'Partial' },
+            failed:  { icon: '❌', cls: 'prov-status-failed', label: 'Failed' },
+            running: { icon: '🔄', cls: 'prov-status-running', label: 'Running' },
+        };
+        const info = map[status] || map.running;
+        return `<span class="prov-status ${info.cls}"><span>${info.icon}</span> ${info.label}</span>`;
+    }
+
+    function renderProvQueue() {
+        const runs = state.provQueue;
+
+        if (runs.length === 0) {
+            showProvState('empty');
+            return;
+        }
+
+        dom.provTbody.innerHTML = '';
+
+        runs.forEach((run) => {
+            const appsCount = (run.appsMatched ? run.appsMatched.length : 0);
+            const failedCount = (run.appsFailed ? run.appsFailed.length : 0);
+            const appsLabel = `${appsCount} matched` + (failedCount > 0 ? `, ${failedCount} failed` : '');
+
+            const tr = document.createElement('tr');
+            tr.className = 'prov-row';
+            tr.innerHTML = `
+                <td>${getStatusBadge(run.status)}</td>
+                <td><strong>${escapeHtml(run.eventName || '—')}</strong></td>
+                <td>${escapeHtml(run.orderNumber || '—')}</td>
+                <td>${escapeHtml(run.configMode || '—')}</td>
+                <td>${appsLabel}</td>
+                <td>${formatDate(run.timestamp)}</td>
+                <td><button class="prov-delete-btn" title="Delete run" aria-label="Delete run">🗑</button></td>
+            `;
+
+            // Click row to expand/collapse detail
+            tr.addEventListener('click', (e) => {
+                if (e.target.closest('.prov-delete-btn')) return;
+                toggleProvDetail(run, tr);
+            });
+
+            // Delete button
+            tr.querySelector('.prov-delete-btn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                deleteProvRun(run);
+            });
+
+            dom.provTbody.appendChild(tr);
+
+            // If this run is expanded, render its detail row
+            if (state.provExpandedId === run.id) {
+                const detailTr = createProvDetailRow(run);
+                dom.provTbody.appendChild(detailTr);
+            }
+        });
+
+        showProvState('table');
+    }
+
+    function toggleProvDetail(run, rowEl) {
+        if (state.provExpandedId === run.id) {
+            state.provExpandedId = null;
+        } else {
+            state.provExpandedId = run.id;
+        }
+        renderProvQueue();
+    }
+
+    function createProvDetailRow(run) {
+        const tr = document.createElement('tr');
+        tr.className = 'prov-detail-row';
+
+        // Apps matched
+        let appsMatchedHtml = '';
+        if (run.appsMatched && run.appsMatched.length > 0) {
+            appsMatchedHtml = '<ul class="prov-detail-list">' +
+                run.appsMatched.map(a => {
+                    const meta = a.id ? ` <span class="prov-meta">#${a.id}</span>` : '';
+                    return `<li><span class="prov-icon">✓</span> ${escapeHtml(a.matched || a.requested)}${meta}</li>`;
+                }).join('') +
+                '</ul>';
+        } else {
+            appsMatchedHtml = '<span class="prov-no-data">None</span>';
+        }
+
+        // Apps failed
+        let appsFailedHtml = '';
+        if (run.appsFailed && run.appsFailed.length > 0) {
+            appsFailedHtml = '<ul class="prov-detail-list">' +
+                run.appsFailed.map(a => `<li><span class="prov-icon">✗</span> ${escapeHtml(a)}</li>`).join('') +
+                '</ul>';
+        } else {
+            appsFailedHtml = '<span class="prov-no-data">None</span>';
+        }
+
+        // Profiles assigned
+        let profilesHtml = '';
+        if (run.profilesAssigned && run.profilesAssigned.length > 0) {
+            profilesHtml = '<ul class="prov-detail-list">' +
+                run.profilesAssigned.map(p => {
+                    const meta = p.reason ? ` <span class="prov-meta">${escapeHtml(p.reason)}</span>` : '';
+                    return `<li><span class="prov-icon">🛡</span> ${escapeHtml(p.name)}${meta}</li>`;
+                }).join('') +
+                '</ul>';
+        } else {
+            profilesHtml = '<span class="prov-no-data">None</span>';
+        }
+
+        // Layout matched
+        let layoutHtml = '';
+        if (run.layoutMatched) {
+            layoutHtml = `<span class="prov-layout-badge">📐 ${escapeHtml(run.layoutMatched.name)}</span>`;
+        } else {
+            layoutHtml = '<span class="prov-no-data">None</span>';
+        }
+
+        tr.innerHTML = `
+            <td colspan="7">
+                <div class="prov-detail-content">
+                    <div class="prov-detail-grid">
+                        <div class="prov-detail-section">
+                            <h5>Apps Matched</h5>
+                            ${appsMatchedHtml}
+                        </div>
+                        <div class="prov-detail-section">
+                            <h5>Apps Failed</h5>
+                            ${appsFailedHtml}
+                        </div>
+                        <div class="prov-detail-section">
+                            <h5>Profiles Assigned</h5>
+                            ${profilesHtml}
+                        </div>
+                        <div class="prov-detail-section">
+                            <h5>Layout Matched</h5>
+                            ${layoutHtml}
+                        </div>
+                    </div>
+                </div>
+            </td>
+        `;
+        return tr;
+    }
+
+    async function deleteProvRun(run) {
+        const confirmed = await showConfirm(
+            'Delete Run?',
+            `Remove the provisioning run for "${run.eventName || 'Unknown'}" from history?`,
+            '🗑'
+        );
+        if (!confirmed) return;
+
+        try {
+            const res = await fetch(`/api/automation/queue/${run.id}`, { method: 'DELETE' });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            showToast('Run deleted from history.', 'success');
+            state.provQueue = state.provQueue.filter(r => r.id !== run.id);
+            if (state.provExpandedId === run.id) state.provExpandedId = null;
+            renderProvQueue();
+        } catch (err) {
+            showToast(`Failed to delete run: ${err.message}`, 'error');
+        }
+    }
+
+    // ================================================
+    //  PROVISION MODAL
+    // ================================================
+
+    function openProvisionModal() {
+        dom.provForm.reset();
+        dom.provModalOverlay.classList.remove('hidden');
+        document.body.style.overflow = 'hidden';
+        dom.provEventName.focus();
+    }
+
+    function closeProvisionModal() {
+        dom.provModalOverlay.classList.add('hidden');
+        document.body.style.overflow = '';
+    }
+
+    async function handleProvisionSubmit(e) {
+        e.preventDefault();
+
+        const eventName = dom.provEventName.value.trim();
+        if (!eventName) {
+            showToast('Event Name is required.', 'warning');
+            return;
+        }
+
+        const orderNumber = dom.provOrderNumber.value.trim();
+        const configMode = dom.provConfigMode.value;
+        const appsRaw = dom.provApps.value.trim();
+        const apps = appsRaw ? appsRaw.split(',').map(a => a.trim()).filter(Boolean) : [];
+
+        const submitBtn = dom.provSubmitBtn;
+        const btnText = submitBtn.querySelector('.btn-text');
+        const btnSpinner = submitBtn.querySelector('.btn-spinner');
+
+        btnText.textContent = 'Provisioning…';
+        btnSpinner.classList.remove('hidden');
+        submitBtn.disabled = true;
+
+        try {
+            const apiKey = loadCredentials();
+            const res = await fetch('/api/automation/provision', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-simplemdm-key': apiKey || state.apiKey,
+                },
+                body: JSON.stringify({ eventName, orderNumber, configMode, apps }),
+            });
+
+            if (!res.ok) {
+                const body = await res.text().catch(() => '');
+                throw new Error(body || `HTTP ${res.status}`);
+            }
+
+            showToast(`Provisioning started for "${eventName}"`, 'success');
+            closeProvisionModal();
+            fetchProvQueue();
+        } catch (err) {
+            showToast(`Provisioning failed: ${err.message}`, 'error');
+        } finally {
+            btnText.textContent = 'Start Provisioning';
+            btnSpinner.classList.add('hidden');
+            submitBtn.disabled = false;
         }
     }
 

@@ -57,6 +57,54 @@
         </div>
     </div>
 
+    <!-- Provision Modal -->
+    <div id="provision-modal-overlay" class="modal-overlay hidden">
+        <div class="modal-container">
+            <div class="modal-header">
+                <div class="modal-title-group">
+                    <h2>Provision New Group</h2>
+                    <span class="modal-badge status-badge status-running">Manual Trigger</span>
+                </div>
+                <button class="modal-close" id="provision-modal-close" aria-label="Close modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="provision-form" autocomplete="off">
+                    <div class="provision-form-grid">
+                        <div class="form-group">
+                            <label for="prov-event-name">Event Name *</label>
+                            <input type="text" id="prov-event-name" placeholder="e.g. CES 2026" required class="prov-input">
+                        </div>
+                        <div class="form-group">
+                            <label for="prov-order-number">Order #</label>
+                            <input type="text" id="prov-order-number" placeholder="e.g. ORD-123" class="prov-input">
+                        </div>
+                        <div class="form-group">
+                            <label for="prov-config-mode">Config Mode</label>
+                            <select id="prov-config-mode" class="prov-input">
+                                <option value="POS Mode">POS Mode</option>
+                                <option value="Check-in Mode">Check-in Mode</option>
+                                <option value="Kiosk Mode">Kiosk Mode</option>
+                                <option value="Lead Capture Mode">Lead Capture Mode</option>
+                                <option value="Custom">Custom</option>
+                            </select>
+                        </div>
+                        <div class="form-group full-width">
+                            <label for="prov-apps">Apps (comma-separated)</label>
+                            <input type="text" id="prov-apps" placeholder="e.g. Square POS, Slack, Zoom" class="prov-input">
+                        </div>
+                    </div>
+                    <div class="provision-form-actions">
+                        <button type="button" class="btn btn-secondary" id="provision-cancel">Cancel</button>
+                        <button type="submit" class="btn btn-primary" id="provision-submit">
+                            <span class="btn-text">Start Provisioning</span>
+                            <span class="btn-spinner hidden"></span>
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <!-- LOGIN SCREEN -->
     <div id="login-screen" class="login-screen">
         <div class="login-card">
@@ -104,6 +152,10 @@
                     </svg>
                     <span>SimpleMDM Dashboard</span>
                 </div>
+                <nav class="topbar-tabs" id="topbar-tabs">
+                    <button class="topbar-tab active" data-tab="groups" id="tab-groups">Groups</button>
+                    <button class="topbar-tab" data-tab="provisioning" id="tab-provisioning">Provisioning</button>
+                </nav>
             </div>
             <div class="topbar-right">
                 <button class="btn btn-outline btn-sm" id="refresh-btn" title="Refresh">
@@ -216,6 +268,55 @@
                     </tr>
                 </thead>
                 <tbody id="device-tbody">
+                </tbody>
+            </table>
+        </div>
+
+        <!-- PROVISIONING QUEUE VIEW -->
+        <div class="content-area hidden" id="provisioning-view">
+            <div class="prov-toolbar">
+                <h3 class="prov-title">Provisioning Queue</h3>
+                <button class="btn btn-primary" id="provision-new-btn">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    Provision New
+                </button>
+            </div>
+
+            <!-- Loading State -->
+            <div class="loading-state" id="prov-loading">
+                <div class="loader"></div>
+                <p>Loading provisioning queue…</p>
+            </div>
+
+            <!-- Empty State -->
+            <div class="empty-state hidden" id="prov-empty">
+                <div class="empty-icon">📦</div>
+                <h3>No Provisioning Runs</h3>
+                <p>Click "Provision New" to start a provisioning run.</p>
+            </div>
+
+            <!-- Error State -->
+            <div class="error-state hidden" id="prov-error">
+                <div class="error-icon">⚠️</div>
+                <h3>Failed to Load Queue</h3>
+                <p id="prov-error-message">An unknown error occurred.</p>
+                <button class="btn btn-primary" id="prov-retry-btn">Retry</button>
+            </div>
+
+            <!-- Queue Table -->
+            <table class="device-table hidden" id="prov-table">
+                <thead>
+                    <tr>
+                        <th>Status</th>
+                        <th>Event Name</th>
+                        <th>Order #</th>
+                        <th>Config Mode</th>
+                        <th>Apps Matched</th>
+                        <th>Timestamp</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="prov-tbody">
                 </tbody>
             </table>
         </div>
