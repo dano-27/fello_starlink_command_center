@@ -1586,10 +1586,11 @@ app.get('/api/simplemdm/assignment_groups/:groupId/profiles', async (req, res) =
     const allProfiles = [...(regData.data || []), ...(customData.data || [])];
 
     // Filter to profiles assigned to this group
+    // SimpleMDM uses 'groups' key (not 'assignment_groups')
     const assigned = allProfiles.filter(p => {
-      const ags = p.relationships && p.relationships.assignment_groups && p.relationships.assignment_groups.data;
-      if (!Array.isArray(ags)) return false;
-      return ags.some(g => g.id === groupId);
+      const groups = p.relationships && p.relationships.groups && p.relationships.groups.data;
+      if (!Array.isArray(groups)) return false;
+      return groups.some(g => g.id === groupId);
     });
 
     return res.json({ data: assigned });
@@ -1659,19 +1660,25 @@ app.get('/api/simplemdm/assignment_groups/:groupId/apps', async (req, res) => {
   const groupId = parseInt(req.params.groupId);
 
   try {
-    const resp = await fetch('https://a.simplemdm.com/api/v1/apps?limit=100', {
+    // Apps don't include group relationships in list view,
+    // so fetch the group to get app IDs, then enrich with app details
+    const groupResp = await fetch(`https://a.simplemdm.com/api/v1/assignment_groups/${groupId}`, {
       headers: { Authorization: auth },
     });
+    const groupData = groupResp.ok ? await groupResp.json() : { data: {} };
+    const appRels = groupData.data?.relationships?.apps?.data || [];
+    const appIds = new Set(appRels.map(a => a.id));
 
-    const data = resp.ok ? await resp.json() : { data: [] };
-    const allApps = data.data || [];
+    if (appIds.size === 0) {
+      return res.json({ data: [] });
+    }
 
-    // Filter to apps assigned to this group
-    const assigned = allApps.filter(a => {
-      const ags = a.relationships && a.relationships.assignment_groups && a.relationships.assignment_groups.data;
-      if (!Array.isArray(ags)) return false;
-      return ags.some(g => g.id === groupId);
+    // Fetch all apps and filter to the ones in this group
+    const appsResp = await fetch('https://a.simplemdm.com/api/v1/apps?limit=100', {
+      headers: { Authorization: auth },
     });
+    const appsData = appsResp.ok ? await appsResp.json() : { data: [] };
+    const assigned = (appsData.data || []).filter(a => appIds.has(a.id));
 
     await enrichAppsWithIcons(assigned);
     return res.json({ data: assigned });
