@@ -111,6 +111,9 @@
         provOrderNumber:     $('#prov-order-number'),
         provConfigMode:      $('#prov-config-mode'),
         provApps:            $('#prov-apps'),
+        provAppSearch:       $('#prov-app-search'),
+        provAppDropdown:     $('#prov-app-dropdown'),
+        provSelectedApps:    $('#prov-selected-apps'),
         provSubmitBtn:       $('#provision-submit'),
         provCancelBtn:       $('#provision-cancel'),
     };
@@ -138,6 +141,10 @@
         provQueue: [],
         provExpandedId: null,
         provAutoRefreshTimer: null,
+        // App catalog for picker
+        appCatalog: [],
+        appCatalogLoaded: false,
+        selectedAppIds: [],   // [{id, name}]
     };
 
     // ================================================
@@ -1042,6 +1049,7 @@
             if (e.target === dom.provModalOverlay) closeProvisionModal();
         });
         dom.provForm.addEventListener('submit', handleProvisionSubmit);
+        initAppPicker();
         dom.provRetryBtn.addEventListener('click', fetchProvQueue);
 
         // Keyboard
@@ -1353,14 +1361,102 @@
     }
 
     // ================================================
-    //  PROVISION MODAL
+    //  PROVISION MODAL + APP CATALOG PICKER
     // ================================================
 
-    function openProvisionModal() {
+    async function loadAppCatalog() {
+        if (state.appCatalogLoaded) return;
+        try {
+            const apiKey = loadCredentials();
+            const res = await fetch('/api/automation/apps', {
+                headers: { 'x-simplemdm-key': apiKey || state.apiKey },
+            });
+            if (res.ok) {
+                const body = await res.json();
+                state.appCatalog = (body.data || []).sort((a, b) => a.name.localeCompare(b.name));
+                state.appCatalogLoaded = true;
+            }
+        } catch (e) {
+            console.warn('Failed to load app catalog:', e);
+        }
+    }
+
+    function renderSelectedApps() {
+        dom.provSelectedApps.innerHTML = '';
+        state.selectedAppIds.forEach(app => {
+            const pill = document.createElement('span');
+            pill.className = 'app-pill';
+            pill.innerHTML = `${escapeHtml(app.name)} <button type="button" class="app-pill-remove" data-id="${app.id}">&times;</button>`;
+            pill.querySelector('.app-pill-remove').addEventListener('click', () => {
+                state.selectedAppIds = state.selectedAppIds.filter(a => a.id !== app.id);
+                renderSelectedApps();
+                filterAppDropdown(dom.provAppSearch.value);
+            });
+            dom.provSelectedApps.appendChild(pill);
+        });
+    }
+
+    function filterAppDropdown(query) {
+        const q = query.toLowerCase().trim();
+        const selectedIds = new Set(state.selectedAppIds.map(a => a.id));
+        const filtered = state.appCatalog.filter(a =>
+            !selectedIds.has(a.id) && (q.length === 0 || a.name.toLowerCase().includes(q))
+        ).slice(0, 30); // Cap at 30 results
+
+        dom.provAppDropdown.innerHTML = '';
+        if (q.length === 0 && filtered.length === state.appCatalog.length - selectedIds.size) {
+            // Don't show dropdown if no query typed
+            dom.provAppDropdown.classList.add('hidden');
+            return;
+        }
+
+        if (filtered.length === 0) {
+            dom.provAppDropdown.innerHTML = '<div class="app-dropdown-empty">No matching apps found</div>';
+        } else {
+            filtered.forEach(app => {
+                const item = document.createElement('div');
+                item.className = 'app-dropdown-item';
+                item.textContent = app.name;
+                item.addEventListener('click', () => {
+                    state.selectedAppIds.push({ id: app.id, name: app.name });
+                    renderSelectedApps();
+                    dom.provAppSearch.value = '';
+                    dom.provAppDropdown.classList.add('hidden');
+                    dom.provAppSearch.focus();
+                });
+                dom.provAppDropdown.appendChild(item);
+            });
+        }
+        dom.provAppDropdown.classList.remove('hidden');
+    }
+
+    function initAppPicker() {
+        dom.provAppSearch.addEventListener('input', () => {
+            filterAppDropdown(dom.provAppSearch.value);
+        });
+        dom.provAppSearch.addEventListener('focus', () => {
+            if (dom.provAppSearch.value.trim().length > 0) {
+                filterAppDropdown(dom.provAppSearch.value);
+            }
+        });
+        // Close dropdown on outside click
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.prov-app-picker')) {
+                dom.provAppDropdown.classList.add('hidden');
+            }
+        });
+    }
+
+    async function openProvisionModal() {
         dom.provForm.reset();
+        state.selectedAppIds = [];
+        renderSelectedApps();
+        dom.provAppDropdown.classList.add('hidden');
         dom.provModalOverlay.classList.remove('hidden');
         document.body.style.overflow = 'hidden';
         dom.provEventName.focus();
+        // Load catalog in background
+        await loadAppCatalog();
     }
 
     function closeProvisionModal() {
@@ -1379,8 +1475,8 @@
 
         const orderNumber = dom.provOrderNumber.value.trim();
         const configMode = dom.provConfigMode.value;
-        const appsRaw = dom.provApps.value.trim();
-        const apps = appsRaw ? appsRaw.split(',').map(a => a.trim()).filter(Boolean) : [];
+        const app_ids = state.selectedAppIds.map(a => a.id);
+        const apps = state.selectedAppIds.map(a => a.name);
 
         const submitBtn = dom.provSubmitBtn;
         const btnText = submitBtn.querySelector('.btn-text');
@@ -1398,7 +1494,7 @@
                     'Content-Type': 'application/json',
                     'x-simplemdm-key': apiKey || state.apiKey,
                 },
-                body: JSON.stringify({ eventName, orderNumber, configMode, apps }),
+                body: JSON.stringify({ eventName, orderNumber, configMode, apps, app_ids }),
             });
 
             if (!res.ok) {

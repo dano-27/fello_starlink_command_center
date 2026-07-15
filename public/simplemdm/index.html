@@ -89,8 +89,13 @@
                             </select>
                         </div>
                         <div class="form-group full-width">
-                            <label for="prov-apps">Apps (comma-separated)</label>
-                            <input type="text" id="prov-apps" placeholder="e.g. Square POS, Slack, Zoom" class="prov-input">
+                            <label>Apps <span class="prov-app-hint">(search your SimpleMDM catalog)</span></label>
+                            <div class="prov-app-picker">
+                                <div class="prov-app-selected" id="prov-selected-apps"></div>
+                                <input type="text" id="prov-app-search" placeholder="Type to search apps…" class="prov-input" autocomplete="off">
+                                <div class="prov-app-dropdown hidden" id="prov-app-dropdown"></div>
+                            </div>
+                            <input type="hidden" id="prov-apps">
                         </div>
                     </div>
                     <div class="provision-form-actions">

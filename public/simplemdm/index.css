@@ -1338,6 +1338,97 @@ select.prov-input {
     cursor: pointer;
 }
 
+/* App Picker */
+.prov-app-hint {
+    font-weight: 400;
+    font-size: 0.75rem;
+    color: var(--charcol);
+    opacity: 0.6;
+}
+
+.prov-app-picker {
+    position: relative;
+}
+
+.prov-app-selected {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 6px;
+}
+
+.app-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--sky);
+    color: var(--blue);
+    font-size: 0.8rem;
+    font-weight: 500;
+    padding: 4px 10px;
+    border-radius: var(--pill);
+    white-space: nowrap;
+}
+
+.app-pill-remove {
+    background: none;
+    border: none;
+    color: var(--blue);
+    font-size: 1rem;
+    cursor: pointer;
+    padding: 0 2px;
+    line-height: 1;
+    opacity: 0.6;
+    transition: opacity 0.15s;
+}
+
+.app-pill-remove:hover {
+    opacity: 1;
+}
+
+.prov-app-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    max-height: 240px;
+    overflow-y: auto;
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: var(--shadow-md);
+    z-index: 200;
+    margin-top: 4px;
+}
+
+.app-dropdown-item {
+    padding: 10px 16px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: background 0.15s;
+}
+
+.app-dropdown-item:hover {
+    background: var(--sky);
+    color: var(--blue);
+}
+
+.app-dropdown-item:first-child {
+    border-radius: 12px 12px 0 0;
+}
+
+.app-dropdown-item:last-child {
+    border-radius: 0 0 12px 12px;
+}
+
+.app-dropdown-empty {
+    padding: 16px;
+    text-align: center;
+    color: var(--charcol);
+    opacity: 0.6;
+    font-size: 0.85rem;
+}
+
 .provision-form-actions {
     display: flex;
     justify-content: flex-end;

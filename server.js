@@ -750,32 +750,53 @@ async function fetchAllProfiles(apiKey) {
 
 // ── Fuzzy matching ──────────────────────────────────────────────────
 function normalize(str) {
+  return (str || '').toLowerCase().replace(/[^a-z0-9 ]/g, '').trim();
+}
+
+function normalizeStrip(str) {
   return (str || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
 function fuzzyMatchApp(appName, catalog) {
-  const norm = normalize(appName);
-  // 1. Exact normalized match
-  let match = catalog.find(a => normalize(a.name) === norm);
+  const normInput = normalize(appName);
+  const inputWords = normInput.split(/\s+/).filter(w => w.length > 1);
+
+  // 1. Exact normalized match (stripped)
+  const stripped = normalizeStrip(appName);
+  let match = catalog.find(a => normalizeStrip(a.name) === stripped);
   if (match) return match;
-  // 2. One contains the other
-  match = catalog.find(a => normalize(a.name).includes(norm) || norm.includes(normalize(a.name)));
+
+  // 2. All input words appear in catalog name
+  match = catalog.find(a => {
+    const catNorm = normalize(a.name);
+    return inputWords.every(w => catNorm.includes(w));
+  });
   if (match) return match;
-  // 3. Word overlap scoring
-  const words = norm.split(/\s+/).filter(w => w.length > 2);
-  let best = null, bestScore = 0;
+
+  // 3. Word overlap scoring — best match where most input words appear
+  let best = null, bestScore = 0, bestLen = Infinity;
   for (const a of catalog) {
-    const aWords = normalize(a.name);
+    const catNorm = normalize(a.name);
     let score = 0;
-    for (const w of words) {
-      if (aWords.includes(w)) score++;
+    for (const w of inputWords) {
+      if (catNorm.includes(w)) score++;
     }
-    if (score > bestScore && score >= Math.ceil(words.length * 0.5)) {
+    // Prefer higher score; on tie, prefer shorter name (more specific)
+    if (score > 0 && (score > bestScore || (score === bestScore && a.name.length < bestLen))) {
       best = a;
       bestScore = score;
+      bestLen = a.name.length;
     }
   }
-  return best;
+  // Require at least half the input words to match
+  if (best && bestScore >= Math.ceil(inputWords.length * 0.5)) return best;
+
+  // 4. Substring containment as last resort
+  match = catalog.find(a => {
+    const catStripped = normalizeStrip(a.name);
+    return catStripped.includes(stripped) || stripped.includes(catStripped);
+  });
+  return match || null;
 }
 
 function matchHomeScreenLayout(appNames, layouts) {
@@ -879,8 +900,33 @@ app.post('/api/automation/provision', async (req, res) => {
       // ── Step 2: Match & Assign Apps ──
       const appCatalog = await fetchAllApps(rawKey);
       const requestedApps = dcrData.apps || [];
+      const requestedAppIds = dcrData.app_ids || []; // Direct IDs from catalog picker
 
+      // If app_ids are provided, use them directly (from the searchable picker)
+      if (requestedAppIds.length > 0) {
+        for (const appId of requestedAppIds) {
+          const catEntry = appCatalog.find(a => a.id === appId);
+          const appName = catEntry ? catEntry.name : `App #${appId}`;
+          try {
+            await smdmRequest(rawKey, `/assignment_groups/${groupId}/apps/${appId}`, 'POST');
+            run.appsMatched.push({ requested: appName, matched: appName, id: appId });
+            console.log(`[PROVISION]   ✓ App: "${appName}" (${appId})`);
+          } catch (e) {
+            run.appsMatched.push({ requested: appName, matched: appName, id: appId, warning: e.message });
+            console.log(`[PROVISION]   ⚠ App assign failed: "${appName}" — ${e.message}`);
+          }
+        }
+      }
+
+      // Also fuzzy-match any text app names (from DCR form submissions)
       for (const appName of requestedApps) {
+        // Skip if we already assigned this app via ID
+        const alreadyAssigned = run.appsMatched.some(a =>
+          normalize(a.matched).includes(normalize(appName)) ||
+          normalize(appName).includes(normalize(a.matched))
+        );
+        if (alreadyAssigned) continue;
+
         const match = fuzzyMatchApp(appName, appCatalog);
         if (match) {
           try {
@@ -968,6 +1014,32 @@ app.post('/api/automation/provision', async (req, res) => {
     runId,
     groupName: run.groupName,
   });
+});
+
+// ── App Catalog endpoint (cached) ───────────────────────────────────
+let appCatalogCache = { data: null, expiry: 0 };
+
+app.get('/api/automation/apps', async (req, res) => {
+  const apiKey = req.headers['x-simplemdm-key'] || req.headers.authorization;
+  if (!apiKey) {
+    return res.status(401).json({ error: 'Missing SimpleMDM API key.' });
+  }
+
+  const now = Date.now();
+  if (appCatalogCache.data && now < appCatalogCache.expiry) {
+    return res.json({ data: appCatalogCache.data });
+  }
+
+  try {
+    let rawKey = apiKey.startsWith('Basic ')
+      ? Buffer.from(apiKey.replace('Basic ', ''), 'base64').toString().replace(/:$/, '')
+      : apiKey;
+    const apps = await fetchAllApps(rawKey);
+    appCatalogCache = { data: apps, expiry: now + 10 * 60 * 1000 }; // 10 min cache
+    return res.json({ data: apps });
+  } catch (err) {
+    return res.status(500).json({ error: err.message });
+  }
 });
 
 // ── Queue API ───────────────────────────────────────────────────────

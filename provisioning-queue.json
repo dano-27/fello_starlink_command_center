@@ -1,5 +1,52 @@
 [
   {
+    "id": "prov-1784128166221-zij29k",
+    "timestamp": "2026-07-15T15:09:26.221Z",
+    "eventName": "Test",
+    "orderNumber": "Test12343",
+    "configMode": "POS Mode",
+    "contactName": "",
+    "company": "",
+    "status": "partial",
+    "groupId": 2396707,
+    "groupName": "Test — Test12343",
+    "appsRequested": [
+      "Square POS",
+      "Toast Now"
+    ],
+    "appsMatched": [],
+    "appsFailed": [
+      "Square POS",
+      "Toast Now"
+    ],
+    "profilesAssigned": [
+      {
+        "name": "Default Restrictions",
+        "id": 142210,
+        "reason": "Always applied"
+      },
+      {
+        "name": "Fello Wi-Fi",
+        "id": 133014,
+        "reason": "Always applied"
+      }
+    ],
+    "layoutMatched": {
+      "name": "Square POS & Eventbrite Organizer",
+      "id": 147544
+    },
+    "errors": [],
+    "dcrPayload": {
+      "eventName": "Test",
+      "orderNumber": "Test12343",
+      "configMode": "POS Mode",
+      "apps": [
+        "Square POS",
+        "Toast Now"
+      ]
+    }
+  },
+  {
     "id": "prov-1784127771007-k3tytw",
     "timestamp": "2026-07-15T15:02:51.007Z",
     "eventName": "Automation Test Event",
