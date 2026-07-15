@@ -1260,16 +1260,17 @@ app.post('/api/simplemdm/groups/:groupId/assign-serials', async (req, res) => {
         continue;
       }
 
-      // Not found in enrolled — search DEP devices
+      // Not found in enrolled — search DEP devices (cursor-based pagination)
       let found = false;
-      let depPage = 0;
+      let depCursor = '';
       let hasMore = true;
       while (hasMore && !found) {
-        const depUrl = `https://a.simplemdm.com/api/v1/dep_servers/10650/dep_devices?limit=100${depPage > 0 ? `&starting_after=${depPage * 100}` : ''}`;
+        const depUrl = `https://a.simplemdm.com/api/v1/dep_servers/10650/dep_devices?limit=100${depCursor ? `&starting_after=${depCursor}` : ''}`;
         const depResp = await fetch(depUrl, { headers: { Authorization: auth } });
         const depData = depResp.ok ? await depResp.json() : { data: [], has_more: false };
+        const depDevices = depData.data || [];
 
-        const depDevice = (depData.data || []).find(d =>
+        const depDevice = depDevices.find(d =>
           d.attributes && d.attributes.serial_number &&
           d.attributes.serial_number.toUpperCase() === sn
         );
@@ -1298,13 +1299,14 @@ app.post('/api/simplemdm/groups/:groupId/assign-serials', async (req, res) => {
         }
 
         hasMore = depData.has_more === true;
-        depPage++;
-        if (depPage > 20) break; // safety limit
+        // Use last device ID as cursor for next page
+        depCursor = depDevices.length > 0 ? depDevices[depDevices.length - 1].id : '';
+        if (!depCursor) break;
       }
 
       if (!found) {
-        results.notFound.push({ serial: sn, reason: 'Not found in SimpleMDM or DEP' });
-        console.log(`[ASSIGN]   ✗ ${sn} not found anywhere`);
+        results.notFound.push({ serial: sn, reason: 'Not found — device may need to be assigned to SimpleMDM in Apple Business Manager first' });
+        console.log(`[ASSIGN]   ✗ ${sn} not found — may not be assigned to this MDM server in ABM`);
       }
     } catch (err) {
       results.errors.push({ serial: sn, error: err.message });
