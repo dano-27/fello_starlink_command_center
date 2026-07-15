@@ -684,10 +684,16 @@ function saveConfig(config) {
 
 let serverConfig = loadConfig();
 
+// Env var fallback — Railway environment variables persist across deploys
+function getSimpleMdmKey() {
+  return serverConfig.simpleMdmKey || process.env.SIMPLEMDM_API_KEY || '';
+}
+
 // Config API — save/retrieve the SimpleMDM key so the DCR form doesn't need it
 app.get('/api/automation/config', (req, res) => {
   return res.json({
-    simpleMdmKeySet: !!serverConfig.simpleMdmKey,
+    simpleMdmKeySet: !!getSimpleMdmKey(),
+    keySource: serverConfig.simpleMdmKey ? 'config' : (process.env.SIMPLEMDM_API_KEY ? 'env' : 'none'),
     allowedOrigins: serverConfig.allowedOrigins || [],
   });
 });
@@ -759,7 +765,7 @@ app.post('/api/dcr/submit', async (req, res) => {
   console.log(`[DCR] Submission received: "${dcrData.eventName}" (${dcrData.configMode || 'Custom'})`);
 
   // Auto-provision if SimpleMDM key is configured
-  const apiKey = serverConfig.simpleMdmKey;
+  const apiKey = getSimpleMdmKey();
   if (apiKey) {
     // Trigger provisioning internally (reuse the existing logic)
     const fakeReq = {

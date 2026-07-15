@@ -1,5 +1,82 @@
 [
   {
+    "id": "prov-1784136548939-9ntj3a",
+    "timestamp": "2026-07-15T17:29:08.939Z",
+    "eventName": "CES 2026 Demo Booth",
+    "orderNumber": "CES-001",
+    "configMode": "Kiosk Mode",
+    "contactName": "",
+    "company": "",
+    "status": "partial",
+    "groupId": 2396844,
+    "groupName": "CES-001 - CES 2026 Demo Booth",
+    "appsRequested": [
+      "Safari"
+    ],
+    "appsMatched": [],
+    "appsFailed": [
+      "Safari"
+    ],
+    "profilesAssigned": [
+      {
+        "name": "Default Restrictions",
+        "id": 142210,
+        "reason": "Always applied"
+      },
+      {
+        "name": "Fello Wi-Fi",
+        "id": 133014,
+        "reason": "Always applied"
+      },
+      {
+        "name": "Safari Lock (Single App)",
+        "id": 145745,
+        "reason": "Kiosk Single App Mode"
+      },
+      {
+        "name": "CES 2026 Demo Booth — Custom Config",
+        "id": 230423,
+        "reason": "Bundled config (Wi-Fi: CES-ExhibitorNet, Passcode Policy (Kiosk), Web Content Filter (Whitelist))"
+      }
+    ],
+    "layoutMatched": {
+      "name": "Chrome/Safari homescreen ",
+      "id": 228691
+    },
+    "errors": [],
+    "manualSetupNeeded": [],
+    "dcrPayload": {
+      "eventName": "CES 2026 Demo Booth",
+      "orderNumber": "CES-001",
+      "configMode": "Kiosk Mode",
+      "apps": [
+        "Safari"
+      ],
+      "lockdownMode": "Single App Mode",
+      "wifiEnabled": "Yes",
+      "wifiSsid": "CES-ExhibitorNet",
+      "wifiPassword": "ces2026booth!",
+      "wifiSecurity": "WPA2",
+      "wifiHidden": "No",
+      "restrictionsEnabled": "Yes",
+      "restrictionType": "Whitelist",
+      "restrictionUrls": [
+        "https://demo.fello.com",
+        "https://ces.tech"
+      ],
+      "homeScreenLayout": "Standard"
+    },
+    "customConfigCreated": {
+      "id": 230423,
+      "name": "CES 2026 Demo Booth — Custom Config",
+      "payloads": [
+        "Wi-Fi: CES-ExhibitorNet",
+        "Passcode Policy (Kiosk)",
+        "Web Content Filter (Whitelist)"
+      ]
+    }
+  },
+  {
     "id": "prov-1784136311435-54tdei",
     "timestamp": "2026-07-15T17:25:11.435Z",
     "eventName": "CES 2026 Demo Booth",
