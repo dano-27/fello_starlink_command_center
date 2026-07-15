@@ -1215,7 +1215,7 @@ app.post('/api/automation/provision', async (req, res) => {
     try {
       // ── Step 1: Create Assignment Group ──
       const groupName = dcrData.orderNumber
-        ? `${dcrData.eventName} — ${dcrData.orderNumber}`
+        ? `${dcrData.orderNumber} - ${dcrData.eventName}`
         : dcrData.eventName;
       run.groupName = groupName;
 
