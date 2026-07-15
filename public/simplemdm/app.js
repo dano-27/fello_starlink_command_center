@@ -93,6 +93,20 @@
         appPickerSearch:     $('#app-picker-search'),
         appPickerList:       $('#app-picker-list'),
 
+        // Wallpaper Modal
+        wpModalOverlay:      $('#wallpaper-modal-overlay'),
+        wpModalClose:        $('#wallpaper-modal-close'),
+        wpProfileName:       $('#wp-profile-name'),
+        wpScreen:            $('#wp-screen'),
+        wpDropzone:          $('#wp-dropzone'),
+        wpDropzoneContent:   $('#wp-dropzone-content'),
+        wpPreview:           $('#wp-preview'),
+        wpFileInput:         $('#wp-file-input'),
+        wpCancel:            $('#wp-cancel'),
+        wpSubmit:            $('#wp-submit'),
+        createWallpaperBtn:  $('#create-wallpaper-btn'),
+
+
         // Device Modal
         modalOverlay:        $('#device-modal-overlay'),
         modalClose:          $('#modal-close'),
@@ -175,6 +189,7 @@
         groupApps: [],
         allProfiles: [],
         allApps: [],
+        wpImageBase64: null,
         appCatalogLoaded: false,
         selectedAppIds: [],   // [{id, name}]
     };
@@ -1599,6 +1614,9 @@
         if (dom.addAppBtn) dom.addAppBtn.addEventListener('click', openAppPicker);
         if (dom.appPickerClose) dom.appPickerClose.addEventListener('click', closeAppPicker);
         if (dom.appPickerSearch) dom.appPickerSearch.addEventListener('input', filterAppPicker);
+
+        // Wallpaper creator
+        if (dom.createWallpaperBtn) dom.createWallpaperBtn.addEventListener('click', openWallpaperModal);
     }
 
     function switchGroupTab(tab) {
@@ -1919,6 +1937,147 @@
                 }
             });
         });
+    }
+
+    // ================================================
+    //  WALLPAPER CREATOR
+    // ================================================
+
+    function openWallpaperModal() {
+        state.wpImageBase64 = null;
+
+        // Reset form
+        if (dom.wpProfileName) {
+            const groupName = state.currentGroup ? getGroupName(state.currentGroup) : '';
+            dom.wpProfileName.value = groupName ? `${groupName} — Wallpaper` : '';
+        }
+        if (dom.wpScreen) dom.wpScreen.value = 'both';
+        if (dom.wpPreview) {
+            dom.wpPreview.classList.add('hidden');
+            dom.wpPreview.src = '';
+        }
+        if (dom.wpDropzoneContent) dom.wpDropzoneContent.classList.remove('hidden');
+        if (dom.wpSubmit) dom.wpSubmit.disabled = true;
+        if (dom.wpFileInput) dom.wpFileInput.value = '';
+
+        dom.wpModalOverlay.classList.remove('hidden');
+
+        // Wire up events (idempotent via cloneNode or check)
+        initWallpaperEvents();
+    }
+
+    let wpEventsInit = false;
+    function initWallpaperEvents() {
+        if (wpEventsInit) return;
+        wpEventsInit = true;
+
+        // Close
+        dom.wpModalClose.addEventListener('click', closeWallpaperModal);
+        dom.wpCancel.addEventListener('click', closeWallpaperModal);
+        dom.wpModalOverlay.addEventListener('click', (e) => {
+            if (e.target === dom.wpModalOverlay) closeWallpaperModal();
+        });
+
+        // Click to browse
+        dom.wpDropzone.addEventListener('click', () => dom.wpFileInput.click());
+
+        // File input change
+        dom.wpFileInput.addEventListener('change', (e) => {
+            if (e.target.files && e.target.files[0]) handleWallpaperFile(e.target.files[0]);
+        });
+
+        // Drag & drop
+        dom.wpDropzone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dom.wpDropzone.classList.add('dragover');
+        });
+        dom.wpDropzone.addEventListener('dragleave', () => {
+            dom.wpDropzone.classList.remove('dragover');
+        });
+        dom.wpDropzone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dom.wpDropzone.classList.remove('dragover');
+            if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                handleWallpaperFile(e.dataTransfer.files[0]);
+            }
+        });
+
+        // Submit
+        dom.wpSubmit.addEventListener('click', submitWallpaper);
+    }
+
+    function handleWallpaperFile(file) {
+        if (!file.type.startsWith('image/')) {
+            showToast('Please select an image file', 'error');
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            // Show preview
+            dom.wpPreview.src = e.target.result;
+            dom.wpPreview.classList.remove('hidden');
+            dom.wpDropzoneContent.classList.add('hidden');
+
+            // Store Base64 (strip data:image/...;base64, prefix)
+            state.wpImageBase64 = e.target.result.split(',')[1];
+            dom.wpSubmit.disabled = false;
+        };
+        reader.readAsDataURL(file);
+    }
+
+    function closeWallpaperModal() {
+        dom.wpModalOverlay.classList.add('hidden');
+    }
+
+    async function submitWallpaper() {
+        if (!state.wpImageBase64) return;
+
+        const name = dom.wpProfileName.value.trim() || 'Custom Wallpaper';
+        const where = dom.wpScreen.value;
+        const groupId = state.currentGroup ? state.currentGroup.id : null;
+
+        const btnText = dom.wpSubmit.querySelector('.btn-text');
+        const btnSpinner = dom.wpSubmit.querySelector('.btn-spinner');
+        btnText.textContent = 'Creating…';
+        btnSpinner.classList.remove('hidden');
+        dom.wpSubmit.disabled = true;
+
+        try {
+            const resp = await fetch('/api/automation/wallpaper', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Basic ${btoa(state.apiKey + ':')}`,
+                    'X-SimpleMDM-Key': state.apiKey,
+                },
+                body: JSON.stringify({
+                    imageBase64: state.wpImageBase64,
+                    where: where,
+                    profileName: name,
+                    groupId: groupId,
+                }),
+            });
+
+            const data = await resp.json();
+
+            if (!resp.ok) throw new Error(data.error || 'Failed to create profile');
+
+            showToast(`Created wallpaper profile "${name}"`, 'success');
+            closeWallpaperModal();
+
+            // Refresh profiles tab
+            state.groupProfiles = [];
+            if (state.activeGroupTab === 'profiles') {
+                fetchGroupProfiles();
+            }
+        } catch (err) {
+            showToast('Wallpaper creation failed: ' + err.message, 'error');
+        } finally {
+            btnText.textContent = 'Create Profile';
+            btnSpinner.classList.add('hidden');
+            dom.wpSubmit.disabled = !state.wpImageBase64;
+        }
     }
 
     // Start

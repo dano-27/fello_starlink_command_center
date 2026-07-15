@@ -4,7 +4,7 @@ const path = require('path');
 const app = express();
 const PORT = process.env.PORT || 3456;
 
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ── In-memory token cache ────────────────────────────────────────────
@@ -1125,6 +1125,35 @@ ${isWhitelist
   };
 }
 
+function wallpaperPayload(imageBase64, where) {
+  // where: 1=lock, 2=home, 3=both
+  const uuid = crypto.randomUUID();
+  const whereInt = where === 'lock' ? 1 : where === 'home' ? 2 : 3;
+
+  return {
+    name: `Wallpaper (${where === 'lock' ? 'Lock Screen' : where === 'home' ? 'Home Screen' : 'Both'})`,
+    xml: `        <dict>
+            <key>PayloadDisplayName</key>
+            <string>Wallpaper</string>
+            <key>PayloadIdentifier</key>
+            <string>com.fello.wallpaper</string>
+            <key>PayloadType</key>
+            <string>com.apple.wallpaper</string>
+            <key>PayloadUUID</key>
+            <string>${uuid}</string>
+            <key>PayloadVersion</key>
+            <integer>1</integer>
+            <key>Image</key>
+            <dict>
+                <key>Where</key>
+                <integer>${whereInt}</integer>
+                <key>ImageData</key>
+                <data>${imageBase64}</data>
+            </dict>
+        </dict>`,
+  };
+}
+
 // ── Upload to SimpleMDM ─────────────────────────────────────────────
 
 async function uploadCustomProfile(apiKey, profileName, mobileconfigXml) {
@@ -1166,6 +1195,46 @@ const PROFILE_IDS = {
   FELLO_WIFI: 133014,
   SAFARI_LOCK: 145745,  // Single App Lock (Kiosk mode)
 };
+
+// ── Create Wallpaper Profile ────────────────────────────────────────
+app.post('/api/automation/wallpaper', async (req, res) => {
+  const { imageBase64, where, profileName, groupId } = req.body;
+  const apiKey = req.headers['x-simplemdm-key'] || req.headers.authorization;
+
+  if (!apiKey) return res.status(401).json({ error: 'Missing SimpleMDM API key' });
+  if (!imageBase64) return res.status(400).json({ error: 'Missing imageBase64' });
+
+  let rawKey;
+  if (apiKey.startsWith('Basic ')) {
+    rawKey = Buffer.from(apiKey.replace('Basic ', ''), 'base64').toString().replace(/:$/, '');
+  } else {
+    rawKey = apiKey;
+  }
+
+  try {
+    const screen = where || 'both';
+    const name = profileName || 'Custom Wallpaper';
+    const payload = wallpaperPayload(imageBase64, screen);
+    const xml = buildMobileconfig(name, {}, [payload]);
+    const uploaded = await uploadCustomProfile(rawKey, name, xml);
+
+    // Auto-assign to group if provided
+    if (groupId) {
+      try {
+        await smdmRequest(rawKey, `/assignment_groups/${groupId}/profiles/${uploaded.id}`, 'POST');
+        console.log(`[WALLPAPER] Assigned to group ${groupId}`);
+      } catch (assignErr) {
+        console.error(`[WALLPAPER] Failed to assign to group:`, assignErr.message);
+      }
+    }
+
+    console.log(`[WALLPAPER] Created profile: "${name}" (ID: ${uploaded.id})`);
+    return res.json({ status: 'success', profile: uploaded });
+  } catch (err) {
+    console.error('[WALLPAPER] Error:', err.message);
+    return res.status(500).json({ error: err.message });
+  }
+});
 
 // ── Provisioning endpoint ───────────────────────────────────────────
 app.post('/api/automation/provision', async (req, res) => {
@@ -1332,6 +1401,11 @@ app.post('/api/automation/provision', async (req, res) => {
         bundledPayloads.push(webContentFilterPayload(dcrData.restrictionType, dcrData.restrictionUrls));
       }
 
+      // -- Wallpaper (if image provided) --
+      if (dcrData.customWallpaper === 'Yes' && dcrData.wallpaperImage) {
+        bundledPayloads.push(wallpaperPayload(dcrData.wallpaperImage, dcrData.wallpaperScreen || 'both'));
+      }
+
       // ═══ Upload bundled mobileconfig if there are payloads ═══
       if (bundledPayloads.length > 0) {
         const profileName = `${eventName} — Custom Config`;
@@ -1356,9 +1430,9 @@ app.post('/api/automation/provision', async (req, res) => {
 
       // ═══ Items that still need manual setup ═══
 
-      // Custom wallpaper (requires image upload — can't do via mobileconfig)
-      if (dcrData.customWallpaper === 'Yes') {
-        manualSetupNeeded.push('Custom wallpaper requested — upload image in SimpleMDM');
+      // Custom wallpaper without image
+      if (dcrData.customWallpaper === 'Yes' && !dcrData.wallpaperImage) {
+        manualSetupNeeded.push('Custom wallpaper requested — upload image via Command Center');
       }
 
       // Web clips (Kiosk — could be bundled but need icon assets)

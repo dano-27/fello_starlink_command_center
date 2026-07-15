@@ -57,6 +57,52 @@
         </div>
     </div>
 
+    <!-- Wallpaper Creator Modal -->
+    <div id="wallpaper-modal-overlay" class="modal-overlay hidden">
+        <div class="modal-container" style="max-width: 520px;">
+            <div class="modal-header">
+                <div class="modal-title-group">
+                    <h2>Create Wallpaper Profile</h2>
+                    <span class="modal-badge status-badge status-running">New Profile</span>
+                </div>
+                <button class="modal-close" id="wallpaper-modal-close" aria-label="Close modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="wp-profile-name">Profile Name</label>
+                    <input type="text" id="wp-profile-name" class="prov-input" placeholder="e.g. CES 2026 Wallpaper" autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <label for="wp-screen">Apply To</label>
+                    <select id="wp-screen" class="prov-input">
+                        <option value="both">Both (Lock Screen + Home Screen)</option>
+                        <option value="lock">Lock Screen Only</option>
+                        <option value="home">Home Screen Only</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Wallpaper Image</label>
+                    <div class="wp-dropzone" id="wp-dropzone">
+                        <div class="wp-dropzone-content" id="wp-dropzone-content">
+                            <div class="wp-dropzone-icon">🖼️</div>
+                            <p>Drag & drop an image here or <strong>click to browse</strong></p>
+                            <span class="wp-dropzone-hint">PNG, JPG, or HEIC • Recommended 2048×2732 for iPad</span>
+                        </div>
+                        <img id="wp-preview" class="wp-preview hidden" alt="Wallpaper preview">
+                        <input type="file" id="wp-file-input" accept="image/*" class="hidden">
+                    </div>
+                </div>
+                <div class="provision-form-actions">
+                    <button type="button" class="btn btn-secondary" id="wp-cancel">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="wp-submit" disabled>
+                        <span class="btn-text">Create Profile</span>
+                        <span class="btn-spinner hidden"></span>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Provision Modal -->
     <div id="provision-modal-overlay" class="modal-overlay hidden">
         <div class="modal-container">
@@ -292,7 +338,10 @@
             <div class="group-tab-content hidden" id="gtab-profiles">
                 <div class="gtab-toolbar">
                     <h4 class="gtab-title">Assigned Profiles</h4>
-                    <button class="btn btn-primary btn-sm" id="add-profile-btn">+ Add Profile</button>
+                    <div style="display: flex; gap: 8px;">
+                        <button class="btn btn-outline btn-sm" id="create-wallpaper-btn">🖼️ Create Wallpaper</button>
+                        <button class="btn btn-primary btn-sm" id="add-profile-btn">+ Add Profile</button>
+                    </div>
                 </div>
 
                 <div class="loading-state hidden" id="profiles-loading">
