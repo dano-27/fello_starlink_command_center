@@ -1435,10 +1435,30 @@ app.post('/api/simplemdm/groups/:groupId/assign-serials', async (req, res) => {
                 results.abmPending = results.abmPending || [];
                 results.abmPending.push({ serial: sn, model: abmDevice.attributes?.deviceModel || 'Unknown' });
                 console.log(`[ASSIGN]   🔵 ${sn} found in ABM (${abmStatus}) — queued for MDM assignment`);
+              } else if (abmStatus === 'ASSIGNED') {
+                // Check which server it's assigned to
+                try {
+                  const abmToken = await getAbmToken();
+                  const srvResp = await fetch(`${ABM_CONFIG.apiBase}/orgDevices/${sn}/assignedServer`, {
+                    headers: { Authorization: `Bearer ${abmToken}` },
+                  });
+                  const srvData = srvResp.ok ? await srvResp.json() : null;
+                  const assignedServerId = srvData?.data?.id;
+                  const assignedServerName = srvData?.data?.attributes?.serverName;
+
+                  if (assignedServerId === ABM_CONFIG.simpleMdmServerId) {
+                    results.notFound.push({ serial: sn, reason: 'Already assigned to Fello SimpleMDM in ABM — try syncing ABM or the device may need to enroll' });
+                    console.log(`[ASSIGN]   ⚠ ${sn} already assigned to Fello SimpleMDM — needs DEP sync or enrollment`);
+                  } else {
+                    results.notFound.push({ serial: sn, reason: `Assigned to "${assignedServerName || 'another MDM server'}" in ABM` });
+                    console.log(`[ASSIGN]   ⚠ ${sn} assigned to different server: ${assignedServerName} (${assignedServerId})`);
+                  }
+                } catch (srvErr) {
+                  results.notFound.push({ serial: sn, reason: 'Assigned to an MDM server in ABM (could not determine which)' });
+                }
               } else {
-                // Already assigned to another MDM server
-                results.notFound.push({ serial: sn, reason: `In ABM but assigned to another MDM server (status: ${abmStatus})` });
-                console.log(`[ASSIGN]   ⚠ ${sn} in ABM but status: ${abmStatus}`);
+                results.notFound.push({ serial: sn, reason: `ABM status: ${abmStatus}` });
+                console.log(`[ASSIGN]   ⚠ ${sn} in ABM with status: ${abmStatus}`);
               }
             } else {
               results.notFound.push({ serial: sn, reason: 'Not found in SimpleMDM, DEP, or Apple Business Manager' });
