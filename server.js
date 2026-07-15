@@ -1,5 +1,124 @@
 const express = require('express');
 const path = require('path');
+const crypto = require('crypto');
+const fs = require('fs');
+
+// ── ABM (Apple Business Manager) API ─────────────────────────────────
+const ABM_CONFIG = {
+  clientId: process.env.ABM_CLIENT_ID || 'BUSINESSAPI.29f7a116-5e25-4bf9-a7a4-96a62621fd1d',
+  keyId: process.env.ABM_KEY_ID || 'b81b2e1d-068c-4112-8c73-c2a7ebe43ca0',
+  tokenUrl: 'https://account.apple.com/auth/oauth2/v2/token',
+  apiBase: 'https://api-business.apple.com/v1',
+  simpleMdmServerId: '399E3FA11E9C47E1AEB621C9522C604C',
+};
+
+// Try loading private key from env or file
+let abmPrivateKey = null;
+try {
+  const pemEnv = process.env.ABM_PRIVATE_KEY;
+  if (pemEnv) {
+    abmPrivateKey = crypto.createPrivateKey(pemEnv.replace(/\\n/g, '\n'));
+  } else {
+    // Fallback to local file for development
+    const pemPath = path.join(process.env.HOME || '', 'Downloads', 'Fello_COmmand_Center.pem');
+    if (fs.existsSync(pemPath)) {
+      abmPrivateKey = crypto.createPrivateKey(fs.readFileSync(pemPath, 'utf8'));
+    }
+  }
+  if (abmPrivateKey) console.log('[ABM] Private key loaded ✓');
+  else console.log('[ABM] No private key found — ABM features disabled');
+} catch (e) {
+  console.error('[ABM] Failed to load private key:', e.message);
+}
+
+function base64url(buf) { return Buffer.from(buf).toString('base64url'); }
+
+let abmTokenCache = { token: null, expiresAt: 0 };
+
+async function getAbmToken() {
+  // Return cached token if still valid (with 60s buffer)
+  if (abmTokenCache.token && Date.now() < abmTokenCache.expiresAt - 60000) {
+    return abmTokenCache.token;
+  }
+
+  if (!abmPrivateKey) throw new Error('ABM private key not configured');
+
+  const header = base64url(JSON.stringify({ alg: 'ES256', kid: ABM_CONFIG.keyId, typ: 'JWT' }));
+  const now = Math.floor(Date.now() / 1000);
+  const payload = base64url(JSON.stringify({
+    iss: ABM_CONFIG.clientId,
+    sub: ABM_CONFIG.clientId,
+    aud: ABM_CONFIG.tokenUrl,
+    iat: now,
+    exp: now + 300,
+    jti: crypto.randomUUID(),
+  }));
+
+  const signingInput = `${header}.${payload}`;
+  const sig = crypto.sign('SHA256', Buffer.from(signingInput), {
+    key: abmPrivateKey,
+    dsaEncoding: 'ieee-p1363',
+  });
+  const jwt = `${signingInput}.${base64url(sig)}`;
+
+  const resp = await fetch(ABM_CONFIG.tokenUrl, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'client_credentials',
+      client_id: ABM_CONFIG.clientId,
+      client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
+      client_assertion: jwt,
+      scope: 'business.api',
+    }),
+  });
+
+  const data = await resp.json();
+  if (!data.access_token) throw new Error('ABM auth failed: ' + (data.error || 'unknown'));
+
+  abmTokenCache = {
+    token: data.access_token,
+    expiresAt: Date.now() + (data.expires_in || 3600) * 1000,
+  };
+  console.log('[ABM] Token refreshed ✓');
+  return abmTokenCache.token;
+}
+
+async function abmLookupDevice(serial) {
+  const token = await getAbmToken();
+  const resp = await fetch(`${ABM_CONFIG.apiBase}/orgDevices/${serial}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!resp.ok) return null;
+  return (await resp.json()).data;
+}
+
+async function abmAssignToSimpleMdm(serials) {
+  const token = await getAbmToken();
+  const resp = await fetch(`${ABM_CONFIG.apiBase}/orgDeviceActivities`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      data: {
+        type: 'orgDeviceActivities',
+        attributes: { activityType: 'ASSIGN_DEVICES' },
+        relationships: {
+          mdmServer: {
+            data: { type: 'mdmServers', id: ABM_CONFIG.simpleMdmServerId },
+          },
+          devices: {
+            data: serials.map(sn => ({ type: 'orgDevices', id: sn })),
+          },
+        },
+      },
+    }),
+  });
+  const result = await resp.json();
+  return { status: resp.status, data: result.data || result };
+}
 
 const app = express();
 const PORT = process.env.PORT || 3456;
@@ -662,7 +781,7 @@ app.post('/api/unstow/:userTerminalId', async (req, res) => {
 // ██  DCR → SimpleMDM Automation Engine
 // ══════════════════════════════════════════════════════════════════════
 
-const fs = require('fs');
+
 
 // ── Server Config (persisted to JSON) ───────────────────────────────
 const CONFIG_FILE = path.join(__dirname, 'automation-config.json');
@@ -984,7 +1103,7 @@ function matchHomeScreenLayout(appNames, layouts) {
 // Generates a single .mobileconfig with multiple payloads per event,
 // then uploads it to SimpleMDM as a custom configuration profile.
 
-const crypto = require('crypto');
+
 
 function escapeXml(str) {
   return (str || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -1305,8 +1424,34 @@ app.post('/api/simplemdm/groups/:groupId/assign-serials', async (req, res) => {
       }
 
       if (!found) {
-        results.notFound.push({ serial: sn, reason: 'Not found — device may need to be assigned to SimpleMDM in Apple Business Manager first' });
-        console.log(`[ASSIGN]   ✗ ${sn} not found — may not be assigned to this MDM server in ABM`);
+        // Not in SimpleMDM at all — try ABM
+        if (abmPrivateKey) {
+          try {
+            const abmDevice = await abmLookupDevice(sn);
+            if (abmDevice) {
+              const abmStatus = abmDevice.attributes?.status;
+              if (abmStatus === 'UNASSIGNED' || abmStatus === 'REMOVED') {
+                // Assign to SimpleMDM via ABM
+                results.abmPending = results.abmPending || [];
+                results.abmPending.push({ serial: sn, model: abmDevice.attributes?.deviceModel || 'Unknown' });
+                console.log(`[ASSIGN]   🔵 ${sn} found in ABM (${abmStatus}) — queued for MDM assignment`);
+              } else {
+                // Already assigned to another MDM server
+                results.notFound.push({ serial: sn, reason: `In ABM but assigned to another MDM server (status: ${abmStatus})` });
+                console.log(`[ASSIGN]   ⚠ ${sn} in ABM but status: ${abmStatus}`);
+              }
+            } else {
+              results.notFound.push({ serial: sn, reason: 'Not found in SimpleMDM, DEP, or Apple Business Manager' });
+              console.log(`[ASSIGN]   ✗ ${sn} not found anywhere (including ABM)`);
+            }
+          } catch (abmErr) {
+            console.error(`[ASSIGN]   ABM lookup failed for ${sn}:`, abmErr.message);
+            results.notFound.push({ serial: sn, reason: 'Not found in SimpleMDM/DEP; ABM lookup failed' });
+          }
+        } else {
+          results.notFound.push({ serial: sn, reason: 'Not found — ABM integration not configured' });
+          console.log(`[ASSIGN]   ✗ ${sn} not found — ABM not configured`);
+        }
       }
     } catch (err) {
       results.errors.push({ serial: sn, error: err.message });
@@ -1314,18 +1459,47 @@ app.post('/api/simplemdm/groups/:groupId/assign-serials', async (req, res) => {
     }
   }
 
-  // If we had notFound items and autoSync is requested, trigger a DEP sync
-  if (autoSync && results.notFound.length > 0) {
+  // Batch-assign ABM pending devices to SimpleMDM
+  if (results.abmPending && results.abmPending.length > 0) {
     try {
-      await fetch('https://a.simplemdm.com/api/v1/dep_servers/10650/sync', {
-        method: 'POST',
-        headers: { Authorization: auth },
-      });
-      console.log('[ASSIGN] Triggered DEP sync for unresolved serials');
-      results.syncTriggered = true;
-    } catch (e) {
-      console.error('[ASSIGN] DEP sync failed:', e.message);
+      const abmSerials = results.abmPending.map(d => d.serial);
+      console.log(`[ASSIGN] Assigning ${abmSerials.length} devices to SimpleMDM via ABM API...`);
+      const abmResult = await abmAssignToSimpleMdm(abmSerials);
+
+      if (abmResult.status === 201 || abmResult.status === 200) {
+        for (const d of results.abmPending) {
+          results.assigned.push({
+            serial: d.serial,
+            name: `${d.model} (${d.serial})`,
+            source: 'abm_assigned',
+            deviceId: null,
+          });
+        }
+        console.log(`[ASSIGN] ✓ ABM assignment submitted (activity: ${abmResult.data?.id || 'unknown'})`);
+
+        // Trigger SimpleMDM DEP sync so devices appear
+        try {
+          await fetch('https://a.simplemdm.com/api/v1/dep_servers/10650/sync', {
+            method: 'POST',
+            headers: { Authorization: auth },
+          });
+          results.syncTriggered = true;
+          console.log('[ASSIGN] DEP sync triggered after ABM assignment');
+        } catch (syncErr) {
+          console.error('[ASSIGN] DEP sync after ABM failed:', syncErr.message);
+        }
+      } else {
+        for (const d of results.abmPending) {
+          results.errors.push({ serial: d.serial, error: `ABM assignment failed (${abmResult.status})` });
+        }
+      }
+    } catch (abmErr) {
+      console.error('[ASSIGN] ABM batch assignment failed:', abmErr.message);
+      for (const d of results.abmPending) {
+        results.errors.push({ serial: d.serial, error: 'ABM assignment failed: ' + abmErr.message });
+      }
     }
+    delete results.abmPending; // Clean up internal field
   }
 
   console.log(`[ASSIGN] Done: ${results.assigned.length} assigned, ${results.notFound.length} not found, ${results.errors.length} errors`);

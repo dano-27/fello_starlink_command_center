@@ -2220,10 +2220,15 @@
         // Result items
         let listHtml = '';
         for (const item of assigned) {
+            const sourceLabel = {
+                enrolled: 'Device assigned to group',
+                dep_enrolled: 'DEP device assigned to group',
+                abm_assigned: '🔵 Assigned to MDM via ABM — will enroll on next power-on',
+            }[item.source] || item.source;
             listHtml += `<div class="serial-result-item success">
                 <span class="serial-result-icon">✅</span>
                 <span class="serial-result-sn">${escapeHtml(item.serial)}</span>
-                <span class="serial-result-info">${escapeHtml(item.name || '')} — assigned (${item.source})</span>
+                <span class="serial-result-info">${escapeHtml(item.name || '')} — ${sourceLabel}</span>
             </div>`;
         }
         for (const item of notFound) {
