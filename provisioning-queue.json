@@ -1,5 +1,69 @@
 [
   {
+    "id": "prov-1784135395166-j26vaw",
+    "timestamp": "2026-07-15T17:09:55.166Z",
+    "eventName": "WiFi Profile Test",
+    "orderNumber": "WIFI-001",
+    "configMode": "POS Mode",
+    "contactName": "",
+    "company": "",
+    "status": "success",
+    "groupId": 2396795,
+    "groupName": "WiFi Profile Test — WIFI-001",
+    "appsRequested": [
+      "Square POS"
+    ],
+    "appsMatched": [
+      {
+        "requested": "Square POS",
+        "matched": "Square Point of Sale (POS)",
+        "id": 129311
+      }
+    ],
+    "appsFailed": [],
+    "profilesAssigned": [
+      {
+        "name": "Default Restrictions",
+        "id": 142210,
+        "reason": "Always applied"
+      },
+      {
+        "name": "Fello Wi-Fi",
+        "id": 133014,
+        "reason": "Always applied"
+      },
+      {
+        "name": "CES2026-Guest Wi-Fi",
+        "id": 230418,
+        "reason": "Custom Wi-Fi: \"CES2026-Guest\""
+      }
+    ],
+    "layoutMatched": {
+      "name": "Square POS & Eventbrite Organizer",
+      "id": 147544
+    },
+    "errors": [],
+    "manualSetupNeeded": [],
+    "dcrPayload": {
+      "eventName": "WiFi Profile Test",
+      "orderNumber": "WIFI-001",
+      "configMode": "POS Mode",
+      "apps": [
+        "Square POS"
+      ],
+      "wifiEnabled": "Yes",
+      "wifiSsid": "CES2026-Guest",
+      "wifiPassword": "welcome2026!",
+      "wifiSecurity": "WPA2",
+      "wifiHidden": "No"
+    },
+    "wifiProfileCreated": {
+      "id": 230418,
+      "name": "CES2026-Guest Wi-Fi",
+      "ssid": "CES2026-Guest"
+    }
+  },
+  {
     "id": "prov-1784130663947-h0po5r",
     "timestamp": "2026-07-15T15:51:03.947Z",
     "eventName": "Profile Mapping Test",

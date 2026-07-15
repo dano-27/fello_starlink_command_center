@@ -974,6 +974,109 @@ function matchHomeScreenLayout(appNames, layouts) {
   return bestScore >= 1 ? best : null;
 }
 
+// ── Auto-create WiFi profile via SimpleMDM API ─────────────────────
+function generateWifiMobileconfig(ssid, password, securityType, hidden) {
+  const uuid1 = crypto.randomUUID();
+  const uuid2 = crypto.randomUUID();
+  const identifier = `com.fello.wifi.${ssid.replace(/[^a-zA-Z0-9]/g, '').toLowerCase()}`;
+
+  // Map DCR security types to Apple config values
+  const encryptionMap = {
+    'WPA2': 'WPA2',
+    'WPA2/WPA3': 'WPA3',
+    'WPA3': 'WPA3',
+    'WEP': 'WEP',
+    'None': 'None',
+  };
+  const encryption = encryptionMap[securityType] || 'WPA2';
+
+  let xml = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>PayloadContent</key>
+    <array>
+        <dict>
+            <key>AutoJoin</key>
+            <true/>
+            <key>EncryptionType</key>
+            <string>${encryption}</string>
+            <key>HIDDEN_NETWORK</key>
+            <${hidden ? 'true' : 'false'}/>
+            <key>PayloadIdentifier</key>
+            <string>${identifier}.wifi</string>
+            <key>PayloadType</key>
+            <string>com.apple.wifi.managed</string>
+            <key>PayloadUUID</key>
+            <string>${uuid1}</string>
+            <key>PayloadVersion</key>
+            <integer>1</integer>
+            <key>SSID_STR</key>
+            <string>${ssid}</string>`;
+
+  if (encryption !== 'None') {
+    xml += `
+            <key>Password</key>
+            <string>${password}</string>`;
+  }
+
+  xml += `
+        </dict>
+    </array>
+    <key>PayloadDisplayName</key>
+    <string>${ssid} Wi-Fi</string>
+    <key>PayloadIdentifier</key>
+    <string>${identifier}</string>
+    <key>PayloadType</key>
+    <string>Configuration</string>
+    <key>PayloadUUID</key>
+    <string>${uuid2}</string>
+    <key>PayloadVersion</key>
+    <integer>1</integer>
+</dict>
+</plist>`;
+  return xml;
+}
+
+async function createWifiProfile(apiKey, ssid, password, securityType, hidden) {
+  const mobileconfig = generateWifiMobileconfig(ssid, password, securityType, hidden);
+  const profileName = `${ssid} Wi-Fi`;
+
+  // Use multipart/form-data to upload the mobileconfig
+  const boundary = '----FormBoundary' + Date.now().toString(36);
+  const body = [
+    `--${boundary}`,
+    `Content-Disposition: form-data; name="name"`,
+    '',
+    profileName,
+    `--${boundary}`,
+    `Content-Disposition: form-data; name="mobileconfig"; filename="wifi.mobileconfig"`,
+    'Content-Type: application/x-apple-aspen-config',
+    '',
+    mobileconfig,
+    `--${boundary}--`,
+  ].join('\r\n');
+
+  const res = await fetch('https://a.simplemdm.com/api/v1/custom_configuration_profiles', {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Basic ' + Buffer.from(apiKey + ':').toString('base64'),
+      'Content-Type': `multipart/form-data; boundary=${boundary}`,
+    },
+    body,
+  });
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => '');
+    throw new Error(`Failed to create WiFi profile: HTTP ${res.status} — ${errText}`);
+  }
+
+  const data = await res.json();
+  return { id: data.data.id, name: profileName, type: 'custom_configuration_profile' };
+}
+
+const crypto = require('crypto');
+
 // ── Known profile IDs ───────────────────────────────────────────────
 const PROFILE_IDS = {
   // Always applied
@@ -1155,6 +1258,23 @@ app.post('/api/automation/provision', async (req, res) => {
 
       // ═══ Cross-mode options ═══
 
+      // Custom Wi-Fi profile (auto-create if customer provided their own SSID)
+      if (dcrData.wifiEnabled === 'Yes' && dcrData.wifiSsid && dcrData.wifiSsid.trim()) {
+        const ssid = dcrData.wifiSsid.trim();
+        const password = dcrData.wifiPassword || '';
+        const security = dcrData.wifiSecurity || 'WPA2';
+        const hidden = dcrData.wifiHidden === 'Yes';
+
+        try {
+          const wifiProfile = await createWifiProfile(rawKey, ssid, password, security, hidden);
+          profilesToAssign.push({ id: wifiProfile.id, name: wifiProfile.name, reason: `Custom Wi-Fi: "${ssid}"` });
+          run.wifiProfileCreated = { id: wifiProfile.id, name: wifiProfile.name, ssid };
+          console.log(`[PROVISION]   ✓ Created Wi-Fi profile: "${wifiProfile.name}" (ID: ${wifiProfile.id})`);
+        } catch (e) {
+          console.error(`[PROVISION]   ✗ Failed to create Wi-Fi profile for "${ssid}":`, e.message);
+          manualSetupNeeded.push(`Custom Wi-Fi profile creation failed for "${ssid}": ${e.message}`);
+        }
+      }
       // Custom wallpaper (any mode)
       if (dcrData.customWallpaper === 'Yes') {
         manualSetupNeeded.push('Custom wallpaper requested — upload image and create wallpaper profile in SimpleMDM');
