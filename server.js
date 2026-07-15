@@ -1484,6 +1484,262 @@ app.delete('/api/automation/queue/:id', (req, res) => {
 // ██  SimpleMDM Proxy Routes
 // ══════════════════════════════════════════════════════════════════════
 
+// ── Proxy: SimpleMDM — Group Management (Profiles, Apps, Devices) ──
+
+// List profiles assigned to a group
+app.get('/api/simplemdm/assignment_groups/:groupId/profiles', async (req, res) => {
+  const auth = req.headers.authorization;
+  if (!auth) return res.status(401).json({ error: 'Missing Authorization header' });
+
+  try {
+    const url = `https://a.simplemdm.com/api/v1/assignment_groups/${req.params.groupId}/profiles`;
+    const resp = await fetch(url, {
+      method: 'GET',
+      headers: { Authorization: auth, 'Content-Type': 'application/json' },
+    });
+    const contentType = resp.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      const data = await resp.json();
+      return res.status(resp.status).json(data);
+    } else {
+      const text = await resp.text();
+      return res.status(resp.status).send(text);
+    }
+  } catch (err) {
+    console.error('SimpleMDM group profiles proxy error:', err.message);
+    return res.status(500).json({ error: 'SimpleMDM proxy failed: ' + err.message });
+  }
+});
+
+// Remove a profile from a group
+app.delete('/api/simplemdm/assignment_groups/:groupId/profiles/:profileId', async (req, res) => {
+  const auth = req.headers.authorization;
+  if (!auth) return res.status(401).json({ error: 'Missing Authorization header' });
+
+  try {
+    const url = `https://a.simplemdm.com/api/v1/assignment_groups/${req.params.groupId}/profiles/${req.params.profileId}`;
+    const resp = await fetch(url, {
+      method: 'DELETE',
+      headers: { Authorization: auth, 'Content-Type': 'application/json' },
+    });
+    const contentType = resp.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      const data = await resp.json();
+      return res.status(resp.status).json(data);
+    } else {
+      const text = await resp.text();
+      return res.status(resp.status).send(text);
+    }
+  } catch (err) {
+    console.error('SimpleMDM remove group profile proxy error:', err.message);
+    return res.status(500).json({ error: 'SimpleMDM proxy failed: ' + err.message });
+  }
+});
+
+// Add a profile to a group
+app.post('/api/simplemdm/assignment_groups/:groupId/profiles/:profileId', async (req, res) => {
+  const auth = req.headers.authorization;
+  if (!auth) return res.status(401).json({ error: 'Missing Authorization header' });
+
+  try {
+    const url = `https://a.simplemdm.com/api/v1/assignment_groups/${req.params.groupId}/profiles/${req.params.profileId}`;
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { Authorization: auth, 'Content-Type': 'application/json' },
+    });
+    const contentType = resp.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      const data = await resp.json();
+      return res.status(resp.status).json(data);
+    } else {
+      const text = await resp.text();
+      return res.status(resp.status).send(text);
+    }
+  } catch (err) {
+    console.error('SimpleMDM add group profile proxy error:', err.message);
+    return res.status(500).json({ error: 'SimpleMDM proxy failed: ' + err.message });
+  }
+});
+
+// List apps assigned to a group
+app.get('/api/simplemdm/assignment_groups/:groupId/apps', async (req, res) => {
+  const auth = req.headers.authorization;
+  if (!auth) return res.status(401).json({ error: 'Missing Authorization header' });
+
+  try {
+    const url = `https://a.simplemdm.com/api/v1/assignment_groups/${req.params.groupId}/apps`;
+    const resp = await fetch(url, {
+      method: 'GET',
+      headers: { Authorization: auth, 'Content-Type': 'application/json' },
+    });
+    const contentType = resp.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      const data = await resp.json();
+      return res.status(resp.status).json(data);
+    } else {
+      const text = await resp.text();
+      return res.status(resp.status).send(text);
+    }
+  } catch (err) {
+    console.error('SimpleMDM group apps proxy error:', err.message);
+    return res.status(500).json({ error: 'SimpleMDM proxy failed: ' + err.message });
+  }
+});
+
+// Remove an app from a group
+app.delete('/api/simplemdm/assignment_groups/:groupId/apps/:appId', async (req, res) => {
+  const auth = req.headers.authorization;
+  if (!auth) return res.status(401).json({ error: 'Missing Authorization header' });
+
+  try {
+    const url = `https://a.simplemdm.com/api/v1/assignment_groups/${req.params.groupId}/apps/${req.params.appId}`;
+    const resp = await fetch(url, {
+      method: 'DELETE',
+      headers: { Authorization: auth, 'Content-Type': 'application/json' },
+    });
+    const contentType = resp.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      const data = await resp.json();
+      return res.status(resp.status).json(data);
+    } else {
+      const text = await resp.text();
+      return res.status(resp.status).send(text);
+    }
+  } catch (err) {
+    console.error('SimpleMDM remove group app proxy error:', err.message);
+    return res.status(500).json({ error: 'SimpleMDM proxy failed: ' + err.message });
+  }
+});
+
+// Add an app to a group
+app.post('/api/simplemdm/assignment_groups/:groupId/apps/:appId', async (req, res) => {
+  const auth = req.headers.authorization;
+  if (!auth) return res.status(401).json({ error: 'Missing Authorization header' });
+
+  try {
+    const url = `https://a.simplemdm.com/api/v1/assignment_groups/${req.params.groupId}/apps/${req.params.appId}`;
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { Authorization: auth, 'Content-Type': 'application/json' },
+    });
+    const contentType = resp.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      const data = await resp.json();
+      return res.status(resp.status).json(data);
+    } else {
+      const text = await resp.text();
+      return res.status(resp.status).send(text);
+    }
+  } catch (err) {
+    console.error('SimpleMDM add group app proxy error:', err.message);
+    return res.status(500).json({ error: 'SimpleMDM proxy failed: ' + err.message });
+  }
+});
+
+// Add a device to a group
+app.post('/api/simplemdm/assignment_groups/:groupId/devices/:deviceId', async (req, res) => {
+  const auth = req.headers.authorization;
+  if (!auth) return res.status(401).json({ error: 'Missing Authorization header' });
+
+  try {
+    const url = `https://a.simplemdm.com/api/v1/assignment_groups/${req.params.groupId}/devices/${req.params.deviceId}`;
+    const resp = await fetch(url, {
+      method: 'POST',
+      headers: { Authorization: auth, 'Content-Type': 'application/json' },
+    });
+    const contentType = resp.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      const data = await resp.json();
+      return res.status(resp.status).json(data);
+    } else {
+      const text = await resp.text();
+      return res.status(resp.status).send(text);
+    }
+  } catch (err) {
+    console.error('SimpleMDM add group device proxy error:', err.message);
+    return res.status(500).json({ error: 'SimpleMDM proxy failed: ' + err.message });
+  }
+});
+
+// Remove a device from a group
+app.delete('/api/simplemdm/assignment_groups/:groupId/devices/:deviceId', async (req, res) => {
+  const auth = req.headers.authorization;
+  if (!auth) return res.status(401).json({ error: 'Missing Authorization header' });
+
+  try {
+    const url = `https://a.simplemdm.com/api/v1/assignment_groups/${req.params.groupId}/devices/${req.params.deviceId}`;
+    const resp = await fetch(url, {
+      method: 'DELETE',
+      headers: { Authorization: auth, 'Content-Type': 'application/json' },
+    });
+    const contentType = resp.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      const data = await resp.json();
+      return res.status(resp.status).json(data);
+    } else {
+      const text = await resp.text();
+      return res.status(resp.status).send(text);
+    }
+  } catch (err) {
+    console.error('SimpleMDM remove group device proxy error:', err.message);
+    return res.status(500).json({ error: 'SimpleMDM proxy failed: ' + err.message });
+  }
+});
+
+// List all profiles (paginated, limit=100)
+app.get('/api/simplemdm/profiles', async (req, res) => {
+  const auth = req.headers.authorization;
+  if (!auth) return res.status(401).json({ error: 'Missing Authorization header' });
+
+  try {
+    const url = new URL('https://a.simplemdm.com/api/v1/profiles');
+    url.searchParams.set('limit', '100');
+    if (req.query.page != null) url.searchParams.set('starting_after', req.query.page);
+    const resp = await fetch(url.toString(), {
+      method: 'GET',
+      headers: { Authorization: auth, 'Content-Type': 'application/json' },
+    });
+    const contentType = resp.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      const data = await resp.json();
+      return res.status(resp.status).json(data);
+    } else {
+      const text = await resp.text();
+      return res.status(resp.status).send(text);
+    }
+  } catch (err) {
+    console.error('SimpleMDM profiles proxy error:', err.message);
+    return res.status(500).json({ error: 'SimpleMDM proxy failed: ' + err.message });
+  }
+});
+
+// List all apps (paginated, limit=100)
+app.get('/api/simplemdm/apps', async (req, res) => {
+  const auth = req.headers.authorization;
+  if (!auth) return res.status(401).json({ error: 'Missing Authorization header' });
+
+  try {
+    const url = new URL('https://a.simplemdm.com/api/v1/apps');
+    url.searchParams.set('limit', '100');
+    if (req.query.page != null) url.searchParams.set('starting_after', req.query.page);
+    const resp = await fetch(url.toString(), {
+      method: 'GET',
+      headers: { Authorization: auth, 'Content-Type': 'application/json' },
+    });
+    const contentType = resp.headers.get('content-type') || '';
+    if (contentType.includes('application/json')) {
+      const data = await resp.json();
+      return res.status(resp.status).json(data);
+    } else {
+      const text = await resp.text();
+      return res.status(resp.status).send(text);
+    }
+  } catch (err) {
+    console.error('SimpleMDM apps proxy error:', err.message);
+    return res.status(500).json({ error: 'SimpleMDM proxy failed: ' + err.message });
+  }
+});
+
 // Generic SimpleMDM proxy — forwards /api/simplemdm/* to SimpleMDM API
 app.all('/api/simplemdm/*', async (req, res) => {
   const auth = req.headers.authorization;

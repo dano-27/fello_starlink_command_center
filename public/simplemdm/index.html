@@ -238,43 +238,125 @@
             </div>
         </div>
 
-        <!-- DEVICES VIEW (table — shown when drilling into a group) -->
+        <!-- DEVICES VIEW (shown when drilling into a group) -->
         <div class="content-area hidden" id="devices-view">
-            <!-- Loading State -->
-            <div class="loading-state" id="devices-loading">
-                <div class="loader"></div>
-                <p>Fetching devices…</p>
+            <!-- Group Detail Tabs -->
+            <nav class="group-tabs" id="group-tabs">
+                <button class="group-tab active" data-gtab="devices">Devices</button>
+                <button class="group-tab" data-gtab="profiles">Profiles</button>
+                <button class="group-tab" data-gtab="apps">Apps</button>
+            </nav>
+
+            <!-- TAB: Devices -->
+            <div class="group-tab-content" id="gtab-devices">
+                <!-- Loading State -->
+                <div class="loading-state" id="devices-loading">
+                    <div class="loader"></div>
+                    <p>Fetching devices…</p>
+                </div>
+
+                <!-- Empty State -->
+                <div class="empty-state hidden" id="devices-empty">
+                    <div class="empty-icon">📱</div>
+                    <h3>No Devices Found</h3>
+                    <p>No devices match your search or none are assigned to this group.</p>
+                    <button class="btn btn-primary btn-sm" id="assign-device-btn">+ Assign Device</button>
+                </div>
+
+                <!-- Error State -->
+                <div class="error-state hidden" id="devices-error">
+                    <div class="error-icon">⚠️</div>
+                    <h3>Failed to Load Devices</h3>
+                    <p id="devices-error-message">An unknown error occurred.</p>
+                    <button class="btn btn-primary" id="devices-retry-btn">Retry</button>
+                </div>
+
+                <!-- Device Table -->
+                <table class="device-table hidden" id="device-table">
+                    <thead>
+                        <tr>
+                            <th class="sortable" data-sort="name">Name <span class="sort-arrow"></span></th>
+                            <th class="sortable" data-sort="model">Model <span class="sort-arrow"></span></th>
+                            <th>Serial Number</th>
+                            <th class="sortable" data-sort="os_version">OS Version <span class="sort-arrow"></span></th>
+                            <th>Status</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="device-tbody">
+                    </tbody>
+                </table>
             </div>
 
-            <!-- Empty State -->
-            <div class="empty-state hidden" id="devices-empty">
-                <div class="empty-icon">📱</div>
-                <h3>No Devices Found</h3>
-                <p>No devices match your search or none are assigned to this group.</p>
+            <!-- TAB: Profiles -->
+            <div class="group-tab-content hidden" id="gtab-profiles">
+                <div class="gtab-toolbar">
+                    <h4 class="gtab-title">Assigned Profiles</h4>
+                    <button class="btn btn-primary btn-sm" id="add-profile-btn">+ Add Profile</button>
+                </div>
+
+                <div class="loading-state hidden" id="profiles-loading">
+                    <div class="loader"></div>
+                    <p>Loading profiles…</p>
+                </div>
+
+                <div class="empty-state hidden" id="profiles-empty">
+                    <div class="empty-icon">🛡</div>
+                    <h3>No Profiles Assigned</h3>
+                    <p>Click "+ Add Profile" to assign configuration profiles to this group.</p>
+                </div>
+
+                <div class="profiles-grid hidden" id="profiles-grid">
+                    <!-- Profile cards injected by JS -->
+                </div>
+
+                <!-- Add Profile Picker (hidden until button click) -->
+                <div class="profile-picker hidden" id="profile-picker">
+                    <div class="picker-header">
+                        <h4>Add Profile to Group</h4>
+                        <button class="picker-close" id="profile-picker-close">&times;</button>
+                    </div>
+                    <input type="text" class="picker-search" id="profile-picker-search" placeholder="Search profiles…" autocomplete="off">
+                    <div class="picker-list" id="profile-picker-list">
+                        <!-- Profile options injected by JS -->
+                    </div>
+                </div>
             </div>
 
-            <!-- Error State -->
-            <div class="error-state hidden" id="devices-error">
-                <div class="error-icon">⚠️</div>
-                <h3>Failed to Load Devices</h3>
-                <p id="devices-error-message">An unknown error occurred.</p>
-                <button class="btn btn-primary" id="devices-retry-btn">Retry</button>
-            </div>
+            <!-- TAB: Apps -->
+            <div class="group-tab-content hidden" id="gtab-apps">
+                <div class="gtab-toolbar">
+                    <h4 class="gtab-title">Assigned Apps</h4>
+                    <button class="btn btn-primary btn-sm" id="add-app-btn">+ Add App</button>
+                </div>
 
-            <!-- Device Table -->
-            <table class="device-table hidden" id="device-table">
-                <thead>
-                    <tr>
-                        <th class="sortable" data-sort="name">Name <span class="sort-arrow"></span></th>
-                        <th class="sortable" data-sort="model">Model <span class="sort-arrow"></span></th>
-                        <th>Serial Number</th>
-                        <th class="sortable" data-sort="os_version">OS Version <span class="sort-arrow"></span></th>
-                        <th>Status</th>
-                    </tr>
-                </thead>
-                <tbody id="device-tbody">
-                </tbody>
-            </table>
+                <div class="loading-state hidden" id="apps-loading">
+                    <div class="loader"></div>
+                    <p>Loading apps…</p>
+                </div>
+
+                <div class="empty-state hidden" id="apps-empty">
+                    <div class="empty-icon">📲</div>
+                    <h3>No Apps Assigned</h3>
+                    <p>Click "+ Add App" to assign apps to this group.</p>
+                </div>
+
+                <div class="apps-grid hidden" id="apps-grid">
+                    <!-- App cards injected by JS -->
+                </div>
+
+                <!-- Add App Picker (hidden until button click) -->
+                <div class="profile-picker hidden" id="app-picker">
+                    <div class="picker-header">
+                        <h4>Add App to Group</h4>
+                        <button class="picker-close" id="app-picker-close">&times;</button>
+                    </div>
+                    <input type="text" class="picker-search" id="app-picker-search" placeholder="Search apps…" autocomplete="off">
+                    <div class="picker-list" id="app-picker-list">
+                        <!-- App options injected by JS -->
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- PROVISIONING QUEUE VIEW -->

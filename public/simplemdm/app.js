@@ -67,6 +67,32 @@
         deviceTable:         $('#device-table'),
         deviceTbody:         $('#device-tbody'),
 
+        // Group Detail Tabs
+        groupTabs:           $('#group-tabs'),
+        gtabDevices:         $('#gtab-devices'),
+        gtabProfiles:        $('#gtab-profiles'),
+        gtabApps:            $('#gtab-apps'),
+
+        // Profiles Tab
+        profilesLoading:     $('#profiles-loading'),
+        profilesEmpty:       $('#profiles-empty'),
+        profilesGrid:        $('#profiles-grid'),
+        addProfileBtn:       $('#add-profile-btn'),
+        profilePicker:       $('#profile-picker'),
+        profilePickerClose:  $('#profile-picker-close'),
+        profilePickerSearch: $('#profile-picker-search'),
+        profilePickerList:   $('#profile-picker-list'),
+
+        // Apps Tab
+        appsLoading:         $('#apps-loading'),
+        appsEmpty:           $('#apps-empty'),
+        appsGrid:            $('#apps-grid'),
+        addAppBtn:           $('#add-app-btn'),
+        appPicker:           $('#app-picker'),
+        appPickerClose:      $('#app-picker-close'),
+        appPickerSearch:     $('#app-picker-search'),
+        appPickerList:       $('#app-picker-list'),
+
         // Device Modal
         modalOverlay:        $('#device-modal-overlay'),
         modalClose:          $('#modal-close'),
@@ -143,6 +169,12 @@
         provAutoRefreshTimer: null,
         // App catalog for picker
         appCatalog: [],
+        // Group detail tabs
+        activeGroupTab: 'devices',
+        groupProfiles: [],
+        groupApps: [],
+        allProfiles: [],
+        allApps: [],
         appCatalogLoaded: false,
         selectedAppIds: [],   // [{id, name}]
     };
@@ -378,6 +410,19 @@
         dom.searchInput.placeholder = 'Search by name, model, or serial…';
 
         fetchGroupDevices(group);
+
+        // Reset group detail tabs
+        state.activeGroupTab = 'devices';
+        state.groupProfiles = [];
+        state.groupApps = [];
+        if (dom.groupTabs) {
+            dom.groupTabs.querySelectorAll('.group-tab').forEach(t => {
+                t.classList.toggle('active', t.dataset.gtab === 'devices');
+            });
+        }
+        if (dom.gtabDevices) dom.gtabDevices.classList.remove('hidden');
+        if (dom.gtabProfiles) dom.gtabProfiles.classList.add('hidden');
+        if (dom.gtabApps) dom.gtabApps.classList.add('hidden');
     }
 
     // ================================================
@@ -1072,6 +1117,7 @@
 
     function init() {
         initEventListeners();
+        initGroupTabs();
 
         // Auto-fill saved API key
         const savedKey = loadCredentials();
@@ -1529,6 +1575,350 @@
             btnSpinner.classList.add('hidden');
             submitBtn.disabled = false;
         }
+    }
+
+    // ================================================
+    //  GROUP DETAIL TABS
+    // ================================================
+
+    function initGroupTabs() {
+        if (!dom.groupTabs) return;
+        dom.groupTabs.addEventListener('click', (e) => {
+            const btn = e.target.closest('.group-tab');
+            if (!btn) return;
+            const tab = btn.dataset.gtab;
+            switchGroupTab(tab);
+        });
+
+        // Profile tab buttons
+        if (dom.addProfileBtn) dom.addProfileBtn.addEventListener('click', openProfilePicker);
+        if (dom.profilePickerClose) dom.profilePickerClose.addEventListener('click', closeProfilePicker);
+        if (dom.profilePickerSearch) dom.profilePickerSearch.addEventListener('input', filterProfilePicker);
+
+        // App tab buttons
+        if (dom.addAppBtn) dom.addAppBtn.addEventListener('click', openAppPicker);
+        if (dom.appPickerClose) dom.appPickerClose.addEventListener('click', closeAppPicker);
+        if (dom.appPickerSearch) dom.appPickerSearch.addEventListener('input', filterAppPicker);
+    }
+
+    function switchGroupTab(tab) {
+        state.activeGroupTab = tab;
+
+        // Update tab buttons
+        dom.groupTabs.querySelectorAll('.group-tab').forEach(t => {
+            t.classList.toggle('active', t.dataset.gtab === tab);
+        });
+
+        // Show/hide content
+        dom.gtabDevices.classList.toggle('hidden', tab !== 'devices');
+        dom.gtabProfiles.classList.toggle('hidden', tab !== 'profiles');
+        dom.gtabApps.classList.toggle('hidden', tab !== 'apps');
+
+        // Fetch data when switching to a tab
+        if (tab === 'profiles' && state.groupProfiles.length === 0) {
+            fetchGroupProfiles();
+        }
+        if (tab === 'apps' && state.groupApps.length === 0) {
+            fetchGroupApps();
+        }
+    }
+
+    // ================================================
+    //  PROFILES TAB
+    // ================================================
+
+    async function fetchGroupProfiles() {
+        if (!state.currentGroup) return;
+        const groupId = state.currentGroup.id;
+
+        dom.profilesLoading.classList.remove('hidden');
+        dom.profilesEmpty.classList.add('hidden');
+        dom.profilesGrid.classList.add('hidden');
+
+        try {
+            const resp = await apiRequest(`/assignment_groups/${groupId}/profiles`);
+            const profiles = resp.data || [];
+            state.groupProfiles = profiles;
+            renderGroupProfiles();
+        } catch (err) {
+            showToast('Failed to load profiles: ' + err.message, 'error');
+        } finally {
+            dom.profilesLoading.classList.add('hidden');
+        }
+    }
+
+    function renderGroupProfiles() {
+        const profiles = state.groupProfiles;
+        if (profiles.length === 0) {
+            dom.profilesEmpty.classList.remove('hidden');
+            dom.profilesGrid.classList.add('hidden');
+            return;
+        }
+
+        dom.profilesEmpty.classList.add('hidden');
+        dom.profilesGrid.classList.remove('hidden');
+
+        const profileTypeIcons = {
+            'custom_configuration_profile': '⚙️',
+            'restrictions': '🔒',
+            'wifi': '📶',
+            'home_screen_layout': '📱',
+            'passcode': '🔑',
+        };
+
+        dom.profilesGrid.innerHTML = profiles.map(p => {
+            const name = (p.attributes && p.attributes.name) || p.name || 'Unnamed';
+            const type = p.type || 'profile';
+            const icon = profileTypeIcons[type] || '🛡';
+            const typeLabel = type.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
+            return `<div class="profile-card" data-profile-id="${p.id}">
+                <div class="card-icon profile-icon">${icon}</div>
+                <div class="card-info">
+                    <h5 title="${escapeHtml(name)}">${escapeHtml(name)}</h5>
+                    <span class="card-meta">${escapeHtml(typeLabel)} • ID: ${p.id}</span>
+                </div>
+                <button class="card-remove" title="Remove from group" data-profile-id="${p.id}" data-profile-name="${escapeHtml(name)}">&times;</button>
+            </div>`;
+        }).join('');
+
+        // Remove buttons
+        dom.profilesGrid.querySelectorAll('.card-remove').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const id = btn.dataset.profileId;
+                const name = btn.dataset.profileName;
+                confirmAction('Remove Profile', `Remove "${name}" from this group?`, '🛡', async () => {
+                    try {
+                        await apiRequest(`/assignment_groups/${state.currentGroup.id}/profiles/${id}`, { method: 'DELETE' });
+                        showToast(`Removed "${name}"`, 'success');
+                        state.groupProfiles = state.groupProfiles.filter(p => String(p.id) !== String(id));
+                        renderGroupProfiles();
+                    } catch (err) {
+                        showToast('Failed to remove profile: ' + err.message, 'error');
+                    }
+                });
+            });
+        });
+    }
+
+    async function openProfilePicker() {
+        dom.profilePicker.classList.remove('hidden');
+        dom.profilePickerSearch.value = '';
+        dom.profilePickerSearch.focus();
+
+        // Fetch all profiles if we haven't yet
+        if (state.allProfiles.length === 0) {
+            dom.profilePickerList.innerHTML = '<div class="picker-empty">Loading profiles…</div>';
+            try {
+                const resp = await apiRequest('/profiles?limit=100');
+                state.allProfiles = resp.data || [];
+            } catch (err) {
+                dom.profilePickerList.innerHTML = '<div class="picker-empty">Failed to load</div>';
+                return;
+            }
+        }
+        renderProfilePickerList('');
+    }
+
+    function closeProfilePicker() {
+        dom.profilePicker.classList.add('hidden');
+    }
+
+    function filterProfilePicker() {
+        renderProfilePickerList(dom.profilePickerSearch.value);
+    }
+
+    function renderProfilePickerList(query) {
+        const q = query.toLowerCase();
+        const assignedIds = new Set(state.groupProfiles.map(p => String(p.id)));
+        const filtered = state.allProfiles.filter(p => {
+            const name = (p.attributes && p.attributes.name) || p.name || '';
+            return name.toLowerCase().includes(q);
+        });
+
+        if (filtered.length === 0) {
+            dom.profilePickerList.innerHTML = '<div class="picker-empty">No profiles found</div>';
+            return;
+        }
+
+        dom.profilePickerList.innerHTML = filtered.map(p => {
+            const name = (p.attributes && p.attributes.name) || p.name || 'Unnamed';
+            const type = (p.type || 'profile').replace(/_/g, ' ');
+            const assigned = assignedIds.has(String(p.id));
+
+            return `<button class="picker-item${assigned ? ' already-assigned' : ''}" data-id="${p.id}" data-name="${escapeHtml(name)}">
+                <div class="picker-item-icon profile">🛡</div>
+                <div class="picker-item-info">
+                    <div class="picker-item-name">${escapeHtml(name)}</div>
+                    <div class="picker-item-meta">${escapeHtml(type)} • ID: ${p.id}</div>
+                </div>
+                ${assigned ? '<span class="picker-item-badge">Assigned</span>' : ''}
+            </button>`;
+        }).join('');
+
+        dom.profilePickerList.querySelectorAll('.picker-item:not(.already-assigned)').forEach(item => {
+            item.addEventListener('click', async () => {
+                const id = item.dataset.id;
+                const name = item.dataset.name;
+                try {
+                    await apiRequest(`/assignment_groups/${state.currentGroup.id}/profiles/${id}`, { method: 'POST' });
+                    showToast(`Added "${name}"`, 'success');
+                    closeProfilePicker();
+                    state.groupProfiles = []; // force refetch
+                    fetchGroupProfiles();
+                } catch (err) {
+                    showToast('Failed to add profile: ' + err.message, 'error');
+                }
+            });
+        });
+    }
+
+    // ================================================
+    //  APPS TAB
+    // ================================================
+
+    async function fetchGroupApps() {
+        if (!state.currentGroup) return;
+        const groupId = state.currentGroup.id;
+
+        dom.appsLoading.classList.remove('hidden');
+        dom.appsEmpty.classList.add('hidden');
+        dom.appsGrid.classList.add('hidden');
+
+        try {
+            const resp = await apiRequest(`/assignment_groups/${groupId}/apps`);
+            const apps = resp.data || [];
+            state.groupApps = apps;
+            renderGroupApps();
+        } catch (err) {
+            showToast('Failed to load apps: ' + err.message, 'error');
+        } finally {
+            dom.appsLoading.classList.add('hidden');
+        }
+    }
+
+    function renderGroupApps() {
+        const apps = state.groupApps;
+        if (apps.length === 0) {
+            dom.appsEmpty.classList.remove('hidden');
+            dom.appsGrid.classList.add('hidden');
+            return;
+        }
+
+        dom.appsEmpty.classList.add('hidden');
+        dom.appsGrid.classList.remove('hidden');
+
+        dom.appsGrid.innerHTML = apps.map(a => {
+            const name = (a.attributes && a.attributes.name) || a.name || 'Unnamed';
+            const bundleId = (a.attributes && a.attributes.bundle_identifier) || '';
+            const iconUrl = a.attributes && a.attributes.app_store_preview && a.attributes.app_store_preview.artwork_url;
+
+            const iconHtml = iconUrl
+                ? `<img src="${escapeHtml(iconUrl)}" alt="">`
+                : '📲';
+
+            return `<div class="app-card" data-app-id="${a.id}">
+                <div class="card-icon app-icon">${iconHtml}</div>
+                <div class="card-info">
+                    <h5 title="${escapeHtml(name)}">${escapeHtml(name)}</h5>
+                    <span class="card-meta">${escapeHtml(bundleId || 'App ID: ' + a.id)}</span>
+                </div>
+                <button class="card-remove" title="Remove from group" data-app-id="${a.id}" data-app-name="${escapeHtml(name)}">&times;</button>
+            </div>`;
+        }).join('');
+
+        // Remove buttons
+        dom.appsGrid.querySelectorAll('.card-remove').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const id = btn.dataset.appId;
+                const name = btn.dataset.appName;
+                confirmAction('Remove App', `Remove "${name}" from this group?`, '📲', async () => {
+                    try {
+                        await apiRequest(`/assignment_groups/${state.currentGroup.id}/apps/${id}`, { method: 'DELETE' });
+                        showToast(`Removed "${name}"`, 'success');
+                        state.groupApps = state.groupApps.filter(a => String(a.id) !== String(id));
+                        renderGroupApps();
+                    } catch (err) {
+                        showToast('Failed to remove app: ' + err.message, 'error');
+                    }
+                });
+            });
+        });
+    }
+
+    async function openAppPicker() {
+        dom.appPicker.classList.remove('hidden');
+        dom.appPickerSearch.value = '';
+        dom.appPickerSearch.focus();
+
+        // Fetch all apps if we haven't yet
+        if (state.allApps.length === 0) {
+            dom.appPickerList.innerHTML = '<div class="picker-empty">Loading apps…</div>';
+            try {
+                const resp = await apiRequest('/apps?limit=100');
+                state.allApps = resp.data || [];
+            } catch (err) {
+                dom.appPickerList.innerHTML = '<div class="picker-empty">Failed to load</div>';
+                return;
+            }
+        }
+        renderAppPickerList('');
+    }
+
+    function closeAppPicker() {
+        dom.appPicker.classList.add('hidden');
+    }
+
+    function filterAppPicker() {
+        renderAppPickerList(dom.appPickerSearch.value);
+    }
+
+    function renderAppPickerList(query) {
+        const q = query.toLowerCase();
+        const assignedIds = new Set(state.groupApps.map(a => String(a.id)));
+        const filtered = state.allApps.filter(a => {
+            const name = (a.attributes && a.attributes.name) || a.name || '';
+            return name.toLowerCase().includes(q);
+        });
+
+        if (filtered.length === 0) {
+            dom.appPickerList.innerHTML = '<div class="picker-empty">No apps found</div>';
+            return;
+        }
+
+        dom.appPickerList.innerHTML = filtered.map(a => {
+            const name = (a.attributes && a.attributes.name) || a.name || 'Unnamed';
+            const bundleId = (a.attributes && a.attributes.bundle_identifier) || '';
+            const assigned = assignedIds.has(String(a.id));
+            const iconUrl = a.attributes && a.attributes.app_store_preview && a.attributes.app_store_preview.artwork_url;
+
+            return `<button class="picker-item${assigned ? ' already-assigned' : ''}" data-id="${a.id}" data-name="${escapeHtml(name)}">
+                <div class="picker-item-icon app">${iconUrl ? `<img src="${escapeHtml(iconUrl)}" alt="">` : '📲'}</div>
+                <div class="picker-item-info">
+                    <div class="picker-item-name">${escapeHtml(name)}</div>
+                    <div class="picker-item-meta">${escapeHtml(bundleId || 'ID: ' + a.id)}</div>
+                </div>
+                ${assigned ? '<span class="picker-item-badge">Assigned</span>' : ''}
+            </button>`;
+        }).join('');
+
+        dom.appPickerList.querySelectorAll('.picker-item:not(.already-assigned)').forEach(item => {
+            item.addEventListener('click', async () => {
+                const id = item.dataset.id;
+                const name = item.dataset.name;
+                try {
+                    await apiRequest(`/assignment_groups/${state.currentGroup.id}/apps/${id}`, { method: 'POST' });
+                    showToast(`Added "${name}"`, 'success');
+                    closeAppPicker();
+                    state.groupApps = []; // force refetch
+                    fetchGroupApps();
+                } catch (err) {
+                    showToast('Failed to add app: ' + err.message, 'error');
+                }
+            });
+        });
     }
 
     // Start

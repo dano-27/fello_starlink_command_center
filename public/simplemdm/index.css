@@ -1589,3 +1589,328 @@ select.prov-input {
         grid-template-columns: 1fr;
     }
 }
+
+/* ================================================
+   GROUP DETAIL TABS
+   ================================================ */
+
+.group-tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 2px solid var(--border);
+    margin: -8px 0 20px 0;
+    padding: 0 4px;
+}
+
+.group-tab {
+    background: none;
+    border: none;
+    border-bottom: 3px solid transparent;
+    margin-bottom: -2px;
+    padding: 12px 20px;
+    font-family: var(--font);
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--charcol);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    opacity: 0.6;
+}
+
+.group-tab:hover {
+    opacity: 0.85;
+    color: var(--blue);
+}
+
+.group-tab.active {
+    color: var(--blue);
+    border-bottom-color: var(--blue);
+    opacity: 1;
+}
+
+.group-tab-content {
+    animation: fadeInTab 0.25s ease;
+}
+
+@keyframes fadeInTab {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Tab toolbar (Profiles / Apps headers) */
+.gtab-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+}
+
+.gtab-title {
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--black);
+    margin: 0;
+}
+
+/* ================================================
+   PROFILE & APP GRID (cards)
+   ================================================ */
+
+.profiles-grid,
+.apps-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 14px;
+}
+
+.profile-card,
+.app-card {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 16px;
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+    position: relative;
+}
+
+.profile-card:hover,
+.app-card:hover {
+    border-color: var(--blue);
+    box-shadow: 0 2px 12px rgba(49, 102, 174, 0.08);
+}
+
+.card-icon {
+    width: 42px;
+    height: 42px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.3rem;
+    flex-shrink: 0;
+}
+
+.card-icon.profile-icon {
+    background: var(--sky);
+    color: var(--blue);
+}
+
+.card-icon.app-icon {
+    background: #e8f5e9;
+    color: #2e7d32;
+}
+
+.card-icon.app-icon img {
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+}
+
+.card-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.card-info h5 {
+    margin: 0 0 4px 0;
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--black);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.card-info .card-meta {
+    font-size: 0.78rem;
+    color: var(--charcol);
+    opacity: 0.7;
+}
+
+.card-remove {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    border: none;
+    background: transparent;
+    color: var(--charcol);
+    font-size: 1.1rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: all 0.15s ease;
+}
+
+.profile-card:hover .card-remove,
+.app-card:hover .card-remove {
+    opacity: 0.5;
+}
+
+.card-remove:hover {
+    opacity: 1 !important;
+    background: var(--light-red);
+    color: white;
+}
+
+/* ================================================
+   PROFILE / APP PICKER
+   ================================================ */
+
+.profile-picker {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    margin-top: 16px;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.08);
+    overflow: hidden;
+    animation: slideDown 0.2s ease;
+}
+
+@keyframes slideDown {
+    from { opacity: 0; transform: translateY(-8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.picker-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--border);
+    background: var(--light-blue);
+}
+
+.picker-header h4 {
+    margin: 0;
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--black);
+}
+
+.picker-close {
+    background: none;
+    border: none;
+    font-size: 1.4rem;
+    cursor: pointer;
+    color: var(--charcol);
+    padding: 0;
+    line-height: 1;
+}
+
+.picker-close:hover {
+    color: var(--light-red);
+}
+
+.picker-search {
+    width: 100%;
+    border: none;
+    border-bottom: 1px solid var(--border);
+    padding: 12px 18px;
+    font-family: var(--font);
+    font-size: 0.88rem;
+    outline: none;
+    background: var(--white);
+    box-sizing: border-box;
+}
+
+.picker-search:focus {
+    background: #fefef6;
+}
+
+.picker-list {
+    max-height: 320px;
+    overflow-y: auto;
+    padding: 4px 0;
+}
+
+.picker-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 18px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    color: var(--black);
+    transition: background 0.15s ease;
+    border: none;
+    background: none;
+    width: 100%;
+    text-align: left;
+    font-family: var(--font);
+}
+
+.picker-item:hover {
+    background: var(--sky);
+}
+
+.picker-item.already-assigned {
+    opacity: 0.4;
+    cursor: default;
+    pointer-events: none;
+}
+
+.picker-item-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1rem;
+    flex-shrink: 0;
+}
+
+.picker-item-icon.profile {
+    background: var(--sky);
+}
+
+.picker-item-icon.app {
+    background: #e8f5e9;
+}
+
+.picker-item-icon img {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+}
+
+.picker-item-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.picker-item-name {
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+
+.picker-item-meta {
+    font-size: 0.75rem;
+    color: var(--charcol);
+    opacity: 0.6;
+}
+
+.picker-item-badge {
+    font-size: 0.72rem;
+    padding: 2px 8px;
+    border-radius: 20px;
+    background: var(--gray);
+    color: var(--charcol);
+    font-weight: 500;
+}
+
+.picker-empty {
+    text-align: center;
+    padding: 24px;
+    color: var(--charcol);
+    opacity: 0.5;
+    font-size: 0.85rem;
+}
