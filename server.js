@@ -664,6 +664,158 @@ app.post('/api/unstow/:userTerminalId', async (req, res) => {
 
 const fs = require('fs');
 
+// ── Server Config (persisted to JSON) ───────────────────────────────
+const CONFIG_FILE = path.join(__dirname, 'automation-config.json');
+
+function loadConfig() {
+  try {
+    if (fs.existsSync(CONFIG_FILE)) {
+      return JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8'));
+    }
+  } catch (e) { console.error('Config load error:', e.message); }
+  return {};
+}
+
+function saveConfig(config) {
+  try {
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
+  } catch (e) { console.error('Config save error:', e.message); }
+}
+
+let serverConfig = loadConfig();
+
+// Config API — save/retrieve the SimpleMDM key so the DCR form doesn't need it
+app.get('/api/automation/config', (req, res) => {
+  return res.json({
+    simpleMdmKeySet: !!serverConfig.simpleMdmKey,
+    allowedOrigins: serverConfig.allowedOrigins || [],
+  });
+});
+
+app.put('/api/automation/config', (req, res) => {
+  const { simpleMdmKey, allowedOrigins } = req.body;
+  if (simpleMdmKey !== undefined) serverConfig.simpleMdmKey = simpleMdmKey;
+  if (allowedOrigins !== undefined) serverConfig.allowedOrigins = allowedOrigins;
+  saveConfig(serverConfig);
+  return res.json({ message: 'Config saved', simpleMdmKeySet: !!serverConfig.simpleMdmKey });
+});
+
+// ── DCR Submissions Log (persisted to JSON) ─────────────────────────
+const DCR_LOG_FILE = path.join(__dirname, 'dcr-submissions.json');
+
+function loadDcrLog() {
+  try {
+    if (fs.existsSync(DCR_LOG_FILE)) {
+      return JSON.parse(fs.readFileSync(DCR_LOG_FILE, 'utf8'));
+    }
+  } catch (e) { console.error('DCR log load error:', e.message); }
+  return [];
+}
+
+function saveDcrLog(log) {
+  try {
+    fs.writeFileSync(DCR_LOG_FILE, JSON.stringify(log, null, 2));
+  } catch (e) { console.error('DCR log save error:', e.message); }
+}
+
+let dcrSubmissions = loadDcrLog();
+
+// ── DCR Submit endpoint (public, CORS enabled) ─────────────────────
+// This is what the DCR form POSTs to directly — no API key needed from the client
+app.options('/api/dcr/submit', (req, res) => {
+  // CORS preflight
+  const origin = req.headers.origin || '';
+  const allowed = serverConfig.allowedOrigins || [];
+  if (allowed.length === 0 || allowed.includes(origin)) {
+    res.set('Access-Control-Allow-Origin', origin || '*');
+    res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.set('Access-Control-Allow-Headers', 'Content-Type');
+  }
+  return res.sendStatus(204);
+});
+
+app.post('/api/dcr/submit', async (req, res) => {
+  // CORS headers
+  const origin = req.headers.origin || '';
+  const allowed = serverConfig.allowedOrigins || [];
+  if (allowed.length === 0 || allowed.includes(origin)) {
+    res.set('Access-Control-Allow-Origin', origin || '*');
+  }
+
+  const dcrData = req.body;
+
+  if (!dcrData || !dcrData.eventName) {
+    return res.status(400).json({ error: 'Missing eventName in DCR payload.' });
+  }
+
+  // Log the submission
+  const submission = {
+    id: `dcr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    timestamp: new Date().toISOString(),
+    ...dcrData,
+  };
+  dcrSubmissions.unshift(submission);
+  saveDcrLog(dcrSubmissions);
+  console.log(`[DCR] Submission received: "${dcrData.eventName}" (${dcrData.configMode || 'Custom'})`);
+
+  // Auto-provision if SimpleMDM key is configured
+  const apiKey = serverConfig.simpleMdmKey;
+  if (apiKey) {
+    // Trigger provisioning internally (reuse the existing logic)
+    const fakeReq = {
+      body: dcrData,
+      headers: { 'x-simplemdm-key': apiKey },
+    };
+    const fakeRes = {
+      status: () => ({ json: () => {} }),
+      json: () => {},
+    };
+    // Import the provision handler by triggering the route programmatically
+    try {
+      const provisionUrl = `http://localhost:${PORT}/api/automation/provision`;
+      const provRes = await fetch(provisionUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-simplemdm-key': apiKey,
+        },
+        body: JSON.stringify(dcrData),
+      });
+      const provBody = await provRes.json();
+      console.log(`[DCR] Auto-provisioning triggered: ${provBody.runId || 'unknown'}`);
+      return res.json({
+        status: 'success',
+        message: 'Submission received and provisioning started',
+        runId: provBody.runId,
+      });
+    } catch (e) {
+      console.error(`[DCR] Auto-provision failed:`, e.message);
+      return res.json({
+        status: 'partial',
+        message: 'Submission logged but auto-provisioning failed: ' + e.message,
+      });
+    }
+  }
+
+  return res.json({
+    status: 'success',
+    message: 'Submission received (no SimpleMDM key configured — provisioning skipped)',
+  });
+});
+
+// DCR submissions API
+app.get('/api/dcr/submissions', (req, res) => {
+  return res.json({ data: dcrSubmissions });
+});
+
+app.delete('/api/dcr/submissions/:id', (req, res) => {
+  const idx = dcrSubmissions.findIndex(s => s.id === req.params.id);
+  if (idx === -1) return res.status(404).json({ error: 'Submission not found' });
+  dcrSubmissions.splice(idx, 1);
+  saveDcrLog(dcrSubmissions);
+  return res.json({ message: 'Removed' });
+});
+
 // ── Provisioning Queue (persisted to JSON) ──────────────────────────
 const QUEUE_FILE = path.join(__dirname, 'provisioning-queue.json');
 

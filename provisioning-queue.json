@@ -1,5 +1,124 @@
 [
   {
+    "id": "prov-1784129423622-jy557m",
+    "timestamp": "2026-07-15T15:30:23.622Z",
+    "eventName": "DCR Direct Test",
+    "orderNumber": "DCR-001",
+    "configMode": "Check-in Mode",
+    "contactName": "Dan",
+    "company": "Fello",
+    "status": "success",
+    "groupId": 2396733,
+    "groupName": "DCR Direct Test — DCR-001",
+    "appsRequested": [
+      "Eventbrite Organizer",
+      "Square Point of Sale"
+    ],
+    "appsMatched": [
+      {
+        "requested": "Eventbrite Organizer",
+        "matched": "Eventbrite Organizer",
+        "id": 129312
+      },
+      {
+        "requested": "Square Point of Sale",
+        "matched": "Square Point of Sale (POS)",
+        "id": 129311
+      }
+    ],
+    "appsFailed": [],
+    "profilesAssigned": [
+      {
+        "name": "Default Restrictions",
+        "id": 142210,
+        "reason": "Always applied"
+      },
+      {
+        "name": "Fello Wi-Fi",
+        "id": 133014,
+        "reason": "Always applied"
+      },
+      {
+        "name": "Eventbrite Passcode Policy",
+        "id": 160284,
+        "reason": "Check-in mode + Eventbrite"
+      }
+    ],
+    "layoutMatched": {
+      "name": "Eventbrite",
+      "id": 146657
+    },
+    "errors": [],
+    "dcrPayload": {
+      "eventName": "DCR Direct Test",
+      "orderNumber": "DCR-001",
+      "configMode": "Check-in Mode",
+      "apps": [
+        "Eventbrite Organizer",
+        "Square Point of Sale"
+      ],
+      "contactName": "Dan",
+      "company": "Fello",
+      "wifiEnabled": "Yes"
+    }
+  },
+  {
+    "id": "prov-1784128819884-tc1n7z",
+    "timestamp": "2026-07-15T15:20:19.884Z",
+    "eventName": "Test",
+    "orderNumber": "Test1234",
+    "configMode": "POS Mode",
+    "contactName": "",
+    "company": "",
+    "status": "success",
+    "groupId": 2396722,
+    "groupName": "Test — Test1234",
+    "appsRequested": [
+      "Square Point of Sale (POS)",
+      "Shopify Point of Sale (POS)"
+    ],
+    "appsMatched": [
+      {
+        "requested": "Square Point of Sale (POS)",
+        "matched": "Square Point of Sale (POS)",
+        "id": 129311
+      },
+      {
+        "requested": "Shopify Point of Sale (POS)",
+        "matched": "Shopify Point of Sale (POS)",
+        "id": 129324
+      }
+    ],
+    "appsFailed": [],
+    "profilesAssigned": [
+      {
+        "name": "Default Restrictions",
+        "id": 142210,
+        "reason": "Always applied"
+      },
+      {
+        "name": "Fello Wi-Fi",
+        "id": 133014,
+        "reason": "Always applied"
+      }
+    ],
+    "layoutMatched": null,
+    "errors": [],
+    "dcrPayload": {
+      "eventName": "Test",
+      "orderNumber": "Test1234",
+      "configMode": "POS Mode",
+      "apps": [
+        "Square Point of Sale (POS)",
+        "Shopify Point of Sale (POS)"
+      ],
+      "app_ids": [
+        129311,
+        129324
+      ]
+    }
+  },
+  {
     "id": "prov-1784128166221-zij29k",
     "timestamp": "2026-07-15T15:09:26.221Z",
     "eventName": "Test",
@@ -44,64 +163,6 @@
         "Square POS",
         "Toast Now"
       ]
-    }
-  },
-  {
-    "id": "prov-1784127771007-k3tytw",
-    "timestamp": "2026-07-15T15:02:51.007Z",
-    "eventName": "Automation Test Event",
-    "orderNumber": "TEST-001",
-    "configMode": "POS Mode",
-    "contactName": "Dan Test",
-    "company": "Fello",
-    "status": "success",
-    "groupId": 2396692,
-    "groupName": "Automation Test Event — TEST-001",
-    "appsRequested": [
-      "Square Point of Sale",
-      "Eventbrite Organizer"
-    ],
-    "appsMatched": [
-      {
-        "requested": "Square Point of Sale",
-        "matched": "Square Point of Sale (POS)",
-        "id": 129311
-      },
-      {
-        "requested": "Eventbrite Organizer",
-        "matched": "Eventbrite Organizer",
-        "id": 129312
-      }
-    ],
-    "appsFailed": [],
-    "profilesAssigned": [
-      {
-        "name": "Default Restrictions",
-        "id": 142210,
-        "reason": "Always applied"
-      },
-      {
-        "name": "Fello Wi-Fi",
-        "id": 133014,
-        "reason": "Always applied"
-      }
-    ],
-    "layoutMatched": {
-      "name": "Square POS & Eventbrite Organizer",
-      "id": 147544
-    },
-    "errors": [],
-    "dcrPayload": {
-      "orderNumber": "TEST-001",
-      "eventName": "Automation Test Event",
-      "configMode": "POS Mode",
-      "contactName": "Dan Test",
-      "company": "Fello",
-      "apps": [
-        "Square Point of Sale",
-        "Eventbrite Organizer"
-      ],
-      "wifiEnabled": "Yes"
     }
   }
 ]
