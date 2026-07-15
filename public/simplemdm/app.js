@@ -1830,7 +1830,7 @@
         dom.appsGrid.innerHTML = apps.map(a => {
             const name = (a.attributes && a.attributes.name) || a.name || 'Unnamed';
             const bundleId = (a.attributes && a.attributes.bundle_identifier) || '';
-            const iconUrl = a.attributes && a.attributes.app_store_preview && a.attributes.app_store_preview.artwork_url;
+            const iconUrl = a.attributes && a.attributes._icon_url;
 
             const iconHtml = iconUrl
                 ? `<img src="${escapeHtml(iconUrl)}" alt="">`
@@ -1910,7 +1910,7 @@
             const name = (a.attributes && a.attributes.name) || a.name || 'Unnamed';
             const bundleId = (a.attributes && a.attributes.bundle_identifier) || '';
             const assigned = assignedIds.has(String(a.id));
-            const iconUrl = a.attributes && a.attributes.app_store_preview && a.attributes.app_store_preview.artwork_url;
+            const iconUrl = a.attributes && a.attributes._icon_url;
 
             return `<button class="picker-item${assigned ? ' already-assigned' : ''}" data-id="${a.id}" data-name="${escapeHtml(name)}">
                 <div class="picker-item-icon app">${iconUrl ? `<img src="${escapeHtml(iconUrl)}" alt="">` : '📲'}</div>

@@ -1673,6 +1673,7 @@ app.get('/api/simplemdm/assignment_groups/:groupId/apps', async (req, res) => {
       return ags.some(g => g.id === groupId);
     });
 
+    await enrichAppsWithIcons(assigned);
     return res.json({ data: assigned });
   } catch (err) {
     console.error('SimpleMDM group apps proxy error:', err.message);
@@ -1805,7 +1806,46 @@ app.get('/api/simplemdm/profiles', async (req, res) => {
   }
 });
 
-// List all apps (paginated, limit=100)
+// ── App Store Icon Enrichment ────────────────────────────────────────
+const iconCache = {}; // itunes_store_id -> icon URL
+
+async function enrichAppsWithIcons(apps) {
+  // Collect IDs that need lookup
+  const idsToLookup = [];
+  for (const app of apps) {
+    const storeId = app.attributes && app.attributes.itunes_store_id;
+    if (storeId && !iconCache[storeId]) {
+      idsToLookup.push(storeId);
+    }
+  }
+
+  // Batch lookup from iTunes API (max 200 per request)
+  if (idsToLookup.length > 0) {
+    try {
+      const ids = idsToLookup.slice(0, 200).join(',');
+      const resp = await fetch(`https://itunes.apple.com/lookup?id=${ids}`);
+      if (resp.ok) {
+        const data = await resp.json();
+        for (const r of (data.results || [])) {
+          iconCache[r.trackId] = r.artworkUrl100 || r.artworkUrl60 || '';
+        }
+      }
+    } catch (e) {
+      console.error('[ICONS] iTunes lookup failed:', e.message);
+    }
+  }
+
+  // Attach icon URLs to app objects
+  for (const app of apps) {
+    const storeId = app.attributes && app.attributes.itunes_store_id;
+    if (storeId && iconCache[storeId]) {
+      app.attributes._icon_url = iconCache[storeId];
+    }
+  }
+  return apps;
+}
+
+// List all apps (enriched with App Store icons)
 app.get('/api/simplemdm/apps', async (req, res) => {
   const auth = req.headers.authorization;
   if (!auth) return res.status(401).json({ error: 'Missing Authorization header' });
@@ -1815,17 +1855,17 @@ app.get('/api/simplemdm/apps', async (req, res) => {
     url.searchParams.set('limit', '100');
     if (req.query.page != null) url.searchParams.set('starting_after', req.query.page);
     const resp = await fetch(url.toString(), {
-      method: 'GET',
-      headers: { Authorization: auth, 'Content-Type': 'application/json' },
+      headers: { Authorization: auth },
     });
-    const contentType = resp.headers.get('content-type') || '';
-    if (contentType.includes('application/json')) {
-      const data = await resp.json();
-      return res.status(resp.status).json(data);
-    } else {
+
+    if (!resp.ok) {
       const text = await resp.text();
       return res.status(resp.status).send(text);
     }
+
+    const data = await resp.json();
+    await enrichAppsWithIcons(data.data || []);
+    return res.json(data);
   } catch (err) {
     console.error('SimpleMDM apps proxy error:', err.message);
     return res.status(500).json({ error: 'SimpleMDM proxy failed: ' + err.message });
