@@ -918,6 +918,15 @@
         // Use the actual tbody element to ensure correct DOM placement
         const tbody = document.getElementById('device-tbody');
         tbody.innerHTML = rowsHtml;
+        
+        // Force visibility on all rows
+        Array.from(tbody.rows).forEach(tr => {
+            tr.style.display = 'table-row';
+            tr.style.visibility = 'visible';
+            tr.style.opacity = '1';
+            tr.style.height = 'auto';
+            tr.style.minHeight = '48px';
+        });
 
         // Attach click handlers
         tbody.querySelectorAll('tr').forEach(tr => {
@@ -927,7 +936,7 @@
             }
         });
 
-        console.log(`[renderDeviceTable] tbody.innerHTML set with ${devices.length} rows, tbody.children.length = ${tbody.children.length}`);
+        console.log(`[renderDeviceTable] tbody rows: ${tbody.rows.length}, tbody offsetHeight: ${tbody.offsetHeight}, table offsetHeight: ${tbody.closest('table')?.offsetHeight}`);
         
         // DEBUG: Add test content outside table to prove rendering works
         let debugDiv = document.getElementById('debug-device-test');
