@@ -2328,11 +2328,6 @@ app.post('/api/cobrowse/token', (req, res) => {
     iat: now,
     exp: now + 3600,
     displayName: 'Fello Command Center',
-    policy: {
-      subs: true,
-      sessions: true,
-      devices: true,
-    }
   }));
 
   const signingInput = `${header}.${payload}`;
