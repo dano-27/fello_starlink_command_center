@@ -903,21 +903,24 @@
             const model = getModel(device);
             const serial = getSerial(device);
             const os = getOSVersion(device);
-            const status = getEnrollmentStatus(device);
+            const rawStatus = getAttr(device, 'status') || 'unknown';
+            const statusSlug = rawStatus.toLowerCase().replace(/\s+/g, '-');
+
+            console.log(`[renderDeviceTable] row ${index}: name="${name}" model="${model}" serial="${serial}" os="${os}" status="${rawStatus}"`);
 
             const tr = document.createElement('tr');
-            tr.style.animationDelay = `${index * 0.02}s`;
             tr.innerHTML = `
                 <td><span class="device-name">${escapeHtml(name)}</span></td>
                 <td>${escapeHtml(model)}</td>
                 <td>${escapeHtml(serial)}</td>
                 <td>${escapeHtml(os)}</td>
-                <td><span class="status-badge status-${status}">${status}</span></td>
+                <td><span class="status-badge status-${statusSlug}">${escapeHtml(rawStatus)}</span></td>
             `;
             tr.addEventListener('click', () => openDeviceModal(device));
             dom.deviceTbody.appendChild(tr);
         });
 
+        console.log(`[renderDeviceTable] tbody now has ${dom.deviceTbody.children.length} rows`);
         showDevicesState('table');
     }
 
