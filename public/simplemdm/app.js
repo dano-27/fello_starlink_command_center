@@ -683,8 +683,18 @@
         showDevicesState('loading');
 
         try {
+            // Re-fetch the group to get the latest device relationships
+            let freshGroup = group;
+            try {
+                const refreshed = await apiRequest(`/assignment_groups/${group.id}`);
+                if (refreshed && refreshed.data) {
+                    freshGroup = refreshed.data;
+                    state.currentGroup = freshGroup; // update cached group
+                }
+            } catch (_) { /* fall back to passed-in group */ }
+
             // Get device IDs from the group's relationships
-            const devRel = group.relationships && group.relationships.devices && group.relationships.devices.data;
+            const devRel = freshGroup.relationships && freshGroup.relationships.devices && freshGroup.relationships.devices.data;
             const deviceIds = Array.isArray(devRel) ? devRel.map(d => d.id) : [];
 
             if (deviceIds.length === 0) {
