@@ -896,8 +896,8 @@
             return;
         }
 
-        dom.deviceTbody.innerHTML = '';
-
+        // Build all rows as HTML string
+        let rowsHtml = '';
         devices.forEach((device, index) => {
             const name = getDeviceName(device);
             const model = getModel(device);
@@ -906,24 +906,28 @@
             const rawStatus = getAttr(device, 'status') || 'unknown';
             const statusSlug = rawStatus.toLowerCase().replace(/\s+/g, '-');
 
-            console.log(`[renderDeviceTable] row ${index}: name="${name}" model="${model}" serial="${serial}" os="${os}" status="${rawStatus}"`);
-
-            const tr = document.createElement('tr');
-            tr.style.background = '#ff0000';
-            tr.style.color = '#ffffff';
-            tr.style.height = '50px';
-            tr.innerHTML = `
+            rowsHtml += `<tr data-device-index="${index}">
                 <td><span class="device-name">${escapeHtml(name)}</span></td>
                 <td>${escapeHtml(model)}</td>
                 <td>${escapeHtml(serial)}</td>
                 <td>${escapeHtml(os)}</td>
                 <td><span class="status-badge status-${statusSlug}">${escapeHtml(rawStatus)}</span></td>
-            `;
-            tr.addEventListener('click', () => openDeviceModal(device));
-            dom.deviceTbody.appendChild(tr);
+            </tr>`;
         });
 
-        console.log(`[renderDeviceTable] tbody now has ${dom.deviceTbody.children.length} rows`);
+        // Use the actual tbody element to ensure correct DOM placement
+        const tbody = document.getElementById('device-tbody');
+        tbody.innerHTML = rowsHtml;
+
+        // Attach click handlers
+        tbody.querySelectorAll('tr').forEach(tr => {
+            const idx = parseInt(tr.dataset.deviceIndex, 10);
+            if (devices[idx]) {
+                tr.addEventListener('click', () => openDeviceModal(devices[idx]));
+            }
+        });
+
+        console.log(`[renderDeviceTable] tbody.innerHTML set with ${devices.length} rows, tbody.children.length = ${tbody.children.length}`);
         showDevicesState('table');
     }
 
