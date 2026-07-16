@@ -701,17 +701,13 @@
             const dgRel = freshGroup.relationships && freshGroup.relationships.device_groups && freshGroup.relationships.device_groups.data;
             const deviceGroupIds = Array.isArray(dgRel) ? dgRel.map(dg => dg.id) : [];
 
-            console.log(`[fetchGroupDevices] group ${group.id}: ${deviceIds.length} direct devices, ${deviceGroupIds.length} device groups`);
-
             // Get devices from device_groups too
             let allDeviceIds = [...deviceIds];
             for (const dgId of deviceGroupIds) {
                 try {
                     const dgResp = await apiRequest(`/device_groups/${dgId}`);
                     const dgDevs = dgResp?.data?.relationships?.devices?.data || [];
-                    const dgDevIds = dgDevs.map(d => d.id);
-                    console.log(`[fetchGroupDevices] device_group ${dgId}: ${dgDevIds.length} devices`);
-                    allDeviceIds = allDeviceIds.concat(dgDevIds);
+                    allDeviceIds = allDeviceIds.concat(dgDevs.map(d => d.id));
                 } catch (_) { /* skip unavailable device groups */ }
             }
 
@@ -726,8 +722,6 @@
                 return;
             }
 
-            console.log(`[fetchGroupDevices] fetching ${allDeviceIds.length} unique device IDs`);
-
             // Fetch each device's details in parallel (batched 10 at a time)
             let allDevices = [];
             const BATCH = 10;
@@ -736,21 +730,12 @@
                 const results = await Promise.all(
                     batch.map(id =>
                         apiRequest(`/devices/${id}`)
-                            .then(resp => {
-                                const device = resp.data || resp;
-                                console.log(`[fetchGroupDevices] device ${id}: ${device?.attributes?.name || device?.name || 'no-name'} (${device?.attributes?.status || 'unknown'})`);
-                                return device;
-                            })
-                            .catch(err => {
-                                console.warn(`[fetchGroupDevices] device ${id} failed: ${err.message}`);
-                                return null;
-                            })
+                            .then(resp => resp.data || resp)
+                            .catch(() => null)
                     )
                 );
                 allDevices = allDevices.concat(results.filter(Boolean));
             }
-
-            console.log(`[fetchGroupDevices] loaded ${allDevices.length} devices successfully`);
 
             state.devices = allDevices;
             state.filteredDevices = [...allDevices];
@@ -915,18 +900,9 @@
             </tr>`;
         });
 
-        // Use the actual tbody element to ensure correct DOM placement
+        // Render rows into tbody
         const tbody = document.getElementById('device-tbody');
         tbody.innerHTML = rowsHtml;
-        
-        // Force visibility on all rows
-        Array.from(tbody.rows).forEach(tr => {
-            tr.style.display = 'table-row';
-            tr.style.visibility = 'visible';
-            tr.style.opacity = '1';
-            tr.style.height = 'auto';
-            tr.style.minHeight = '48px';
-        });
 
         // Attach click handlers
         tbody.querySelectorAll('tr').forEach(tr => {
@@ -935,19 +911,6 @@
                 tr.addEventListener('click', () => openDeviceModal(devices[idx]));
             }
         });
-
-        console.log(`[renderDeviceTable] tbody rows: ${tbody.rows.length}, tbody offsetHeight: ${tbody.offsetHeight}, table offsetHeight: ${tbody.closest('table')?.offsetHeight}`);
-        
-        // DEBUG: Add test content outside table to prove rendering works
-        let debugDiv = document.getElementById('debug-device-test');
-        if (!debugDiv) {
-            debugDiv = document.createElement('div');
-            debugDiv.id = 'debug-device-test';
-            document.getElementById('device-table').after(debugDiv);
-        }
-        debugDiv.innerHTML = `<div style="background:#ff0000;padding:20px;margin:10px 0;color:#fff;font-weight:bold;border-radius:8px;">
-            DEBUG: ${devices.length} device(s) loaded. First: ${getDeviceName(devices[0])} | Serial: ${getSerial(devices[0])} | Status: ${getAttr(devices[0], 'status')}
-        </div>`;
 
         showDevicesState('table');
     }
