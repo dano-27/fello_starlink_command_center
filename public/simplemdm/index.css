@@ -674,15 +674,19 @@ body {
 /* ================================================
    TABLE (devices)
    ================================================ */
+.device-table-wrap {
+    border-radius: var(--radius);
+    overflow: hidden;
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--border);
+    background: var(--white);
+}
+
 .device-table {
     width: 100%;
     border-collapse: separate;
     border-spacing: 0;
     background: var(--white);
-    border-radius: var(--radius);
-    overflow: hidden;
-    box-shadow: var(--shadow-sm);
-    border: 1px solid var(--border);
 }
 
 .device-table thead th {
