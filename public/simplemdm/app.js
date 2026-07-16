@@ -909,6 +909,9 @@
             console.log(`[renderDeviceTable] row ${index}: name="${name}" model="${model}" serial="${serial}" os="${os}" status="${rawStatus}"`);
 
             const tr = document.createElement('tr');
+            tr.style.background = '#ff0000';
+            tr.style.color = '#ffffff';
+            tr.style.height = '50px';
             tr.innerHTML = `
                 <td><span class="device-name">${escapeHtml(name)}</span></td>
                 <td>${escapeHtml(model)}</td>
