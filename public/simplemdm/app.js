@@ -1243,9 +1243,10 @@
 
         // Screen viewer events
         dom.actionViewScreen.addEventListener('click', () => {
-            if (state.currentDevice) {
+            const device = state.currentDevice;
+            if (device) {
                 closeDeviceModal();
-                openScreenViewer(state.currentDevice);
+                openScreenViewer(device);
             }
         });
 
