@@ -1049,7 +1049,7 @@
         // Check if Cobrowse is configured
         const configured = await checkCobrowseConfig();
         if (!configured) {
-            showScreenViewerError('Cobrowse.io is not configured. Add COBROWSE_LICENSE_KEY and COBROWSE_API_SECRET environment variables.');
+            showScreenViewerError('Cobrowse.io is not configured. Add COBROWSE_LICENSE_KEY and COBROWSE_PRIVATE_KEY environment variables.');
             return;
         }
 

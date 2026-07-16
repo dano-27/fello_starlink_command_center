@@ -2303,11 +2303,6 @@ app.get('/hexnode/*', (req, res) => {
 app.get('/webbing/*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'webbing', 'index.html'));
 });
-// Hub landing page
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
 // ── Cobrowse.io Screen Viewer ────────────────────────────────────────
 app.get('/api/cobrowse/config', (req, res) => {
   res.json({ licenseKey: process.env.COBROWSE_LICENSE_KEY || null });
@@ -2346,6 +2341,11 @@ app.post('/api/cobrowse/token', (req, res) => {
   const token = `${signingInput}.${signature}`;
 
   res.json({ token });
+});
+
+// Hub landing page
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
 app.listen(PORT, () => {
