@@ -43,6 +43,9 @@
             <div class="modal-footer">
                 <h4>Remote Actions</h4>
                 <div class="modal-actions">
+                    <button class="btn btn-action btn-screen" id="action-view-screen">
+                        <span class="action-icon">📺</span> View Screen
+                    </button>
                     <button class="btn btn-action btn-lock" id="action-lock">
                         <span class="action-icon">🔒</span> Lock Device
                     </button>
@@ -52,6 +55,32 @@
                     <button class="btn btn-action btn-shutdown" id="action-shutdown">
                         <span class="action-icon">⏻</span> Shutdown
                     </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cobrowse Screen Viewer Modal -->
+    <div id="screen-viewer-overlay" class="screen-viewer-overlay hidden">
+        <div class="screen-viewer-container">
+            <div class="screen-viewer-header">
+                <div class="screen-viewer-title">
+                    <span class="screen-viewer-icon">📺</span>
+                    <h3 id="screen-viewer-device-name">Device Screen</h3>
+                    <span class="screen-viewer-status" id="screen-viewer-status">Connecting...</span>
+                </div>
+                <button class="screen-viewer-close" id="screen-viewer-close">&times;</button>
+            </div>
+            <div class="screen-viewer-body" id="screen-viewer-body">
+                <div class="screen-viewer-loading" id="screen-viewer-loading">
+                    <div class="loader"></div>
+                    <p>Connecting to device...</p>
+                </div>
+                <iframe id="screen-viewer-iframe" class="screen-viewer-iframe hidden" allow="clipboard-read; clipboard-write"></iframe>
+                <div class="screen-viewer-error hidden" id="screen-viewer-error">
+                    <div class="error-icon">📺</div>
+                    <h4>Unable to Connect</h4>
+                    <p id="screen-viewer-error-msg">Device is not online or Cobrowse is not configured.</p>
                 </div>
             </div>
         </div>

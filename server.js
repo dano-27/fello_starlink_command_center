@@ -2308,6 +2308,39 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// ── Cobrowse.io Screen Viewer ────────────────────────────────────────
+app.get('/api/cobrowse/config', (req, res) => {
+  res.json({ licenseKey: process.env.COBROWSE_LICENSE_KEY || null });
+});
+
+app.post('/api/cobrowse/token', (req, res) => {
+  const COBROWSE_LICENSE_KEY = process.env.COBROWSE_LICENSE_KEY;
+  const COBROWSE_API_SECRET = process.env.COBROWSE_API_SECRET;
+
+  if (!COBROWSE_LICENSE_KEY || !COBROWSE_API_SECRET) {
+    return res.status(503).json({ error: 'Cobrowse.io is not configured. Set COBROWSE_LICENSE_KEY and COBROWSE_API_SECRET environment variables.' });
+  }
+
+  const header = base64url(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
+  const now = Math.floor(Date.now() / 1000);
+  const payload = base64url(JSON.stringify({
+    iss: COBROWSE_LICENSE_KEY,
+    aud: 'https://cobrowse.io',
+    sub: 'agent',
+    iat: now,
+    exp: now + 3600,
+    displayName: 'Fello Command Center',
+  }));
+
+  const signingInput = `${header}.${payload}`;
+  const signature = crypto.createHmac('sha256', COBROWSE_API_SECRET)
+    .update(signingInput)
+    .digest('base64url');
+  const token = `${signingInput}.${signature}`;
+
+  res.json({ token });
+});
+
 app.listen(PORT, () => {
   console.log(`\n  ✦ Fello Command Center`);
   console.log(`  ─────────────────────────────────`);

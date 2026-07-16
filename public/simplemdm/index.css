@@ -2100,3 +2100,157 @@ select.prov-input {
 .serial-summary-stat.success { color: var(--success-color); }
 .serial-summary-stat.warning { color: #d97706; }
 .serial-summary-stat.error { color: var(--light-red); }
+
+/* ================================================
+   COBROWSE SCREEN VIEWER
+   ================================================ */
+.screen-viewer-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10000;
+    background: rgba(0,0,0,0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: fadeIn 0.2s ease;
+}
+
+.screen-viewer-container {
+    width: 90vw;
+    height: 85vh;
+    max-width: 1200px;
+    background: #1a1a2e;
+    border-radius: 16px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    box-shadow: 0 24px 80px rgba(0,0,0,0.6);
+    animation: slideUp 0.3s ease;
+}
+
+.screen-viewer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 24px;
+    background: #16213e;
+    border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+.screen-viewer-title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.screen-viewer-icon {
+    font-size: 1.3rem;
+}
+
+.screen-viewer-title h3 {
+    color: #fff;
+    font-size: 1rem;
+    font-weight: 600;
+    margin: 0;
+}
+
+.screen-viewer-status {
+    font-size: 0.75rem;
+    padding: 3px 10px;
+    border-radius: 20px;
+    background: rgba(252,210,48,0.15);
+    color: #fcd230;
+    font-weight: 500;
+}
+
+.screen-viewer-status.connected {
+    background: rgba(46,204,113,0.15);
+    color: #2ecc71;
+}
+
+.screen-viewer-status.error {
+    background: rgba(231,76,60,0.15);
+    color: #e74c3c;
+}
+
+.screen-viewer-close {
+    background: rgba(255,255,255,0.08);
+    border: none;
+    color: #fff;
+    font-size: 1.5rem;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.2s;
+}
+
+.screen-viewer-close:hover {
+    background: rgba(255,255,255,0.15);
+}
+
+.screen-viewer-body {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    overflow: hidden;
+}
+
+.screen-viewer-loading {
+    text-align: center;
+    color: rgba(255,255,255,0.6);
+}
+
+.screen-viewer-loading .loader {
+    border-top-color: #fcd230;
+}
+
+.screen-viewer-loading p {
+    margin-top: 16px;
+    font-size: 0.9rem;
+}
+
+.screen-viewer-iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+    background: #000;
+}
+
+.screen-viewer-error {
+    text-align: center;
+    color: rgba(255,255,255,0.6);
+}
+
+.screen-viewer-error .error-icon {
+    font-size: 3rem;
+    margin-bottom: 16px;
+    opacity: 0.4;
+}
+
+.screen-viewer-error h4 {
+    color: #fff;
+    font-size: 1.1rem;
+    margin-bottom: 8px;
+}
+
+.screen-viewer-error p {
+    font-size: 0.9rem;
+    max-width: 400px;
+}
+
+.btn-screen {
+    background: linear-gradient(135deg, #16213e, #1a1a2e) !important;
+    color: #fff !important;
+    border: 1px solid rgba(255,255,255,0.12) !important;
+}
+
+.btn-screen:hover {
+    background: linear-gradient(135deg, #1a2744, #222244) !important;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+}

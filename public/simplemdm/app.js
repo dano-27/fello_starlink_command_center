@@ -174,6 +174,17 @@
         provSelectedApps:    $('#prov-selected-apps'),
         provSubmitBtn:       $('#provision-submit'),
         provCancelBtn:       $('#provision-cancel'),
+
+        // Screen Viewer
+        screenViewerOverlay:  $('#screen-viewer-overlay'),
+        screenViewerClose:    $('#screen-viewer-close'),
+        screenViewerName:     $('#screen-viewer-device-name'),
+        screenViewerStatus:   $('#screen-viewer-status'),
+        screenViewerLoading:  $('#screen-viewer-loading'),
+        screenViewerIframe:   $('#screen-viewer-iframe'),
+        screenViewerError:    $('#screen-viewer-error'),
+        screenViewerErrorMsg: $('#screen-viewer-error-msg'),
+        actionViewScreen:     $('#action-view-screen'),
     };
 
     // ---- State ----
@@ -1005,6 +1016,86 @@
     }
 
     // ================================================
+    //  COBROWSE SCREEN VIEWER
+    // ================================================
+
+    let cobrowseConfigured = null; // null = unknown, true/false after check
+
+    async function checkCobrowseConfig() {
+        if (cobrowseConfigured !== null) return cobrowseConfigured;
+        try {
+            const resp = await fetch('/api/cobrowse/config');
+            const data = await resp.json();
+            cobrowseConfigured = !!data.licenseKey;
+        } catch (_) {
+            cobrowseConfigured = false;
+        }
+        return cobrowseConfigured;
+    }
+
+    async function openScreenViewer(device) {
+        const serial = getSerial(device);
+        const name = getDeviceName(device);
+
+        // Show the viewer modal
+        dom.screenViewerName.textContent = name;
+        dom.screenViewerStatus.textContent = 'Connecting...';
+        dom.screenViewerStatus.className = 'screen-viewer-status';
+        dom.screenViewerLoading.classList.remove('hidden');
+        dom.screenViewerIframe.classList.add('hidden');
+        dom.screenViewerError.classList.add('hidden');
+        dom.screenViewerOverlay.classList.remove('hidden');
+
+        // Check if Cobrowse is configured
+        const configured = await checkCobrowseConfig();
+        if (!configured) {
+            showScreenViewerError('Cobrowse.io is not configured. Add COBROWSE_LICENSE_KEY and COBROWSE_API_SECRET environment variables.');
+            return;
+        }
+
+        // Get JWT token
+        try {
+            const tokenResp = await fetch('/api/cobrowse/token', { method: 'POST' });
+            if (!tokenResp.ok) throw new Error('Failed to get auth token');
+            const { token } = await tokenResp.json();
+
+            // Build the Cobrowse dashboard IFrame URL filtered by serial number
+            const cobrowseUrl = `https://cobrowse.io/dashboard/devices?token=${encodeURIComponent(token)}&filter_serial_number=${encodeURIComponent(serial)}&navigation=none&agent_tools=none`;
+
+            dom.screenViewerIframe.src = cobrowseUrl;
+            dom.screenViewerIframe.onload = () => {
+                dom.screenViewerLoading.classList.add('hidden');
+                dom.screenViewerIframe.classList.remove('hidden');
+                dom.screenViewerStatus.textContent = 'Connected';
+                dom.screenViewerStatus.className = 'screen-viewer-status connected';
+            };
+
+            // Timeout after 15s if iframe doesn't load
+            setTimeout(() => {
+                if (!dom.screenViewerIframe.classList.contains('hidden')) return;
+                showScreenViewerError('Connection timed out. The device may not be online or the Cobrowse SDK may not be running.');
+            }, 15000);
+
+        } catch (err) {
+            showScreenViewerError(err.message || 'Failed to connect to Cobrowse.io');
+        }
+    }
+
+    function showScreenViewerError(message) {
+        dom.screenViewerLoading.classList.add('hidden');
+        dom.screenViewerIframe.classList.add('hidden');
+        dom.screenViewerErrorMsg.textContent = message;
+        dom.screenViewerError.classList.remove('hidden');
+        dom.screenViewerStatus.textContent = 'Error';
+        dom.screenViewerStatus.className = 'screen-viewer-status error';
+    }
+
+    function closeScreenViewer() {
+        dom.screenViewerOverlay.classList.add('hidden');
+        dom.screenViewerIframe.src = 'about:blank';
+    }
+
+    // ================================================
     //  REMOTE ACTIONS
     // ================================================
 
@@ -1148,6 +1239,19 @@
         dom.modalClose.addEventListener('click', closeDeviceModal);
         dom.modalOverlay.addEventListener('click', (e) => {
             if (e.target === dom.modalOverlay) closeDeviceModal();
+        });
+
+        // Screen viewer events
+        dom.actionViewScreen.addEventListener('click', () => {
+            if (state.currentDevice) {
+                closeDeviceModal();
+                openScreenViewer(state.currentDevice);
+            }
+        });
+
+        dom.screenViewerClose.addEventListener('click', closeScreenViewer);
+        dom.screenViewerOverlay.addEventListener('click', (e) => {
+            if (e.target === dom.screenViewerOverlay) closeScreenViewer();
         });
 
         // Remote actions
