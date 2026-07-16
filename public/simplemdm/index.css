@@ -676,7 +676,6 @@ body {
    ================================================ */
 .device-table-wrap {
     border-radius: var(--radius);
-    overflow: hidden;
     box-shadow: var(--shadow-sm);
     border: 1px solid var(--border);
     background: var(--white);
