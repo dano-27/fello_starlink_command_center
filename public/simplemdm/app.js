@@ -697,7 +697,28 @@
             const devRel = freshGroup.relationships && freshGroup.relationships.devices && freshGroup.relationships.devices.data;
             const deviceIds = Array.isArray(devRel) ? devRel.map(d => d.id) : [];
 
-            if (deviceIds.length === 0) {
+            // Also check device_groups for indirect devices
+            const dgRel = freshGroup.relationships && freshGroup.relationships.device_groups && freshGroup.relationships.device_groups.data;
+            const deviceGroupIds = Array.isArray(dgRel) ? dgRel.map(dg => dg.id) : [];
+
+            console.log(`[fetchGroupDevices] group ${group.id}: ${deviceIds.length} direct devices, ${deviceGroupIds.length} device groups`);
+
+            // Get devices from device_groups too
+            let allDeviceIds = [...deviceIds];
+            for (const dgId of deviceGroupIds) {
+                try {
+                    const dgResp = await apiRequest(`/device_groups/${dgId}`);
+                    const dgDevs = dgResp?.data?.relationships?.devices?.data || [];
+                    const dgDevIds = dgDevs.map(d => d.id);
+                    console.log(`[fetchGroupDevices] device_group ${dgId}: ${dgDevIds.length} devices`);
+                    allDeviceIds = allDeviceIds.concat(dgDevIds);
+                } catch (_) { /* skip unavailable device groups */ }
+            }
+
+            // Deduplicate
+            allDeviceIds = [...new Set(allDeviceIds)];
+
+            if (allDeviceIds.length === 0) {
                 state.devices = [];
                 state.filteredDevices = [];
                 updateDevicesStats();
@@ -705,20 +726,31 @@
                 return;
             }
 
+            console.log(`[fetchGroupDevices] fetching ${allDeviceIds.length} unique device IDs`);
+
             // Fetch each device's details in parallel (batched 10 at a time)
             let allDevices = [];
             const BATCH = 10;
-            for (let i = 0; i < deviceIds.length; i += BATCH) {
-                const batch = deviceIds.slice(i, i + BATCH);
+            for (let i = 0; i < allDeviceIds.length; i += BATCH) {
+                const batch = allDeviceIds.slice(i, i + BATCH);
                 const results = await Promise.all(
                     batch.map(id =>
                         apiRequest(`/devices/${id}`)
-                            .then(resp => resp.data || resp)
-                            .catch(() => null)
+                            .then(resp => {
+                                const device = resp.data || resp;
+                                console.log(`[fetchGroupDevices] device ${id}: ${device?.attributes?.name || device?.name || 'no-name'} (${device?.attributes?.status || 'unknown'})`);
+                                return device;
+                            })
+                            .catch(err => {
+                                console.warn(`[fetchGroupDevices] device ${id} failed: ${err.message}`);
+                                return null;
+                            })
                     )
                 );
                 allDevices = allDevices.concat(results.filter(Boolean));
             }
+
+            console.log(`[fetchGroupDevices] loaded ${allDevices.length} devices successfully`);
 
             state.devices = allDevices;
             state.filteredDevices = [...allDevices];
