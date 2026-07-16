@@ -928,6 +928,18 @@
         });
 
         console.log(`[renderDeviceTable] tbody.innerHTML set with ${devices.length} rows, tbody.children.length = ${tbody.children.length}`);
+        
+        // DEBUG: Add test content outside table to prove rendering works
+        let debugDiv = document.getElementById('debug-device-test');
+        if (!debugDiv) {
+            debugDiv = document.createElement('div');
+            debugDiv.id = 'debug-device-test';
+            document.getElementById('device-table').after(debugDiv);
+        }
+        debugDiv.innerHTML = `<div style="background:#ff0000;padding:20px;margin:10px 0;color:#fff;font-weight:bold;border-radius:8px;">
+            DEBUG: ${devices.length} device(s) loaded. First: ${getDeviceName(devices[0])} | Serial: ${getSerial(devices[0])} | Status: ${getAttr(devices[0], 'status')}
+        </div>`;
+
         showDevicesState('table');
     }
 
