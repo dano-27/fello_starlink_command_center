@@ -1745,7 +1745,7 @@ app.post('/api/automation/provision', async (req, res) => {
           const catEntry = appCatalog.find(a => a.id === appId);
           const appName = catEntry ? catEntry.name : `App #${appId}`;
           try {
-            await smdmRequest(rawKey, `/assignment_groups/${groupId}/apps/${appId}`, 'POST', { deployment_type: 'standard', install_type: 'auto_deploy' });
+            await smdmRequest(rawKey, `/assignment_groups/${groupId}/apps/${appId}`, 'POST', { deployment_type: 'standard' });
             run.appsMatched.push({ requested: appName, matched: appName, id: appId });
             console.log(`[PROVISION]   ✓ App: "${appName}" (${appId})`);
           } catch (e) {
@@ -1767,7 +1767,7 @@ app.post('/api/automation/provision', async (req, res) => {
         const match = fuzzyMatchApp(appName, appCatalog);
         if (match) {
           try {
-            await smdmRequest(rawKey, `/assignment_groups/${groupId}/apps/${match.id}`, 'POST', { deployment_type: 'standard', install_type: 'auto_deploy' });
+            await smdmRequest(rawKey, `/assignment_groups/${groupId}/apps/${match.id}`, 'POST', { deployment_type: 'standard' });
             run.appsMatched.push({ requested: appName, matched: match.name, id: match.id });
             console.log(`[PROVISION]   ✓ App: "${appName}" → "${match.name}" (${match.id})`);
           } catch (e) {
@@ -1777,6 +1777,17 @@ app.post('/api/automation/provision', async (req, res) => {
         } else {
           run.appsFailed.push(appName);
           console.log(`[PROVISION]   ✗ App not found: "${appName}"`);
+        }
+      }
+
+      // ── Step 2b: Push apps to ensure immediate deployment ──
+      if (run.appsMatched.length > 0) {
+        try {
+          await smdmRequest(rawKey, `/assignment_groups/${groupId}/push_apps`, 'POST');
+          console.log(`[PROVISION] ✓ Push apps triggered for group ${groupId}`);
+          run.appsPushed = true;
+        } catch (pushErr) {
+          console.log(`[PROVISION] ⚠ Push apps returned: ${pushErr.message}`);
         }
       }
 
@@ -2201,81 +2212,22 @@ app.patch('/api/simplemdm/assignment_groups/:groupId', async (req, res) => {
   }
 });
 
-// DEBUG: Test what SimpleMDM actually accepts for install_type
-app.get('/api/debug/test-assign/:groupId/:appId', async (req, res) => {
-  const auth = req.headers.authorization;
-  if (!auth) return res.status(401).json({ error: 'Missing Authorization header' });
-
-  const { groupId, appId } = req.params;
-  const results = {};
-
-  try {
-    // Step 1: Assign app with install_type=auto_deploy (form-encoded)
-    const assignUrl = `https://a.simplemdm.com/api/v1/assignment_groups/${groupId}/apps/${appId}`;
-    const formBody = 'deployment_type=standard&install_type=auto_deploy';
-    console.log(`[DEBUG] Assigning: POST ${assignUrl} body=${formBody}`);
-    const assignResp = await fetch(assignUrl, {
-      method: 'POST',
-      headers: { Authorization: auth, 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: formBody,
-    });
-    results.assignStatus = assignResp.status;
-    results.assignBody = await assignResp.text();
-    console.log(`[DEBUG] Assign response: ${assignResp.status} ${results.assignBody}`);
-
-    // Step 2: Read back the group to check auto_deploy
-    const groupUrl = `https://a.simplemdm.com/api/v1/assignment_groups/${groupId}`;
-    const groupResp = await fetch(groupUrl, { headers: { Authorization: auth } });
-    const groupData = await groupResp.json();
-    results.groupAutoDeply = groupData.data?.attributes?.auto_deploy;
-    results.groupAttributes = groupData.data?.attributes;
-    console.log(`[DEBUG] Group auto_deploy: ${results.groupAutoDeply}`);
-
-    // Step 3: Try assigning same app with JSON format
-    const jsonBody = JSON.stringify({ deployment_type: 'standard', install_type: 'auto_deploy' });
-    console.log(`[DEBUG] Re-assigning with JSON: ${jsonBody}`);
-    const jsonResp = await fetch(assignUrl, {
-      method: 'POST',
-      headers: { Authorization: auth, 'Content-Type': 'application/json' },
-      body: jsonBody,
-    });
-    results.jsonAssignStatus = jsonResp.status;
-    results.jsonAssignBody = await jsonResp.text();
-    console.log(`[DEBUG] JSON assign response: ${jsonResp.status} ${results.jsonAssignBody}`);
-
-    // Step 4: Also try PATCH on the group itself to force auto_deploy
-    const patchResp = await fetch(groupUrl, {
-      method: 'PATCH',
-      headers: { Authorization: auth, 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: 'auto_deploy=true',
-    });
-    results.patchStatus = patchResp.status;
-    results.patchBody = await patchResp.text();
-    console.log(`[DEBUG] PATCH auto_deploy=true: ${patchResp.status}`);
-
-  } catch (err) {
-    results.error = err.message;
-  }
-
-  return res.json(results);
-});
-
-// Add an app to a group — force deployment_type: standard, install_type: auto_deploy
+// Add an app to a group — force deployment_type: standard
 app.post('/api/simplemdm/assignment_groups/:groupId/apps/:appId', async (req, res) => {
   const auth = req.headers.authorization;
   if (!auth) return res.status(401).json({ error: 'Missing Authorization header' });
 
   try {
     const url = `https://a.simplemdm.com/api/v1/assignment_groups/${req.params.groupId}/apps/${req.params.appId}`;
-    const body = 'deployment_type=standard&install_type=auto_deploy';
-    console.log(`[APP-ASSIGN] POST ${url} with body: ${body}`);
+    const body = 'deployment_type=standard';
+    console.log(`[APP-ASSIGN] POST ${url}`);
     const resp = await fetch(url, {
       method: 'POST',
       headers: { Authorization: auth, 'Content-Type': 'application/x-www-form-urlencoded' },
       body,
     });
     const responseText = await resp.text();
-    console.log(`[APP-ASSIGN] Response: status=${resp.status}, body=${responseText}`);
+    console.log(`[APP-ASSIGN] Response: status=${resp.status}`);
     try {
       const data = JSON.parse(responseText);
       return res.status(resp.status).json(data);
