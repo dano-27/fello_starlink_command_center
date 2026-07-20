@@ -2301,7 +2301,7 @@ app.get('/api/simplemdm/apps', async (req, res) => {
   }
 });
 
-// ── Bulk Device Unenroll & DEP Unassign ─────────────────────────────
+// ── Bulk Device Wipe, Unenroll & DEP Unassign ──────────────────────
 app.post('/api/simplemdm/devices/bulk-unenroll', async (req, res) => {
   const auth = req.headers.authorization;
   if (!auth) return res.status(401).json({ error: 'Missing Authorization header' });
@@ -2318,24 +2318,61 @@ app.post('/api/simplemdm/devices/bulk-unenroll', async (req, res) => {
     return res.status(400).json({ error: 'No devices provided' });
   }
 
-  console.log(`[UNENROLL] Processing ${devices.length} devices for unenrollment`);
-  const results = { unenrolled: [], errors: [] };
+  console.log(`[UNENROLL] Processing ${devices.length} devices: wipe → unenroll → delete → DEP unassign`);
+  const results = { wiped: [], unenrolled: [], errors: [] };
   const serialsForAbm = [];
 
+  // Step 1: Send wipe commands to ALL devices first
   for (const dev of devices) {
     try {
+      const wipeUrl = `https://a.simplemdm.com/api/v1/devices/${dev.deviceId}/wipe`;
+      const wipeResp = await fetch(wipeUrl, {
+        method: 'POST',
+        headers: { Authorization: auth },
+      });
+      console.log(`[UNENROLL]   🔄 Wipe ${dev.serial} (device ${dev.deviceId}): status ${wipeResp.status}`);
+      if (wipeResp.ok || wipeResp.status === 202) {
+        results.wiped.push({ serial: dev.serial, deviceId: dev.deviceId });
+      } else {
+        const body = await wipeResp.text();
+        console.log(`[UNENROLL]   ⚠ Wipe response body: ${body}`);
+      }
+    } catch (wipeErr) {
+      console.error(`[UNENROLL]   ⚠ Wipe error for ${dev.serial}: ${wipeErr.message}`);
+    }
+  }
+
+  // Step 2: Wait a few seconds for wipe commands to be queued/delivered
+  if (results.wiped.length > 0) {
+    console.log(`[UNENROLL] Waiting 5s for wipe commands to be delivered...`);
+    await new Promise(r => setTimeout(r, 5000));
+  }
+
+  // Step 3: Unenroll and delete each device
+  for (const dev of devices) {
+    try {
+      // Unenroll
       try {
-        await smdmRequest(rawKey, `/devices/${dev.deviceId}/unenroll`, 'POST');
-        console.log(`[UNENROLL]   ✓ Unenrolled device ${dev.deviceId} (${dev.serial})`);
+        const unenrollUrl = `https://a.simplemdm.com/api/v1/devices/${dev.deviceId}/unenroll`;
+        const unenrollResp = await fetch(unenrollUrl, {
+          method: 'POST',
+          headers: { Authorization: auth },
+        });
+        console.log(`[UNENROLL]   ✓ Unenroll ${dev.serial}: status ${unenrollResp.status}`);
       } catch (unenrollErr) {
-        console.log(`[UNENROLL]   ⚠ Unenroll returned: ${unenrollErr.message} — continuing to delete`);
+        console.log(`[UNENROLL]   ⚠ Unenroll error: ${unenrollErr.message}`);
       }
 
+      // Delete
       try {
-        await smdmRequest(rawKey, `/devices/${dev.deviceId}`, 'DELETE');
-        console.log(`[UNENROLL]   ✓ Deleted device ${dev.deviceId} from SimpleMDM`);
+        const deleteUrl = `https://a.simplemdm.com/api/v1/devices/${dev.deviceId}`;
+        const deleteResp = await fetch(deleteUrl, {
+          method: 'DELETE',
+          headers: { Authorization: auth },
+        });
+        console.log(`[UNENROLL]   ✓ Delete ${dev.serial}: status ${deleteResp.status}`);
       } catch (deleteErr) {
-        console.log(`[UNENROLL]   ⚠ Delete returned: ${deleteErr.message}`);
+        console.log(`[UNENROLL]   ⚠ Delete error: ${deleteErr.message}`);
       }
 
       results.unenrolled.push({ serial: dev.serial, deviceId: dev.deviceId });
@@ -2346,22 +2383,26 @@ app.post('/api/simplemdm/devices/bulk-unenroll', async (req, res) => {
     }
   }
 
+  // Step 4: Batch unassign from ABM/DEP
   if (serialsForAbm.length > 0) {
     try {
+      console.log(`[UNENROLL] Unassigning ${serialsForAbm.length} serials from DEP: ${serialsForAbm.join(', ')}`);
       const abmResult = await abmUnassignDevices(serialsForAbm);
+      console.log(`[UNENROLL] ABM unassign result: status=${abmResult.status}, skipped=${abmResult.skipped || false}, data=${JSON.stringify(abmResult.data)}`);
       if (abmResult.skipped) {
         results.abmNote = 'ABM integration not configured — devices were unenrolled from SimpleMDM only';
       } else if (abmResult.status >= 200 && abmResult.status < 300) {
         results.abmUnassigned = true;
       } else {
-        results.abmNote = `ABM unassign returned status ${abmResult.status}`;
+        results.abmNote = `ABM unassign returned status ${abmResult.status}: ${JSON.stringify(abmResult.data)}`;
       }
     } catch (abmErr) {
       results.abmNote = 'ABM unassign failed: ' + abmErr.message;
+      console.error('[UNENROLL] ABM unassign error:', abmErr.message);
     }
   }
 
-  console.log(`[UNENROLL] Done: ${results.unenrolled.length} unenrolled, ${results.errors.length} errors`);
+  console.log(`[UNENROLL] Done: ${results.wiped.length} wiped, ${results.unenrolled.length} unenrolled, ${results.errors.length} errors, ABM: ${results.abmUnassigned || results.abmNote || 'n/a'}`);
   return res.json(results);
 });
 

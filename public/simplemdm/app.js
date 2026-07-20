@@ -1129,19 +1129,7 @@
         showToast(`Wiping & unenrolling ${selectedDevices.length} device${selectedDevices.length !== 1 ? 's' : ''}…`, 'info');
 
         try {
-            // Step 1: Factory reset all devices
-            const wipeResp = await fetch('/api/simplemdm/devices/bulk-wipe', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Basic ${btoa(state.apiKey + ':')}`,
-                },
-                body: JSON.stringify({ devices: payload }),
-            });
-            const wipeResults = await wipeResp.json();
-            const wCount = wipeResults.wiped?.length || 0;
-
-            // Step 2: Unenroll + delete + DEP unassign
+            // Single endpoint handles: wipe → wait → unenroll → delete → DEP unassign
             const resp = await fetch('/api/simplemdm/devices/bulk-unenroll', {
                 method: 'POST',
                 headers: {
@@ -1152,8 +1140,9 @@
             });
 
             const results = await resp.json();
-            if (!resp.ok) throw new Error(results.error || 'Unenrollment failed');
+            if (!resp.ok) throw new Error(results.error || 'Operation failed');
 
+            const wCount = results.wiped?.length || 0;
             const uCount = results.unenrolled?.length || 0;
             const eCount = results.errors?.length || 0;
             let msg = `✓ ${wCount} wiped, ${uCount} unenrolled`;
