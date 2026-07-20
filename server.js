@@ -1745,7 +1745,7 @@ app.post('/api/automation/provision', async (req, res) => {
           const catEntry = appCatalog.find(a => a.id === appId);
           const appName = catEntry ? catEntry.name : `App #${appId}`;
           try {
-            await smdmRequest(rawKey, `/assignment_groups/${groupId}/apps/${appId}`, 'POST', { deployment_type: 'standard', install_type: 'auto' });
+            await smdmRequest(rawKey, `/assignment_groups/${groupId}/apps/${appId}`, 'POST', { deployment_type: 'standard', install_type: 'auto_deploy' });
             run.appsMatched.push({ requested: appName, matched: appName, id: appId });
             console.log(`[PROVISION]   ✓ App: "${appName}" (${appId})`);
           } catch (e) {
@@ -1767,7 +1767,7 @@ app.post('/api/automation/provision', async (req, res) => {
         const match = fuzzyMatchApp(appName, appCatalog);
         if (match) {
           try {
-            await smdmRequest(rawKey, `/assignment_groups/${groupId}/apps/${match.id}`, 'POST', { deployment_type: 'standard', install_type: 'auto' });
+            await smdmRequest(rawKey, `/assignment_groups/${groupId}/apps/${match.id}`, 'POST', { deployment_type: 'standard', install_type: 'auto_deploy' });
             run.appsMatched.push({ requested: appName, matched: match.name, id: match.id });
             console.log(`[PROVISION]   ✓ App: "${appName}" → "${match.name}" (${match.id})`);
           } catch (e) {
@@ -2208,7 +2208,7 @@ app.post('/api/simplemdm/assignment_groups/:groupId/apps/:appId', async (req, re
 
   try {
     const url = `https://a.simplemdm.com/api/v1/assignment_groups/${req.params.groupId}/apps/${req.params.appId}`;
-    const body = 'deployment_type=standard&install_type=auto';
+    const body = 'deployment_type=standard&install_type=auto_deploy';
     console.log(`[APP-ASSIGN] POST ${url} with body: ${body}`);
     const resp = await fetch(url, {
       method: 'POST',
