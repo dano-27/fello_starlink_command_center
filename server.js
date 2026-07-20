@@ -123,27 +123,33 @@ async function abmAssignToSimpleMdm(serials) {
 async function abmUnassignDevices(serials) {
   if (!abmPrivateKey || serials.length === 0) return { status: 0, skipped: true };
   const token = await getAbmToken();
+  const payload = {
+    data: {
+      type: 'orgDeviceActivities',
+      attributes: { activityType: 'UNASSIGN_DEVICES' },
+      relationships: {
+        mdmServer: {
+          data: { type: 'mdmServers', id: ABM_CONFIG.simpleMdmServerId },
+        },
+        devices: {
+          data: serials.map(sn => ({ type: 'orgDevices', id: sn })),
+        },
+      },
+    },
+  };
+  console.log(`[ABM] Unassign request: ${JSON.stringify(payload)}`);
   const resp = await fetch(`${ABM_CONFIG.apiBase}/orgDeviceActivities`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      data: {
-        type: 'orgDeviceActivities',
-        attributes: { activityType: 'UNASSIGN_DEVICES' },
-        relationships: {
-          devices: {
-            data: serials.map(sn => ({ type: 'orgDevices', id: sn })),
-          },
-        },
-      },
-    }),
+    body: JSON.stringify(payload),
   });
+  const rawText = await resp.text();
+  console.log(`[ABM] Unassign response: status=${resp.status}, body=${rawText}`);
   let result;
-  try { result = await resp.json(); } catch { result = {}; }
-  console.log(`[ABM] Unassigned ${serials.length} devices, status: ${resp.status}`);
+  try { result = JSON.parse(rawText); } catch { result = rawText; }
   return { status: resp.status, data: result.data || result };
 }
 
