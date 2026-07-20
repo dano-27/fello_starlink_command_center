@@ -1349,6 +1349,39 @@ app.post('/api/simplemdm/groups/:groupId/assign-serials', async (req, res) => {
   const cleanSerials = [...new Set(serials.map(s => s.trim().toUpperCase()).filter(Boolean))];
   console.log(`[ASSIGN] Processing ${cleanSerials.length} serials for group ${groupId}`);
 
+  // Extract the API key for smdmRequest calls
+  let rawKey;
+  if (auth.startsWith('Basic ')) {
+    rawKey = Buffer.from(auth.replace('Basic ', ''), 'base64').toString().replace(/:$/, '');
+  } else {
+    rawKey = auth;
+  }
+
+  // Fetch group name to extract order number for device naming
+  let orderNumber = null;
+  let existingDeviceCount = 0;
+  try {
+    const groupData = await smdmRequest(rawKey, `/assignment_groups/${groupId}`);
+    const groupName = groupData.data?.attributes?.name || '';
+    // Extract order number: everything before " - " in the group name
+    const dashIdx = groupName.indexOf(' - ');
+    orderNumber = dashIdx > 0 ? groupName.substring(0, dashIdx).trim() : null;
+    console.log(`[ASSIGN] Group name: "${groupName}", order number: "${orderNumber}"`);
+
+    // Count existing devices in the group to determine starting sequence number
+    if (orderNumber) {
+      const groupDetail = groupData.data?.relationships?.devices?.data || [];
+      existingDeviceCount = groupDetail.length;
+      // Also check device_groups for nested devices
+      const deviceGroups = groupData.data?.relationships?.device_groups?.data || [];
+      // For simplicity, just count direct devices
+      console.log(`[ASSIGN] Group has ${existingDeviceCount} existing devices, starting sequence at ${existingDeviceCount + 1}`);
+    }
+  } catch (groupErr) {
+    console.error(`[ASSIGN] Could not fetch group name for device naming:`, groupErr.message);
+  }
+
+  let sequenceNumber = existingDeviceCount;
   const results = { assigned: [], notFound: [], errors: [] };
 
   // Step 1: Try to find each serial in the enrolled devices list
@@ -1371,7 +1404,19 @@ app.post('/api/simplemdm/groups/:groupId/assign-serials', async (req, res) => {
           headers: { Authorization: auth },
         });
         if (assignResp.status === 204 || assignResp.ok) {
-          results.assigned.push({ serial: sn, deviceId: device.id, name: device.attributes.name || sn, source: 'enrolled' });
+          // Rename the device if we have an order number
+          let newName = device.attributes.name || sn;
+          if (orderNumber) {
+            sequenceNumber++;
+            newName = `${orderNumber} (${String(sequenceNumber).padStart(2, '0')})`;
+            try {
+              await smdmRequest(rawKey, `/devices/${device.id}`, 'PATCH', { name: newName, device_name: newName });
+              console.log(`[ASSIGN]   📝 Renamed device ${device.id} → "${newName}"`);
+            } catch (renameErr) {
+              console.error(`[ASSIGN]   ⚠ Rename failed for ${device.id}: ${renameErr.message}`);
+            }
+          }
+          results.assigned.push({ serial: sn, deviceId: device.id, name: newName, source: 'enrolled' });
           console.log(`[ASSIGN]   ✓ ${sn} → device ${device.id} → group ${groupId}`);
         } else {
           results.errors.push({ serial: sn, error: `Assignment failed (${assignResp.status})` });
@@ -1404,7 +1449,19 @@ app.post('/api/simplemdm/groups/:groupId/assign-serials', async (req, res) => {
               headers: { Authorization: auth },
             });
             if (assignResp.status === 204 || assignResp.ok) {
-              results.assigned.push({ serial: sn, deviceId: linkedDevice.id, name: sn, source: 'dep_enrolled' });
+              // Rename the device if we have an order number
+              let newName = sn;
+              if (orderNumber) {
+                sequenceNumber++;
+                newName = `${orderNumber} (${String(sequenceNumber).padStart(2, '0')})`;
+                try {
+                  await smdmRequest(rawKey, `/devices/${linkedDevice.id}`, 'PATCH', { name: newName, device_name: newName });
+                  console.log(`[ASSIGN]   📝 Renamed device ${linkedDevice.id} → "${newName}"`);
+                } catch (renameErr) {
+                  console.error(`[ASSIGN]   ⚠ Rename failed for ${linkedDevice.id}: ${renameErr.message}`);
+                }
+              }
+              results.assigned.push({ serial: sn, deviceId: linkedDevice.id, name: newName, source: 'dep_enrolled' });
               console.log(`[ASSIGN]   ✓ ${sn} → DEP device ${depDevice.id} → enrolled device ${linkedDevice.id} → group`);
             } else {
               results.errors.push({ serial: sn, error: `DEP assignment failed (${assignResp.status})` });
@@ -1488,9 +1545,15 @@ app.post('/api/simplemdm/groups/:groupId/assign-serials', async (req, res) => {
 
       if (abmResult.status === 201 || abmResult.status === 200) {
         for (const d of results.abmPending) {
+          let deviceName = `${d.model} (${d.serial})`;
+          if (orderNumber) {
+            sequenceNumber++;
+            deviceName = `${orderNumber} (${String(sequenceNumber).padStart(2, '0')})`;
+          }
           results.assigned.push({
             serial: d.serial,
-            name: `${d.model} (${d.serial})`,
+            name: deviceName,
+            plannedName: orderNumber ? deviceName : null,
             source: 'abm_assigned',
             deviceId: null,
           });
