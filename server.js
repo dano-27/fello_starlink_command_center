@@ -1740,7 +1740,7 @@ app.post('/api/automation/provision', async (req, res) => {
           const catEntry = appCatalog.find(a => a.id === appId);
           const appName = catEntry ? catEntry.name : `App #${appId}`;
           try {
-            await smdmRequest(rawKey, `/assignment_groups/${groupId}/apps/${appId}`, 'POST', { deployment_type: 'standard' });
+            await smdmRequest(rawKey, `/assignment_groups/${groupId}/apps/${appId}`, 'POST', { deployment_type: 'standard', install_type: 'auto' });
             run.appsMatched.push({ requested: appName, matched: appName, id: appId });
             console.log(`[PROVISION]   ✓ App: "${appName}" (${appId})`);
           } catch (e) {
@@ -1762,7 +1762,7 @@ app.post('/api/automation/provision', async (req, res) => {
         const match = fuzzyMatchApp(appName, appCatalog);
         if (match) {
           try {
-            await smdmRequest(rawKey, `/assignment_groups/${groupId}/apps/${match.id}`, 'POST', { deployment_type: 'standard' });
+            await smdmRequest(rawKey, `/assignment_groups/${groupId}/apps/${match.id}`, 'POST', { deployment_type: 'standard', install_type: 'auto' });
             run.appsMatched.push({ requested: appName, matched: match.name, id: match.id });
             console.log(`[PROVISION]   ✓ App: "${appName}" → "${match.name}" (${match.id})`);
           } catch (e) {
@@ -2146,19 +2146,20 @@ app.post('/api/simplemdm/assignment_groups/:groupId/apps/:appId', async (req, re
 
   try {
     const url = `https://a.simplemdm.com/api/v1/assignment_groups/${req.params.groupId}/apps/${req.params.appId}`;
-    const body = JSON.stringify({ deployment_type: 'standard' });
+    const body = JSON.stringify({ deployment_type: 'standard', install_type: 'auto' });
+    console.log(`[APP-ASSIGN] POST ${url} with deployment_type=standard, install_type=auto`);
     const resp = await fetch(url, {
       method: 'POST',
       headers: { Authorization: auth, 'Content-Type': 'application/json' },
       body,
     });
-    const contentType = resp.headers.get('content-type') || '';
-    if (contentType.includes('application/json')) {
-      const data = await resp.json();
+    const responseText = await resp.text();
+    console.log(`[APP-ASSIGN] Response: status=${resp.status}, body=${responseText}`);
+    try {
+      const data = JSON.parse(responseText);
       return res.status(resp.status).json(data);
-    } else {
-      const text = await resp.text();
-      return res.status(resp.status).send(text);
+    } catch {
+      return res.status(resp.status).send(responseText);
     }
   } catch (err) {
     console.error('SimpleMDM add group app proxy error:', err.message);
