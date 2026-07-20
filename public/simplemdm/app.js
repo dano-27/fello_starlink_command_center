@@ -189,7 +189,6 @@
         bulkActions:       $('#bulk-actions'),
         bulkCount:         $('#bulk-count'),
         bulkUnenroll:      $('#bulk-unenroll'),
-        bulkWipe:          $('#bulk-wipe'),
         selectAllDevices:  $('#select-all-devices'),
     };
 
@@ -1107,60 +1106,6 @@
         }
     }
 
-    async function bulkWipeDevices() {
-        const indices = Array.from(state.selectedDevices);
-        const devices = state.filteredDevices.length > 0 ? state.filteredDevices : state.devices;
-        const selectedDevices = indices.map(i => devices[i]).filter(Boolean);
-
-        if (selectedDevices.length === 0) return;
-
-        const names = selectedDevices.map(d => getDeviceName(d)).join('\n• ');
-        const confirmed = await showConfirm(
-            '⚠️ Factory Reset Devices?',
-            `This will ERASE ALL DATA on ${selectedDevices.length} device${selectedDevices.length !== 1 ? 's' : ''}:\n\n• ${names}\n\nDevices will be wiped to factory settings. This cannot be undone.`,
-            '🔄'
-        );
-        if (!confirmed) return;
-
-        const payload = selectedDevices.map(d => ({
-            deviceId: d.id,
-            serial: getSerial(d),
-        }));
-
-        showToast(`Sending factory reset to ${selectedDevices.length} device${selectedDevices.length !== 1 ? 's' : ''}…`, 'info');
-
-        try {
-            const resp = await fetch('/api/simplemdm/devices/bulk-wipe', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Basic ${btoa(state.apiKey + ':')}`,
-                },
-                body: JSON.stringify({ devices: payload }),
-            });
-
-            const results = await resp.json();
-            if (!resp.ok) throw new Error(results.error || 'Wipe failed');
-
-            const wCount = results.wiped?.length || 0;
-            const eCount = results.errors?.length || 0;
-            let msg = `✓ Factory reset sent to ${wCount} device${wCount !== 1 ? 's' : ''}`;
-            if (eCount > 0) msg += ` (${eCount} failed)`;
-            showToast(msg, eCount > 0 ? 'warning' : 'success');
-
-            // Clear selection
-            state.selectedDevices.clear();
-            updateBulkActions();
-            if (dom.selectAllDevices) dom.selectAllDevices.checked = false;
-            document.querySelectorAll('.device-checkbox').forEach(cb => {
-                cb.checked = false;
-                cb.closest('tr').classList.remove('selected');
-            });
-        } catch (err) {
-            showToast('Factory reset failed: ' + err.message, 'error');
-        }
-    }
-
     async function bulkUnenrollDevices() {
         const indices = Array.from(state.selectedDevices);
         const devices = state.filteredDevices.length > 0 ? state.filteredDevices : state.devices;
@@ -1168,24 +1113,35 @@
 
         if (selectedDevices.length === 0) return;
 
-        // Build confirmation message
         const names = selectedDevices.map(d => getDeviceName(d)).join('\n• ');
         const confirmed = await showConfirm(
-            'Unenroll & Unassign Devices?',
-            `This will:\n1. Unenroll ${selectedDevices.length} device${selectedDevices.length !== 1 ? 's' : ''} from SimpleMDM\n2. Delete their records from SimpleMDM\n3. Unassign them from DEP in Apple Business Manager\n\nDevices:\n• ${names}\n\nThis action cannot be undone.`,
+            '⚠️ Wipe, Unenroll & Unassign?',
+            `This will:\n1. Factory reset ${selectedDevices.length} device${selectedDevices.length !== 1 ? 's' : ''} (erase all data)\n2. Unenroll from SimpleMDM\n3. Delete their records from SimpleMDM\n4. Unassign from DEP in Apple Business Manager\n\nDevices:\n• ${names}\n\nThis cannot be undone.`,
             '⛔'
         );
         if (!confirmed) return;
 
-        // Build payload
         const payload = selectedDevices.map(d => ({
             deviceId: d.id,
             serial: getSerial(d),
         }));
 
-        showToast(`Unenrolling ${selectedDevices.length} device${selectedDevices.length !== 1 ? 's' : ''}…`, 'info');
+        showToast(`Wiping & unenrolling ${selectedDevices.length} device${selectedDevices.length !== 1 ? 's' : ''}…`, 'info');
 
         try {
+            // Step 1: Factory reset all devices
+            const wipeResp = await fetch('/api/simplemdm/devices/bulk-wipe', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Basic ${btoa(state.apiKey + ':')}`,
+                },
+                body: JSON.stringify({ devices: payload }),
+            });
+            const wipeResults = await wipeResp.json();
+            const wCount = wipeResults.wiped?.length || 0;
+
+            // Step 2: Unenroll + delete + DEP unassign
             const resp = await fetch('/api/simplemdm/devices/bulk-unenroll', {
                 method: 'POST',
                 headers: {
@@ -1200,8 +1156,8 @@
 
             const uCount = results.unenrolled?.length || 0;
             const eCount = results.errors?.length || 0;
-            let msg = `✓ ${uCount} device${uCount !== 1 ? 's' : ''} unenrolled and deleted`;
-            if (results.abmUnassigned) msg += ' + unassigned from DEP';
+            let msg = `✓ ${wCount} wiped, ${uCount} unenrolled`;
+            if (results.abmUnassigned) msg += ', unassigned from DEP';
             if (results.abmNote) msg += `\n${results.abmNote}`;
             if (eCount > 0) msg += `\n⚠ ${eCount} error${eCount !== 1 ? 's' : ''}`;
 
@@ -1212,7 +1168,7 @@
             updateBulkActions();
             if (state.currentGroup) fetchGroupDevices(state.currentGroup);
         } catch (err) {
-            showToast('Unenrollment failed: ' + err.message, 'error');
+            showToast('Operation failed: ' + err.message, 'error');
         }
     }
 
@@ -1475,7 +1431,6 @@
         });
 
         dom.bulkUnenroll.addEventListener('click', bulkUnenrollDevices);
-        dom.bulkWipe.addEventListener('click', bulkWipeDevices);
 
         // Remote actions
         dom.actionLock.addEventListener('click', () => executeRemoteAction('lock', 'Lock'));
