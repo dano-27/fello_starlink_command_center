@@ -2154,6 +2154,27 @@ select.prov-input {
     transform: translateY(-1px);
 }
 
+.btn-warning {
+    background: linear-gradient(135deg, #e67e22, #d35400) !important;
+    color: #fff !important;
+    border: none !important;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s;
+}
+
+.btn-warning:hover {
+    background: linear-gradient(135deg, #d35400, #c0392b) !important;
+    box-shadow: 0 4px 15px rgba(230,126,34,0.3);
+    transform: translateY(-1px);
+}
+
 .btn-sm {
     padding: 6px 14px;
     font-size: 0.8rem;

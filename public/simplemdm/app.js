@@ -189,6 +189,7 @@
         bulkActions:       $('#bulk-actions'),
         bulkCount:         $('#bulk-count'),
         bulkUnenroll:      $('#bulk-unenroll'),
+        bulkWipe:          $('#bulk-wipe'),
         selectAllDevices:  $('#select-all-devices'),
     };
 
@@ -633,53 +634,69 @@
         const name = getGroupName(group);
         const count = state.groupDeviceCounts[group.id] || 0;
 
-        const msg = count > 0
-            ? `This group has ${count} device${count !== 1 ? 's' : ''} assigned.\n\nDeleting this group will:\n1. Unenroll all ${count} device${count !== 1 ? 's' : ''} from SimpleMDM\n2. Delete their records from SimpleMDM\n3. Unassign them from DEP in Apple Business Manager\n4. Delete the group\n\nThis cannot be undone.`
-            : `Are you sure you want to delete "${name}"?`;
+        if (count === 0) {
+            const confirmed = await showConfirm('Delete Group?', `Are you sure you want to delete "${name}"?`, '🗑');
+            if (!confirmed) return;
 
-        const confirmed = await showConfirm('Delete Group?', msg, '🗑');
-        if (!confirmed) return;
+            try {
+                showToast(`Deleting "${name}"…`, 'info');
+                await apiRequest(`/assignment_groups/${group.id}`, { method: 'DELETE' });
+                showToast(`"${name}" deleted successfully.`, 'success');
+            } catch (err) {
+                showToast(`Failed to delete group: ${err.message}`, 'error');
+                return;
+            }
+        } else {
+            // First confirmation: delete the group?
+            const msg = `This group has ${count} device${count !== 1 ? 's' : ''} assigned.\n\nDeleting this group will:\n1. Unenroll all devices from SimpleMDM\n2. Delete their records\n3. Unassign them from DEP\n4. Delete the group\n\nThis cannot be undone.`;
+            const confirmed = await showConfirm('Delete Group?', msg, '🗑');
+            if (!confirmed) return;
 
-        try {
-            if (count > 0) {
-                // Use cleanup endpoint for groups with devices
-                showToast(`Cleaning up ${count} device${count !== 1 ? 's' : ''} and deleting "${name}"…`, 'info');
+            // Second confirmation: factory reset?
+            const wipeFirst = await showConfirm(
+                'Factory Reset Devices?',
+                `Do you also want to factory reset all ${count} device${count !== 1 ? 's' : ''} before removing them?\n\nThis will erase all data on the devices.`,
+                '🔄'
+            );
+
+            try {
+                const action = wipeFirst ? 'Factory resetting, unenrolling' : 'Unenrolling';
+                showToast(`${action} ${count} device${count !== 1 ? 's' : ''} and deleting "${name}"…`, 'info');
                 const resp = await fetch(`/api/simplemdm/groups/${group.id}/delete-with-cleanup`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'Authorization': `Basic ${btoa(state.apiKey + ':')}`,
                     },
+                    body: JSON.stringify({ wipeFirst }),
                 });
                 const results = await resp.json();
                 if (!resp.ok) throw new Error(results.error || 'Cleanup failed');
 
                 const uCount = results.unenrolled?.length || 0;
-                let msg = `✓ "${name}" deleted — ${uCount} device${uCount !== 1 ? 's' : ''} unenrolled`;
-                if (results.abmUnassigned) msg += ' + unassigned from DEP';
-                if (results.errors?.length > 0) msg += ` (${results.errors.length} errors)`;
-                showToast(msg, results.errors?.length > 0 ? 'warning' : 'success');
-            } else {
-                // Simple delete for empty groups
-                showToast(`Deleting "${name}"…`, 'info');
-                await apiRequest(`/assignment_groups/${group.id}`, { method: 'DELETE' });
-                showToast(`"${name}" deleted successfully.`, 'success');
+                const wCount = results.wiped?.length || 0;
+                let resultMsg = `✓ "${name}" deleted — ${uCount} device${uCount !== 1 ? 's' : ''} unenrolled`;
+                if (wCount > 0) resultMsg += `, ${wCount} factory reset`;
+                if (results.abmUnassigned) resultMsg += ' + unassigned from DEP';
+                if (results.errors?.length > 0) resultMsg += ` (${results.errors.length} errors)`;
+                showToast(resultMsg, results.errors?.length > 0 ? 'warning' : 'success');
+            } catch (err) {
+                showToast(`Failed to delete group: ${err.message}`, 'error');
+                return;
             }
-
-            // Remove from state and re-render
-            state.groups = state.groups.filter(g => g.id !== group.id);
-            state.filteredGroups = state.filteredGroups.filter(g => g.id !== group.id);
-            delete state.groupDeviceCounts[group.id];
-            // Go back to groups view if we're in this group's device view
-            if (state.currentGroup && state.currentGroup.id === group.id) {
-                state.currentGroup = null;
-                state.currentView = 'groups';
-            }
-            updateGroupsStats();
-            renderGroupsGrid();
-        } catch (err) {
-            showToast(`Failed to delete group: ${err.message}`, 'error');
         }
+
+        // Remove from state and re-render
+        state.groups = state.groups.filter(g => g.id !== group.id);
+        state.filteredGroups = state.filteredGroups.filter(g => g.id !== group.id);
+        delete state.groupDeviceCounts[group.id];
+        // Go back to groups view if we're in this group's device view
+        if (state.currentGroup && state.currentGroup.id === group.id) {
+            state.currentGroup = null;
+            state.currentView = 'groups';
+        }
+        updateGroupsStats();
+        renderGroupsGrid();
     }
 
     // ---- Filter groups ----
@@ -1090,6 +1107,60 @@
         }
     }
 
+    async function bulkWipeDevices() {
+        const indices = Array.from(state.selectedDevices);
+        const devices = state.filteredDevices.length > 0 ? state.filteredDevices : state.devices;
+        const selectedDevices = indices.map(i => devices[i]).filter(Boolean);
+
+        if (selectedDevices.length === 0) return;
+
+        const names = selectedDevices.map(d => getDeviceName(d)).join('\n• ');
+        const confirmed = await showConfirm(
+            '⚠️ Factory Reset Devices?',
+            `This will ERASE ALL DATA on ${selectedDevices.length} device${selectedDevices.length !== 1 ? 's' : ''}:\n\n• ${names}\n\nDevices will be wiped to factory settings. This cannot be undone.`,
+            '🔄'
+        );
+        if (!confirmed) return;
+
+        const payload = selectedDevices.map(d => ({
+            deviceId: d.id,
+            serial: getSerial(d),
+        }));
+
+        showToast(`Sending factory reset to ${selectedDevices.length} device${selectedDevices.length !== 1 ? 's' : ''}…`, 'info');
+
+        try {
+            const resp = await fetch('/api/simplemdm/devices/bulk-wipe', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Basic ${btoa(state.apiKey + ':')}`,
+                },
+                body: JSON.stringify({ devices: payload }),
+            });
+
+            const results = await resp.json();
+            if (!resp.ok) throw new Error(results.error || 'Wipe failed');
+
+            const wCount = results.wiped?.length || 0;
+            const eCount = results.errors?.length || 0;
+            let msg = `✓ Factory reset sent to ${wCount} device${wCount !== 1 ? 's' : ''}`;
+            if (eCount > 0) msg += ` (${eCount} failed)`;
+            showToast(msg, eCount > 0 ? 'warning' : 'success');
+
+            // Clear selection
+            state.selectedDevices.clear();
+            updateBulkActions();
+            if (dom.selectAllDevices) dom.selectAllDevices.checked = false;
+            document.querySelectorAll('.device-checkbox').forEach(cb => {
+                cb.checked = false;
+                cb.closest('tr').classList.remove('selected');
+            });
+        } catch (err) {
+            showToast('Factory reset failed: ' + err.message, 'error');
+        }
+    }
+
     async function bulkUnenrollDevices() {
         const indices = Array.from(state.selectedDevices);
         const devices = state.filteredDevices.length > 0 ? state.filteredDevices : state.devices;
@@ -1404,6 +1475,7 @@
         });
 
         dom.bulkUnenroll.addEventListener('click', bulkUnenrollDevices);
+        dom.bulkWipe.addEventListener('click', bulkWipeDevices);
 
         // Remote actions
         dom.actionLock.addEventListener('click', () => executeRemoteAction('lock', 'Lock'));

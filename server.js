@@ -2468,6 +2468,41 @@ app.post('/api/simplemdm/devices/bulk-unenroll', async (req, res) => {
   return res.json(results);
 });
 
+// ── Bulk Device Wipe (Factory Reset) ────────────────────────────────
+app.post('/api/simplemdm/devices/bulk-wipe', async (req, res) => {
+  const auth = req.headers.authorization;
+  if (!auth) return res.status(401).json({ error: 'Missing Authorization header' });
+
+  let rawKey;
+  if (auth.startsWith('Basic ')) {
+    rawKey = Buffer.from(auth.replace('Basic ', ''), 'base64').toString().replace(/:$/, '');
+  } else {
+    rawKey = auth;
+  }
+
+  const { devices } = req.body; // [{ deviceId, serial }]
+  if (!Array.isArray(devices) || devices.length === 0) {
+    return res.status(400).json({ error: 'No devices provided' });
+  }
+
+  console.log(`[WIPE] Sending factory reset to ${devices.length} devices`);
+  const results = { wiped: [], errors: [] };
+
+  for (const dev of devices) {
+    try {
+      await smdmRequest(rawKey, `/devices/${dev.deviceId}/wipe`, 'POST');
+      results.wiped.push({ serial: dev.serial, deviceId: dev.deviceId });
+      console.log(`[WIPE]   ✓ Wipe command sent to device ${dev.deviceId} (${dev.serial})`);
+    } catch (err) {
+      results.errors.push({ serial: dev.serial, deviceId: dev.deviceId, error: err.message });
+      console.error(`[WIPE]   ✗ Wipe failed for ${dev.serial}: ${err.message}`);
+    }
+  }
+
+  console.log(`[WIPE] Done: ${results.wiped.length} wiped, ${results.errors.length} errors`);
+  return res.json(results);
+});
+
 // ── Delete Group with Device Cleanup ────────────────────────────────
 app.post('/api/simplemdm/groups/:groupId/delete-with-cleanup', async (req, res) => {
   const auth = req.headers.authorization;
@@ -2481,9 +2516,10 @@ app.post('/api/simplemdm/groups/:groupId/delete-with-cleanup', async (req, res) 
   }
 
   const groupId = req.params.groupId;
-  console.log(`[GROUP-DELETE] Starting cleanup for group ${groupId}`);
+  const { wipeFirst } = req.body || {};
+  console.log(`[GROUP-DELETE] Starting cleanup for group ${groupId}${wipeFirst ? ' (with factory reset)' : ''}`);
 
-  const results = { devicesProcessed: 0, unenrolled: [], errors: [], groupDeleted: false };
+  const results = { devicesProcessed: 0, wiped: [], unenrolled: [], errors: [], groupDeleted: false };
 
   try {
     // Step 1: Fetch group to get device relationships
@@ -2498,6 +2534,17 @@ app.post('/api/simplemdm/groups/:groupId/delete-with-cleanup', async (req, res) 
         const deviceData = await smdmRequest(rawKey, `/devices/${ref.id}`);
         const serial = deviceData.data?.attributes?.serial_number || '';
         const name = deviceData.data?.attributes?.name || serial;
+
+        // Wipe (factory reset) if requested
+        if (wipeFirst) {
+          try {
+            await smdmRequest(rawKey, `/devices/${ref.id}/wipe`, 'POST');
+            results.wiped.push({ deviceId: ref.id, serial, name });
+            console.log(`[GROUP-DELETE]   🔄 Wipe command sent to: ${name} (${serial})`);
+          } catch (wipeErr) {
+            console.log(`[GROUP-DELETE]   ⚠ Wipe failed for ${name}: ${wipeErr.message}`);
+          }
+        }
 
         // Unenroll
         try {
