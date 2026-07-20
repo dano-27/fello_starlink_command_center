@@ -1002,12 +1002,17 @@ async function smdmRequest(apiKey, path, method = 'GET', body = null) {
     method,
     headers: {
       'Authorization': authHeader,
-      'Content-Type': 'application/json',
       'Accept': 'application/json',
     },
   };
   if (body && ['POST', 'PUT', 'PATCH'].includes(method)) {
-    opts.body = JSON.stringify(body);
+    // SimpleMDM API expects form-urlencoded data, not JSON
+    const params = new URLSearchParams();
+    for (const [key, val] of Object.entries(body)) {
+      params.append(key, String(val));
+    }
+    opts.headers['Content-Type'] = 'application/x-www-form-urlencoded';
+    opts.body = params.toString();
   }
   const resp = await fetch(url, opts);
   const text = await resp.text();
@@ -2145,16 +2150,19 @@ app.post('/api/simplemdm/assignment_groups', async (req, res) => {
   if (!auth) return res.status(401).json({ error: 'Missing Authorization header' });
 
   try {
-    const payload = { ...(req.body || {}), auto_deploy: true };
-    console.log(`[GROUP-CREATE] Creating group with auto_deploy=true: ${JSON.stringify(payload)}`);
+    const params = new URLSearchParams();
+    if (req.body?.name) params.append('name', req.body.name);
+    if (req.body?.priority) params.append('priority', req.body.priority);
+    params.append('auto_deploy', 'true');
+    console.log(`[GROUP-CREATE] Creating group: ${params.toString()}`);
     const url = 'https://a.simplemdm.com/api/v1/assignment_groups';
     const resp = await fetch(url, {
       method: 'POST',
-      headers: { Authorization: auth, 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      headers: { Authorization: auth, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
     });
     const text = await resp.text();
-    console.log(`[GROUP-CREATE] Response: status=${resp.status}`);
+    console.log(`[GROUP-CREATE] Response: status=${resp.status}, body=${text}`);
     try {
       return res.status(resp.status).json(JSON.parse(text));
     } catch {
@@ -2172,12 +2180,14 @@ app.patch('/api/simplemdm/assignment_groups/:groupId', async (req, res) => {
   if (!auth) return res.status(401).json({ error: 'Missing Authorization header' });
 
   try {
-    const payload = { ...(req.body || {}), auto_deploy: true };
+    const params = new URLSearchParams();
+    if (req.body?.name) params.append('name', req.body.name);
+    params.append('auto_deploy', 'true');
     const url = `https://a.simplemdm.com/api/v1/assignment_groups/${req.params.groupId}`;
     const resp = await fetch(url, {
       method: 'PATCH',
-      headers: { Authorization: auth, 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      headers: { Authorization: auth, 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
     });
     const text = await resp.text();
     try {
@@ -2198,11 +2208,11 @@ app.post('/api/simplemdm/assignment_groups/:groupId/apps/:appId', async (req, re
 
   try {
     const url = `https://a.simplemdm.com/api/v1/assignment_groups/${req.params.groupId}/apps/${req.params.appId}`;
-    const body = JSON.stringify({ deployment_type: 'standard' });
-    console.log(`[APP-ASSIGN] POST ${url} with deployment_type=standard`);
+    const body = 'deployment_type=standard';
+    console.log(`[APP-ASSIGN] POST ${url} with body: ${body}`);
     const resp = await fetch(url, {
       method: 'POST',
-      headers: { Authorization: auth, 'Content-Type': 'application/json' },
+      headers: { Authorization: auth, 'Content-Type': 'application/x-www-form-urlencoded' },
       body,
     });
     const responseText = await resp.text();
