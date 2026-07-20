@@ -2102,6 +2102,84 @@ select.prov-input {
 .serial-summary-stat.error { color: var(--light-red); }
 
 /* ================================================
+   BULK ACTIONS TOOLBAR
+   ================================================ */
+.bulk-actions {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 20px;
+    background: linear-gradient(135deg, rgba(231,76,60,0.12), rgba(192,57,43,0.08));
+    border: 1px solid rgba(231,76,60,0.25);
+    border-radius: 12px;
+    margin-bottom: 12px;
+    animation: fadeIn 0.2s ease;
+}
+
+.bulk-actions-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.bulk-count {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #e74c3c;
+}
+
+.bulk-actions-right {
+    display: flex;
+    gap: 8px;
+}
+
+.btn-danger {
+    background: linear-gradient(135deg, #e74c3c, #c0392b) !important;
+    color: #fff !important;
+    border: none !important;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    transition: all 0.2s;
+}
+
+.btn-danger:hover {
+    background: linear-gradient(135deg, #c0392b, #a93226) !important;
+    box-shadow: 0 4px 15px rgba(231,76,60,0.3);
+    transform: translateY(-1px);
+}
+
+.btn-sm {
+    padding: 6px 14px;
+    font-size: 0.8rem;
+}
+
+.th-checkbox {
+    width: 40px;
+    text-align: center;
+}
+
+.td-checkbox {
+    text-align: center;
+}
+
+.device-table input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: #fcd230;
+}
+
+.device-table tr.selected {
+    background: rgba(231,76,60,0.08) !important;
+}
+
+/* ================================================
    COBROWSE SCREEN VIEWER
    ================================================ */
 .screen-viewer-overlay {

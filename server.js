@@ -120,6 +120,33 @@ async function abmAssignToSimpleMdm(serials) {
   return { status: resp.status, data: result.data || result };
 }
 
+async function abmUnassignDevices(serials) {
+  if (!abmPrivateKey || serials.length === 0) return { status: 0, skipped: true };
+  const token = await getAbmToken();
+  const resp = await fetch(`${ABM_CONFIG.apiBase}/orgDeviceActivities`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      data: {
+        type: 'orgDeviceActivities',
+        attributes: { activityType: 'UNASSIGN_DEVICES' },
+        relationships: {
+          devices: {
+            data: serials.map(sn => ({ type: 'orgDevices', id: sn })),
+          },
+        },
+      },
+    }),
+  });
+  let result;
+  try { result = await resp.json(); } catch { result = {}; }
+  console.log(`[ABM] Unassigned ${serials.length} devices, status: ${resp.status}`);
+  return { status: resp.status, data: result.data || result };
+}
+
 const app = express();
 const PORT = process.env.PORT || 3456;
 
@@ -2368,6 +2395,161 @@ app.get('/hexnode/*', (req, res) => {
 app.get('/webbing/*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'webbing', 'index.html'));
 });
+
+// ── Bulk Device Unenroll & DEP Unassign ─────────────────────────────
+app.post('/api/simplemdm/devices/bulk-unenroll', async (req, res) => {
+  const auth = req.headers.authorization;
+  if (!auth) return res.status(401).json({ error: 'Missing Authorization header' });
+
+  let rawKey;
+  if (auth.startsWith('Basic ')) {
+    rawKey = Buffer.from(auth.replace('Basic ', ''), 'base64').toString().replace(/:$/, '');
+  } else {
+    rawKey = auth;
+  }
+
+  const { devices } = req.body; // [{ deviceId, serial }]
+  if (!Array.isArray(devices) || devices.length === 0) {
+    return res.status(400).json({ error: 'No devices provided' });
+  }
+
+  console.log(`[UNENROLL] Processing ${devices.length} devices for unenrollment`);
+  const results = { unenrolled: [], errors: [] };
+  const serialsForAbm = [];
+
+  for (const dev of devices) {
+    try {
+      // Step 1: Unenroll the device (removes MDM profile)
+      try {
+        await smdmRequest(rawKey, `/devices/${dev.deviceId}/unenroll`, 'POST');
+        console.log(`[UNENROLL]   ✓ Unenrolled device ${dev.deviceId} (${dev.serial})`);
+      } catch (unenrollErr) {
+        // Device may already be unenrolled, continue to delete
+        console.log(`[UNENROLL]   ⚠ Unenroll returned: ${unenrollErr.message} — continuing to delete`);
+      }
+
+      // Step 2: Delete the device record from SimpleMDM
+      try {
+        await smdmRequest(rawKey, `/devices/${dev.deviceId}`, 'DELETE');
+        console.log(`[UNENROLL]   ✓ Deleted device ${dev.deviceId} from SimpleMDM`);
+      } catch (deleteErr) {
+        console.log(`[UNENROLL]   ⚠ Delete returned: ${deleteErr.message}`);
+      }
+
+      results.unenrolled.push({ serial: dev.serial, deviceId: dev.deviceId });
+      if (dev.serial) serialsForAbm.push(dev.serial);
+    } catch (err) {
+      results.errors.push({ serial: dev.serial, deviceId: dev.deviceId, error: err.message });
+      console.error(`[UNENROLL]   ✗ Failed for ${dev.serial}: ${err.message}`);
+    }
+  }
+
+  // Step 3: Batch unassign from ABM/DEP
+  if (serialsForAbm.length > 0) {
+    try {
+      const abmResult = await abmUnassignDevices(serialsForAbm);
+      if (abmResult.skipped) {
+        results.abmNote = 'ABM integration not configured — devices were unenrolled from SimpleMDM only';
+        console.log('[UNENROLL] ABM not configured, skipping DEP unassign');
+      } else if (abmResult.status >= 200 && abmResult.status < 300) {
+        results.abmUnassigned = true;
+        console.log(`[UNENROLL] ✓ ${serialsForAbm.length} devices unassigned from DEP`);
+      } else {
+        results.abmNote = `ABM unassign returned status ${abmResult.status}`;
+        console.log(`[UNENROLL] ⚠ ABM unassign status: ${abmResult.status}`);
+      }
+    } catch (abmErr) {
+      results.abmNote = 'ABM unassign failed: ' + abmErr.message;
+      console.error('[UNENROLL] ABM unassign error:', abmErr.message);
+    }
+  }
+
+  console.log(`[UNENROLL] Done: ${results.unenrolled.length} unenrolled, ${results.errors.length} errors`);
+  return res.json(results);
+});
+
+// ── Delete Group with Device Cleanup ────────────────────────────────
+app.post('/api/simplemdm/groups/:groupId/delete-with-cleanup', async (req, res) => {
+  const auth = req.headers.authorization;
+  if (!auth) return res.status(401).json({ error: 'Missing Authorization header' });
+
+  let rawKey;
+  if (auth.startsWith('Basic ')) {
+    rawKey = Buffer.from(auth.replace('Basic ', ''), 'base64').toString().replace(/:$/, '');
+  } else {
+    rawKey = auth;
+  }
+
+  const groupId = req.params.groupId;
+  console.log(`[GROUP-DELETE] Starting cleanup for group ${groupId}`);
+
+  const results = { devicesProcessed: 0, unenrolled: [], errors: [], groupDeleted: false };
+
+  try {
+    // Step 1: Fetch group to get device relationships
+    const groupData = await smdmRequest(rawKey, `/assignment_groups/${groupId}`);
+    const deviceRefs = groupData.data?.relationships?.devices?.data || [];
+    console.log(`[GROUP-DELETE] Group has ${deviceRefs.length} direct devices`);
+
+    // Step 2: Fetch each device to get serial numbers, then unenroll + delete
+    const serialsForAbm = [];
+    for (const ref of deviceRefs) {
+      try {
+        const deviceData = await smdmRequest(rawKey, `/devices/${ref.id}`);
+        const serial = deviceData.data?.attributes?.serial_number || '';
+        const name = deviceData.data?.attributes?.name || serial;
+
+        // Unenroll
+        try {
+          await smdmRequest(rawKey, `/devices/${ref.id}/unenroll`, 'POST');
+        } catch (_) { /* may already be unenrolled */ }
+
+        // Delete
+        try {
+          await smdmRequest(rawKey, `/devices/${ref.id}`, 'DELETE');
+        } catch (_) { /* best effort */ }
+
+        results.unenrolled.push({ deviceId: ref.id, serial, name });
+        if (serial) serialsForAbm.push(serial);
+        console.log(`[GROUP-DELETE]   ✓ Unenrolled & deleted: ${name} (${serial})`);
+      } catch (devErr) {
+        results.errors.push({ deviceId: ref.id, error: devErr.message });
+        console.error(`[GROUP-DELETE]   ✗ Device ${ref.id}: ${devErr.message}`);
+      }
+    }
+    results.devicesProcessed = deviceRefs.length;
+
+    // Step 3: Batch unassign from ABM/DEP
+    if (serialsForAbm.length > 0) {
+      try {
+        const abmResult = await abmUnassignDevices(serialsForAbm);
+        if (!abmResult.skipped && abmResult.status >= 200 && abmResult.status < 300) {
+          results.abmUnassigned = true;
+          console.log(`[GROUP-DELETE] ✓ ${serialsForAbm.length} devices unassigned from DEP`);
+        }
+      } catch (abmErr) {
+        console.error('[GROUP-DELETE] ABM unassign error:', abmErr.message);
+      }
+    }
+
+    // Step 4: Delete the group itself
+    try {
+      await smdmRequest(rawKey, `/assignment_groups/${groupId}`, 'DELETE');
+      results.groupDeleted = true;
+      console.log(`[GROUP-DELETE] ✓ Group ${groupId} deleted`);
+    } catch (groupErr) {
+      results.groupDeleteError = groupErr.message;
+      console.error(`[GROUP-DELETE] ✗ Group delete failed: ${groupErr.message}`);
+    }
+
+  } catch (err) {
+    console.error(`[GROUP-DELETE] Failed:`, err.message);
+    return res.status(500).json({ error: err.message });
+  }
+
+  return res.json(results);
+});
+
 // ── Cobrowse.io Screen Viewer ────────────────────────────────────────
 app.get('/api/cobrowse/config', (req, res) => {
   res.json({ licenseKey: process.env.COBROWSE_LICENSE_KEY || null });

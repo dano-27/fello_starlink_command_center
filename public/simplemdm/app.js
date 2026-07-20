@@ -185,6 +185,11 @@
         screenViewerError:    $('#screen-viewer-error'),
         screenViewerErrorMsg: $('#screen-viewer-error-msg'),
         actionViewScreen:     $('#action-view-screen'),
+        // Bulk Actions
+        bulkActions:       $('#bulk-actions'),
+        bulkCount:         $('#bulk-count'),
+        bulkUnenroll:      $('#bulk-unenroll'),
+        selectAllDevices:  $('#select-all-devices'),
     };
 
     // ---- State ----
@@ -206,6 +211,7 @@
         sortDir: 'asc',
         // Modal
         currentDevice: null,
+        selectedDevices: new Set(), // Set of device indices for bulk operations
         // Provisioning
         provQueue: [],
         provExpandedId: null,
@@ -628,20 +634,47 @@
         const count = state.groupDeviceCounts[group.id] || 0;
 
         const msg = count > 0
-            ? `This group has ${count} device${count !== 1 ? 's' : ''} assigned. Deleting it will unassign them. Continue?`
+            ? `This group has ${count} device${count !== 1 ? 's' : ''} assigned.\n\nDeleting this group will:\n1. Unenroll all ${count} device${count !== 1 ? 's' : ''} from SimpleMDM\n2. Delete their records from SimpleMDM\n3. Unassign them from DEP in Apple Business Manager\n4. Delete the group\n\nThis cannot be undone.`
             : `Are you sure you want to delete "${name}"?`;
 
         const confirmed = await showConfirm('Delete Group?', msg, '🗑');
         if (!confirmed) return;
 
         try {
-            showToast(`Deleting "${name}"…`, 'info');
-            await apiRequest(`/assignment_groups/${group.id}`, { method: 'DELETE' });
-            showToast(`"${name}" deleted successfully.`, 'success');
+            if (count > 0) {
+                // Use cleanup endpoint for groups with devices
+                showToast(`Cleaning up ${count} device${count !== 1 ? 's' : ''} and deleting "${name}"…`, 'info');
+                const resp = await fetch(`/api/simplemdm/groups/${group.id}/delete-with-cleanup`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Basic ${btoa(state.apiKey + ':')}`,
+                    },
+                });
+                const results = await resp.json();
+                if (!resp.ok) throw new Error(results.error || 'Cleanup failed');
+
+                const uCount = results.unenrolled?.length || 0;
+                let msg = `✓ "${name}" deleted — ${uCount} device${uCount !== 1 ? 's' : ''} unenrolled`;
+                if (results.abmUnassigned) msg += ' + unassigned from DEP';
+                if (results.errors?.length > 0) msg += ` (${results.errors.length} errors)`;
+                showToast(msg, results.errors?.length > 0 ? 'warning' : 'success');
+            } else {
+                // Simple delete for empty groups
+                showToast(`Deleting "${name}"…`, 'info');
+                await apiRequest(`/assignment_groups/${group.id}`, { method: 'DELETE' });
+                showToast(`"${name}" deleted successfully.`, 'success');
+            }
+
             // Remove from state and re-render
             state.groups = state.groups.filter(g => g.id !== group.id);
             state.filteredGroups = state.filteredGroups.filter(g => g.id !== group.id);
             delete state.groupDeviceCounts[group.id];
+            // Go back to groups view if we're in this group's device view
+            if (state.currentGroup && state.currentGroup.id === group.id) {
+                state.currentGroup = null;
+                state.currentView = 'groups';
+            }
             updateGroupsStats();
             renderGroupsGrid();
         } catch (err) {
@@ -903,6 +936,7 @@
             const statusSlug = rawStatus.toLowerCase().replace(/\s+/g, '-');
 
             rowsHtml += `<tr data-device-index="${index}">
+                <td class="td-checkbox"><input type="checkbox" class="device-checkbox" data-index="${index}"></td>
                 <td><span class="device-name">${escapeHtml(name)}</span></td>
                 <td>${escapeHtml(model)}</td>
                 <td>${escapeHtml(serial)}</td>
@@ -911,16 +945,43 @@
             </tr>`;
         });
 
+        // Clear selection state
+        state.selectedDevices.clear();
+        updateBulkActions();
+        if (dom.selectAllDevices) dom.selectAllDevices.checked = false;
+
         // Render rows into tbody
         const tbody = document.getElementById('device-tbody');
         tbody.innerHTML = rowsHtml;
 
-        // Attach click handlers
+        // Attach click handlers (skip checkbox clicks)
         tbody.querySelectorAll('tr').forEach(tr => {
             const idx = parseInt(tr.dataset.deviceIndex, 10);
             if (devices[idx]) {
-                tr.addEventListener('click', () => openDeviceModal(devices[idx]));
+                tr.addEventListener('click', (e) => {
+                    // Don't open modal when clicking checkbox
+                    if (e.target.type === 'checkbox') return;
+                    openDeviceModal(devices[idx]);
+                });
             }
+        });
+
+        // Attach checkbox handlers
+        tbody.querySelectorAll('.device-checkbox').forEach(cb => {
+            cb.addEventListener('change', (e) => {
+                const idx = parseInt(e.target.dataset.index, 10);
+                if (e.target.checked) {
+                    state.selectedDevices.add(idx);
+                    e.target.closest('tr').classList.add('selected');
+                } else {
+                    state.selectedDevices.delete(idx);
+                    e.target.closest('tr').classList.remove('selected');
+                }
+                updateBulkActions();
+                // Update select-all checkbox
+                const allCheckboxes = tbody.querySelectorAll('.device-checkbox');
+                dom.selectAllDevices.checked = state.selectedDevices.size === allCheckboxes.length;
+            });
         });
 
         showDevicesState('table');
@@ -1012,6 +1073,75 @@
             });
         } catch (e) {
             return dateStr;
+        }
+    }
+
+    // ================================================
+    //  BULK DEVICE UNENROLLMENT
+    // ================================================
+
+    function updateBulkActions() {
+        const count = state.selectedDevices.size;
+        if (count > 0) {
+            dom.bulkActions.classList.remove('hidden');
+            dom.bulkCount.textContent = `${count} device${count !== 1 ? 's' : ''} selected`;
+        } else {
+            dom.bulkActions.classList.add('hidden');
+        }
+    }
+
+    async function bulkUnenrollDevices() {
+        const indices = Array.from(state.selectedDevices);
+        const devices = state.filteredDevices.length > 0 ? state.filteredDevices : state.devices;
+        const selectedDevices = indices.map(i => devices[i]).filter(Boolean);
+
+        if (selectedDevices.length === 0) return;
+
+        // Build confirmation message
+        const names = selectedDevices.map(d => getDeviceName(d)).join('\n• ');
+        const confirmed = await showConfirm(
+            'Unenroll & Unassign Devices?',
+            `This will:\n1. Unenroll ${selectedDevices.length} device${selectedDevices.length !== 1 ? 's' : ''} from SimpleMDM\n2. Delete their records from SimpleMDM\n3. Unassign them from DEP in Apple Business Manager\n\nDevices:\n• ${names}\n\nThis action cannot be undone.`,
+            '⛔'
+        );
+        if (!confirmed) return;
+
+        // Build payload
+        const payload = selectedDevices.map(d => ({
+            deviceId: d.id,
+            serial: getSerial(d),
+        }));
+
+        showToast(`Unenrolling ${selectedDevices.length} device${selectedDevices.length !== 1 ? 's' : ''}…`, 'info');
+
+        try {
+            const resp = await fetch('/api/simplemdm/devices/bulk-unenroll', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Basic ${btoa(state.apiKey + ':')}`,
+                },
+                body: JSON.stringify({ devices: payload }),
+            });
+
+            const results = await resp.json();
+            if (!resp.ok) throw new Error(results.error || 'Unenrollment failed');
+
+            const uCount = results.unenrolled?.length || 0;
+            const eCount = results.errors?.length || 0;
+            let msg = `✓ ${uCount} device${uCount !== 1 ? 's' : ''} unenrolled and deleted`;
+            if (results.abmUnassigned) msg += ' + unassigned from DEP';
+            if (results.abmNote) msg += `\n${results.abmNote}`;
+            if (eCount > 0) msg += `\n⚠ ${eCount} error${eCount !== 1 ? 's' : ''}`;
+
+            showToast(msg, eCount > 0 ? 'warning' : 'success');
+
+            // Clear selection and refresh
+            state.selectedDevices.clear();
+            updateBulkActions();
+            if (state.currentGroup) fetchGroupDevices(state.currentGroup);
+        } catch (err) {
+            showToast('Unenrollment failed: ' + err.message, 'error');
         }
     }
 
@@ -1254,6 +1384,26 @@
         dom.screenViewerOverlay.addEventListener('click', (e) => {
             if (e.target === dom.screenViewerOverlay) closeScreenViewer();
         });
+
+        // Bulk device actions
+        dom.selectAllDevices.addEventListener('change', (e) => {
+            const tbody = document.getElementById('device-tbody');
+            const checkboxes = tbody.querySelectorAll('.device-checkbox');
+            checkboxes.forEach(cb => {
+                cb.checked = e.target.checked;
+                const idx = parseInt(cb.dataset.index, 10);
+                if (e.target.checked) {
+                    state.selectedDevices.add(idx);
+                    cb.closest('tr').classList.add('selected');
+                } else {
+                    state.selectedDevices.delete(idx);
+                    cb.closest('tr').classList.remove('selected');
+                }
+            });
+            updateBulkActions();
+        });
+
+        dom.bulkUnenroll.addEventListener('click', bulkUnenrollDevices);
 
         // Remote actions
         dom.actionLock.addEventListener('click', () => executeRemoteAction('lock', 'Lock'));

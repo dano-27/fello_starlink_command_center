@@ -414,10 +414,21 @@ GG7YJ21SJF88"></textarea>
                 </div>
 
                 <!-- Device Table -->
+                <div class="bulk-actions hidden" id="bulk-actions">
+                    <div class="bulk-actions-left">
+                        <span class="bulk-count" id="bulk-count">0 selected</span>
+                    </div>
+                    <div class="bulk-actions-right">
+                        <button class="btn btn-danger btn-sm" id="bulk-unenroll">
+                            <span class="action-icon">⛔</span> Unenroll & Unassign from DEP
+                        </button>
+                    </div>
+                </div>
                 <div class="device-table-wrap hidden" id="device-table">
                     <table class="device-table">
                         <thead>
                             <tr>
+                                <th class="th-checkbox"><input type="checkbox" id="select-all-devices" title="Select all"></th>
                                 <th class="sortable" data-sort="name">Name <span class="sort-arrow"></span></th>
                                 <th class="sortable" data-sort="model">Model <span class="sort-arrow"></span></th>
                                 <th>Serial Number</th>
