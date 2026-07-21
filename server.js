@@ -1648,6 +1648,88 @@ app.post('/api/simplemdm/groups/:groupId/assign-serials', async (req, res) => {
             console.error(`[ASSIGN] DEP sync attempt ${attempt} failed:`, syncErr.message);
           }
         }
+
+        // ── Post-sync: Wait for devices to appear, then assign to group ──
+        if (syncSuccess) {
+          console.log('[ASSIGN] Waiting for DEP sync to propagate...');
+          await apiDelay(5000); // Wait 5s for sync to complete
+
+          // Re-fetch DEP devices to find the newly synced ones
+          const abmSerialsSet = new Set(abmSerials);
+          let postSyncFound = 0;
+
+          // Paginate through DEP devices looking for our serials
+          let hasMore = true;
+          let depCursor = '';
+          while (hasMore) {
+            try {
+              const depUrl = `https://a.simplemdm.com/api/v1/dep_servers/10650/dep_devices?limit=100${depCursor ? `&starting_after=${depCursor}` : ''}`;
+              const depResp = await fetch(depUrl, { headers: { Authorization: auth } });
+              const depData = depResp.ok ? await depResp.json() : { data: [], has_more: false };
+              const depDevices = depData.data || [];
+
+              for (const depDev of depDevices) {
+                const depSn = depDev.attributes?.serial_number?.toUpperCase();
+                if (!depSn || !abmSerialsSet.has(depSn)) continue;
+
+                // Found one of our devices in DEP
+                const linkedDevice = depDev.relationships?.device?.data;
+                if (linkedDevice && linkedDevice.id) {
+                  // Device has an enrolled/awaiting record — assign to group
+                  try {
+                    await apiDelay(API_DELAY);
+                    const assignResp = await fetch(`https://a.simplemdm.com/api/v1/assignment_groups/${groupId}/devices/${linkedDevice.id}`, {
+                      method: 'POST',
+                      headers: { Authorization: auth },
+                    });
+                    if (assignResp.status === 204 || assignResp.ok) {
+                      // Update the result entry with the real device ID
+                      const resultEntry = results.assigned.find(r => r.serial === depSn && r.source === 'abm_assigned');
+                      if (resultEntry) {
+                        resultEntry.deviceId = linkedDevice.id;
+                        resultEntry.source = 'abm_assigned_to_group';
+                      }
+                      // Rename the device
+                      if (resultEntry?.plannedName) {
+                        try {
+                          await apiDelay(API_DELAY);
+                          await smdmRequest(rawKey, `/devices/${linkedDevice.id}`, 'PATCH', {
+                            name: resultEntry.plannedName,
+                            device_name: resultEntry.plannedName,
+                          });
+                          console.log(`[ASSIGN]   📝 Renamed ${depSn} → "${resultEntry.plannedName}"`);
+                        } catch (renameErr) {
+                          console.error(`[ASSIGN]   ⚠ Rename failed for ${depSn}: ${renameErr.message}`);
+                        }
+                      }
+                      postSyncFound++;
+                      console.log(`[ASSIGN]   ✓ Post-sync: ${depSn} → device ${linkedDevice.id} → group ${groupId}`);
+                    }
+                  } catch (assignErr) {
+                    console.error(`[ASSIGN]   ⚠ Post-sync assign failed for ${depSn}: ${assignErr.message}`);
+                  }
+                } else {
+                  console.log(`[ASSIGN]   ⚠ Post-sync: ${depSn} in DEP but no device link yet`);
+                }
+                abmSerialsSet.delete(depSn);
+              }
+
+              hasMore = depData.has_more === true && abmSerialsSet.size > 0;
+              depCursor = depDevices.length > 0 ? depDevices[depDevices.length - 1].id : '';
+              if (!depCursor) break;
+            } catch (pageErr) {
+              console.error('[ASSIGN] Post-sync DEP pagination error:', pageErr.message);
+              break;
+            }
+          }
+
+          console.log(`[ASSIGN] Post-sync: ${postSyncFound}/${abmSerials.length} devices assigned to group`);
+          if (abmSerialsSet.size > 0) {
+            console.log(`[ASSIGN] ⚠ ${abmSerialsSet.size} devices not yet visible after sync: ${[...abmSerialsSet].join(', ')}`);
+            results.syncWarning = `${abmSerialsSet.size} device(s) assigned to MDM but not yet visible in SimpleMDM. They may take a few more minutes to appear.`;
+          }
+        }
+
         if (!syncSuccess) {
           console.error('[ASSIGN] ⚠ DEP sync failed after 3 attempts — devices may take time to appear');
           results.syncTriggered = false;
