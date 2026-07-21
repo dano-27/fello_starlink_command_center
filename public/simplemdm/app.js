@@ -1881,6 +1881,12 @@
         const app_ids = state.selectedAppIds.map(a => a.id);
         const apps = state.selectedAppIds.map(a => a.name);
 
+        // Parse serial numbers from textarea (support newline, comma, space, tab separated)
+        const serialsRaw = (document.getElementById('prov-serials')?.value || '').trim();
+        const serials = serialsRaw
+            ? [...new Set(serialsRaw.split(/[\n,\t;]+/).map(s => s.trim().toUpperCase()).filter(Boolean))]
+            : [];
+
         const submitBtn = dom.provSubmitBtn;
         const btnText = submitBtn.querySelector('.btn-text');
         const btnSpinner = submitBtn.querySelector('.btn-spinner');
@@ -1897,7 +1903,7 @@
                     'Content-Type': 'application/json',
                     'x-simplemdm-key': apiKey || state.apiKey,
                 },
-                body: JSON.stringify({ eventName, orderNumber, configMode, apps, app_ids }),
+                body: JSON.stringify({ eventName, orderNumber, configMode, apps, app_ids, serials }),
             });
 
             if (!res.ok) {
