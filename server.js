@@ -2884,13 +2884,8 @@ app.get('/api/cobrowse/config', (req, res) => {
   res.json({ licenseKey: COBROWSE_LICENSE_KEY, configured: !!COBROWSE_PRIVATE_KEY });
 });
 
-app.post('/api/cobrowse/token', (req, res) => {
-  if (!COBROWSE_LICENSE_KEY || !COBROWSE_PRIVATE_KEY) {
-    return res.status(503).json({ error: 'Cobrowse.io is not configured. Add cobrowse_private.pem to the project root.' });
-  }
-
+function generateCobrowseJWT() {
   let privateKey = COBROWSE_PRIVATE_KEY;
-  // Handle escaped newlines from env vars
   if (!privateKey.includes('-----BEGIN')) {
     privateKey = privateKey.replace(/\\n/g, '\n');
   }
@@ -2909,9 +2904,104 @@ app.post('/api/cobrowse/token', (req, res) => {
   const signingInput = `${header}.${payload}`;
   const signature = crypto.sign('RSA-SHA256', Buffer.from(signingInput), privateKey)
     .toString('base64url');
-  const token = `${signingInput}.${signature}`;
+  return `${signingInput}.${signature}`;
+}
 
-  res.json({ token });
+app.post('/api/cobrowse/token', (req, res) => {
+  if (!COBROWSE_LICENSE_KEY || !COBROWSE_PRIVATE_KEY) {
+    return res.status(503).json({ error: 'Cobrowse.io is not configured. Add cobrowse_private.pem to the project root.' });
+  }
+  res.json({ token: generateCobrowseJWT() });
+});
+
+// Find a device and create a session for auto-connect
+app.post('/api/cobrowse/connect', async (req, res) => {
+  if (!COBROWSE_LICENSE_KEY || !COBROWSE_PRIVATE_KEY) {
+    return res.status(503).json({ error: 'Cobrowse.io is not configured.' });
+  }
+
+  const { serial, deviceName } = req.body;
+  const token = generateCobrowseJWT();
+
+  try {
+    // List all online devices from Cobrowse API
+    const https = require('https');
+    const listUrl = new URL('https://cobrowse.io/api/1/devices');
+    listUrl.searchParams.set('filter_app', 'Fello Remote');
+
+    const devicesResp = await fetch(listUrl.toString(), {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    if (!devicesResp.ok) {
+      const errText = await devicesResp.text();
+      return res.status(502).json({ error: `Cobrowse API error: ${devicesResp.status} ${errText}` });
+    }
+
+    const devices = await devicesResp.json();
+
+    if (!devices || devices.length === 0) {
+      return res.json({ error: 'No Fello Remote devices found online.', devices: [] });
+    }
+
+    // If only one device, auto-select it
+    let targetDevice = null;
+    if (devices.length === 1) {
+      targetDevice = devices[0];
+    } else {
+      // Try to match by serial_number custom data
+      targetDevice = devices.find(d =>
+        d.custom_data && d.custom_data.serial_number === serial
+      );
+      // Or match by device name
+      if (!targetDevice && deviceName) {
+        targetDevice = devices.find(d =>
+          d.custom_data && d.custom_data.device_name === deviceName
+        );
+      }
+      // Fallback: first device
+      if (!targetDevice) {
+        targetDevice = devices[0];
+      }
+    }
+
+    // Create a session for this device
+    const sessionResp = await fetch('https://cobrowse.io/api/1/sessions', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ device_id: targetDevice.id })
+    });
+
+    if (!sessionResp.ok) {
+      // If session creation fails, fall back to iframe with device filter
+      return res.json({
+        mode: 'iframe',
+        token,
+        deviceId: targetDevice.id,
+        deviceName: targetDevice.custom_data?.device_name || 'Unknown'
+      });
+    }
+
+    const session = await sessionResp.json();
+    res.json({
+      mode: 'session',
+      token,
+      sessionId: session.id,
+      sessionUrl: `https://cobrowse.io/session/${session.id}?token=${encodeURIComponent(token)}&navigation=none&agent_tools=none`,
+      deviceName: targetDevice.custom_data?.device_name || 'Unknown',
+      devices: devices.map(d => ({
+        id: d.id,
+        name: d.custom_data?.device_name,
+        serial: d.custom_data?.serial_number,
+        online: d.online
+      }))
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // Hub landing page

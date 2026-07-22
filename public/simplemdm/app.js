@@ -1195,18 +1195,18 @@
         // Check if Cobrowse is configured
         const configured = await checkCobrowseConfig();
         if (!configured) {
-            showScreenViewerError('Cobrowse.io is not configured. Add COBROWSE_LICENSE_KEY and COBROWSE_PRIVATE_KEY environment variables.');
+            showScreenViewerError('Cobrowse.io is not configured. Add cobrowse_private.pem to the project.');
             return;
         }
 
-        // Get JWT token
         try {
+            // Get JWT token for Cobrowse dashboard
             const tokenResp = await fetch('/api/cobrowse/token', { method: 'POST' });
             if (!tokenResp.ok) throw new Error('Failed to get auth token');
             const { token } = await tokenResp.json();
 
-            // Build the Cobrowse dashboard IFrame URL filtered by device name
-            const cobrowseUrl = `https://cobrowse.io/dashboard/devices?token=${encodeURIComponent(token)}&filter_device_name=${encodeURIComponent(name)}&navigation=none&agent_tools=none`;
+            // Load Cobrowse dashboard filtered to Fello Remote devices only
+            const cobrowseUrl = `https://cobrowse.io/dashboard/devices?token=${encodeURIComponent(token)}&filter_app=Fello+Remote&navigation=none&agent_tools=none`;
 
             dom.screenViewerIframe.src = cobrowseUrl;
             dom.screenViewerIframe.onload = () => {
@@ -1216,11 +1216,11 @@
                 dom.screenViewerStatus.className = 'screen-viewer-status connected';
             };
 
-            // Timeout after 15s if iframe doesn't load
+            // Timeout after 20s if iframe doesn't load
             setTimeout(() => {
                 if (!dom.screenViewerIframe.classList.contains('hidden')) return;
                 showScreenViewerError('Connection timed out. The device may not be online or the Cobrowse SDK may not be running.');
-            }, 15000);
+            }, 20000);
 
         } catch (err) {
             showScreenViewerError(err.message || 'Failed to connect to Cobrowse.io');
