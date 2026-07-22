@@ -2867,20 +2867,33 @@ app.get('/webbing/*', (req, res) => {
 
 
 // ── Cobrowse.io Screen Viewer ────────────────────────────────────────
+const COBROWSE_LICENSE_KEY = process.env.COBROWSE_LICENSE_KEY || 'eKa2-Jk15Tk8aQ';
+
+// Try to load private key from file or env
+let COBROWSE_PRIVATE_KEY = process.env.COBROWSE_PRIVATE_KEY || null;
+if (!COBROWSE_PRIVATE_KEY) {
+  try {
+    const pemPath = path.join(__dirname, 'cobrowse_private.pem');
+    if (fs.existsSync(pemPath)) {
+      COBROWSE_PRIVATE_KEY = fs.readFileSync(pemPath, 'utf8');
+    }
+  } catch (_) {}
+}
+
 app.get('/api/cobrowse/config', (req, res) => {
-  res.json({ licenseKey: process.env.COBROWSE_LICENSE_KEY || null });
+  res.json({ licenseKey: COBROWSE_LICENSE_KEY, configured: !!COBROWSE_PRIVATE_KEY });
 });
 
 app.post('/api/cobrowse/token', (req, res) => {
-  const COBROWSE_LICENSE_KEY = process.env.COBROWSE_LICENSE_KEY;
-  let COBROWSE_PRIVATE_KEY = process.env.COBROWSE_PRIVATE_KEY;
-
   if (!COBROWSE_LICENSE_KEY || !COBROWSE_PRIVATE_KEY) {
-    return res.status(503).json({ error: 'Cobrowse.io is not configured. Set COBROWSE_LICENSE_KEY and COBROWSE_PRIVATE_KEY environment variables.' });
+    return res.status(503).json({ error: 'Cobrowse.io is not configured. Add cobrowse_private.pem to the project root.' });
   }
 
+  let privateKey = COBROWSE_PRIVATE_KEY;
   // Handle escaped newlines from env vars
-  COBROWSE_PRIVATE_KEY = COBROWSE_PRIVATE_KEY.replace(/\\n/g, '\n');
+  if (!privateKey.includes('-----BEGIN')) {
+    privateKey = privateKey.replace(/\\n/g, '\n');
+  }
 
   const now = Math.floor(Date.now() / 1000);
   const header = base64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
@@ -2894,7 +2907,7 @@ app.post('/api/cobrowse/token', (req, res) => {
   }));
 
   const signingInput = `${header}.${payload}`;
-  const signature = crypto.sign('RSA-SHA256', Buffer.from(signingInput), COBROWSE_PRIVATE_KEY)
+  const signature = crypto.sign('RSA-SHA256', Buffer.from(signingInput), privateKey)
     .toString('base64url');
   const token = `${signingInput}.${signature}`;
 

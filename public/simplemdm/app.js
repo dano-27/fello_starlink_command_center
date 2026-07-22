@@ -1205,8 +1205,8 @@
             if (!tokenResp.ok) throw new Error('Failed to get auth token');
             const { token } = await tokenResp.json();
 
-            // Build the Cobrowse dashboard IFrame URL filtered by serial number
-            const cobrowseUrl = `https://cobrowse.io/dashboard/devices?token=${encodeURIComponent(token)}&filter_serial_number=${encodeURIComponent(serial)}&navigation=none&agent_tools=none`;
+            // Build the Cobrowse dashboard IFrame URL filtered by device name
+            const cobrowseUrl = `https://cobrowse.io/dashboard/devices?token=${encodeURIComponent(token)}&filter_device_name=${encodeURIComponent(name)}&navigation=none&agent_tools=none`;
 
             dom.screenViewerIframe.src = cobrowseUrl;
             dom.screenViewerIframe.onload = () => {
