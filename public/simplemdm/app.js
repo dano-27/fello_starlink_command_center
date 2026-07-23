@@ -186,6 +186,8 @@
         screenViewerErrorMsg: $('#screen-viewer-error-msg'),
         actionViewScreen:     $('#action-view-screen'),
         // Bulk Actions
+        groupLockAll:      $('#group-lock-all'),
+        groupUnlockAll:    $('#group-unlock-all'),
         bulkActions:       $('#bulk-actions'),
         bulkCount:         $('#bulk-count'),
         bulkUnenroll:      $('#bulk-unenroll'),
@@ -1274,6 +1276,39 @@
         }
     }
 
+    async function groupBulkAction(action, actionLabel, icon) {
+        const devices = state.filteredDevices || state.devices;
+        if (!devices || devices.length === 0) {
+            showToast('No devices in this group.', 'warning');
+            return;
+        }
+
+        const confirmed = await showConfirm(
+            `${actionLabel} All Devices?`,
+            `Are you sure you want to ${actionLabel.toLowerCase()} all ${devices.length} device${devices.length !== 1 ? 's' : ''} in this group? This action will be sent immediately.`,
+            icon
+        );
+        if (!confirmed) return;
+
+        showToast(`Sending ${actionLabel.toLowerCase()} command to ${devices.length} devices…`, 'info');
+
+        let success = 0;
+        let failed = 0;
+        await Promise.allSettled(
+            devices.map(device =>
+                apiRequest(`/devices/${device.id}/${action}`, { method: 'POST' })
+                    .then(() => { success++; })
+                    .catch(() => { failed++; })
+            )
+        );
+
+        if (failed === 0) {
+            showToast(`${actionLabel} command sent to all ${success} devices successfully.`, 'success');
+        } else {
+            showToast(`${actionLabel}: ${success} succeeded, ${failed} failed.`, failed > 0 ? 'warning' : 'success');
+        }
+    }
+
     // ================================================
     //  EVENT HANDLERS
     // ================================================
@@ -1422,6 +1457,8 @@
         dom.bulkUnenroll.addEventListener('click', bulkUnenrollDevices);
 
         // Remote actions
+        dom.groupLockAll.addEventListener('click', () => groupBulkAction('lock', 'Lock', '🔒'));
+        dom.groupUnlockAll.addEventListener('click', () => groupBulkAction('clear_passcode', 'Unlock', '🔓'));
         dom.actionLock.addEventListener('click', () => executeRemoteAction('lock', 'Lock'));
         dom.actionRestart.addEventListener('click', () => executeRemoteAction('restart', 'Restart'));
         dom.actionShutdown.addEventListener('click', () => executeRemoteAction('shutdown', 'Shutdown'));
