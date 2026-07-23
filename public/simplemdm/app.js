@@ -1206,7 +1206,7 @@
             const { token } = await tokenResp.json();
 
             // Load Cobrowse dashboard filtered to Fello Remote devices only
-            const cobrowseUrl = `https://cobrowse.io/dashboard/devices?token=${encodeURIComponent(token)}&filter_app=Fello+Remote&navigation=none&agent_tools=none`;
+            const cobrowseUrl = `https://cobrowse.io/dashboard/devices?token=${encodeURIComponent(token)}&filter_app=Fello+Remote&navigation=none`;
 
             dom.screenViewerIframe.src = cobrowseUrl;
             dom.screenViewerIframe.onload = () => {
