@@ -2911,7 +2911,12 @@ app.post('/api/cobrowse/token', (req, res) => {
   if (!COBROWSE_LICENSE_KEY || !COBROWSE_PRIVATE_KEY) {
     return res.status(503).json({ error: 'Cobrowse.io is not configured. Add cobrowse_private.pem to the project root.' });
   }
-  res.json({ token: generateCobrowseJWT() });
+  try {
+    res.json({ token: generateCobrowseJWT() });
+  } catch (err) {
+    console.error('[Cobrowse] JWT generation error:', err.message);
+    res.status(500).json({ error: 'JWT generation failed: ' + err.message });
+  }
 });
 
 // Find a device and create a session for auto-connect
