@@ -1712,6 +1712,7 @@
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;font-size:0.9rem;">
                 ${detailRow('Wi-Fi', sub.wifiEnabled)}
                 ${detailRow('SSID', sub.wifiSsid)}
+                ${detailRow('Password', sub.wifiPassword)}
                 ${detailRow('Wi-Fi Security', sub.wifiSecurity)}
                 ${detailRow('Hidden Network', sub.wifiHidden)}
                 ${detailRow('Restrictions', sub.restrictionsEnabled)}

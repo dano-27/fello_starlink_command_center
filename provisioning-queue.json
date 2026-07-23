@@ -1,5 +1,129 @@
 [
   {
+    "id": "prov-1784833465553-iovtxu",
+    "timestamp": "2026-07-23T19:04:25.553Z",
+    "eventName": "Tech Conference 2026",
+    "orderNumber": "TEST-001",
+    "configMode": "Kiosk Mode",
+    "contactName": "Dan Odomirok",
+    "company": "Fello",
+    "status": "partial",
+    "groupId": 2403001,
+    "groupName": "TEST-001 - Tech Conference 2026",
+    "appsRequested": [
+      "Square POS",
+      "Salesforce"
+    ],
+    "appsMatched": [
+      {
+        "requested": "Square POS",
+        "matched": "Square Point of Sale (POS)",
+        "id": 129311
+      }
+    ],
+    "appsFailed": [
+      "Salesforce"
+    ],
+    "profilesAssigned": [
+      {
+        "name": "Default Restrictions",
+        "id": 142210,
+        "reason": "Always applied"
+      },
+      {
+        "name": "Fello Wi-Fi",
+        "id": 133014,
+        "reason": "Always applied"
+      },
+      {
+        "name": "Tech Conference 2026 — Custom Config",
+        "id": 230984,
+        "reason": "Bundled config (Wi-Fi: VenueWiFi-5G, Passcode Policy (Kiosk))"
+      }
+    ],
+    "layoutMatched": {
+      "name": "Square POS & Eventbrite Organizer",
+      "id": 147544
+    },
+    "errors": [],
+    "manualSetupNeeded": [
+      "Custom wallpaper requested — upload image via Command Center"
+    ],
+    "dcrPayload": {
+      "orderNumber": "TEST-001",
+      "eventName": "Tech Conference 2026",
+      "eventDates": "Aug 1-3, 2026",
+      "venue": "Convention Center",
+      "contactName": "Dan Odomirok",
+      "company": "Fello",
+      "email": "dan@fello.com",
+      "phone": "555-555-5555",
+      "configMode": "Kiosk Mode",
+      "apps": [
+        "Square POS",
+        "Salesforce"
+      ],
+      "wifiEnabled": "Yes",
+      "wifiSsid": "VenueWiFi-5G",
+      "wifiSecurity": "WPA2",
+      "homeScreenLayout": "Single App",
+      "customWallpaper": "Yes",
+      "additionalComments": "Test submission"
+    },
+    "appsPushed": true,
+    "customConfigCreated": {
+      "id": 230984,
+      "name": "Tech Conference 2026 — Custom Config",
+      "payloads": [
+        "Wi-Fi: VenueWiFi-5G",
+        "Passcode Policy (Kiosk)"
+      ]
+    }
+  },
+  {
+    "id": "prov-1784833338926-p03o8v",
+    "timestamp": "2026-07-23T19:02:18.926Z",
+    "eventName": "Tech Conference 2026",
+    "orderNumber": "TEST-001",
+    "configMode": "Kiosk Mode",
+    "contactName": "Dan Odomirok",
+    "company": "Fello",
+    "status": "running",
+    "groupId": null,
+    "groupName": "",
+    "appsRequested": [
+      "Square POS",
+      "Salesforce"
+    ],
+    "appsMatched": [],
+    "appsFailed": [],
+    "profilesAssigned": [],
+    "layoutMatched": null,
+    "errors": [],
+    "manualSetupNeeded": [],
+    "dcrPayload": {
+      "orderNumber": "TEST-001",
+      "eventName": "Tech Conference 2026",
+      "eventDates": "Aug 1-3, 2026",
+      "venue": "Convention Center",
+      "contactName": "Dan Odomirok",
+      "company": "Fello",
+      "email": "dan@fello.com",
+      "phone": "555-555-5555",
+      "configMode": "Kiosk Mode",
+      "apps": [
+        "Square POS",
+        "Salesforce"
+      ],
+      "wifiEnabled": "Yes",
+      "wifiSsid": "VenueWiFi-5G",
+      "wifiSecurity": "WPA2",
+      "homeScreenLayout": "Single App",
+      "customWallpaper": "Yes",
+      "additionalComments": "Test submission"
+    }
+  },
+  {
     "id": "prov-1784136548939-9ntj3a",
     "timestamp": "2026-07-15T17:29:08.939Z",
     "eventName": "CES 2026 Demo Booth",
