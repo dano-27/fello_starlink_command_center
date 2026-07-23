@@ -910,6 +910,8 @@ app.post('/api/dcr/submit', async (req, res) => {
   const submission = {
     id: `dcr-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     timestamp: new Date().toISOString(),
+    status: 'pending',
+    notes: [],
     ...dcrData,
   };
   dcrSubmissions.unshift(submission);
@@ -961,11 +963,51 @@ app.post('/api/dcr/submit', async (req, res) => {
   });
 });
 
-// DCR submissions API
+// DCR submissions API — list (supports ?status= filter)
 app.get('/api/dcr/submissions', (req, res) => {
-  return res.json({ data: dcrSubmissions });
+  let subs = [...dcrSubmissions];
+  if (req.query.status) {
+    subs = subs.filter(s => s.status === req.query.status);
+  }
+  // Newest first
+  subs.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+  return res.json(subs);
 });
 
+// DCR — get single submission
+app.get('/api/dcr/:id', (req, res) => {
+  const sub = dcrSubmissions.find(s => s.id === req.params.id);
+  if (!sub) return res.status(404).json({ error: 'Submission not found' });
+  return res.json(sub);
+});
+
+// DCR — update status
+app.patch('/api/dcr/:id/status', (req, res) => {
+  const sub = dcrSubmissions.find(s => s.id === req.params.id);
+  if (!sub) return res.status(404).json({ error: 'Submission not found' });
+  if (req.body.status) {
+    sub.status = req.body.status;
+    saveDcrLog(dcrSubmissions);
+    console.log(`[DCR] Status updated: ${sub.id} → ${sub.status}`);
+  }
+  return res.json(sub);
+});
+
+// DCR — add internal note
+app.post('/api/dcr/:id/notes', (req, res) => {
+  const sub = dcrSubmissions.find(s => s.id === req.params.id);
+  if (!sub) return res.status(404).json({ error: 'Submission not found' });
+  if (!sub.notes) sub.notes = [];
+  sub.notes.push({
+    text: req.body.note,
+    author: req.body.author || 'Admin',
+    timestamp: new Date().toISOString(),
+  });
+  saveDcrLog(dcrSubmissions);
+  return res.json(sub);
+});
+
+// DCR — delete submission
 app.delete('/api/dcr/submissions/:id', (req, res) => {
   const idx = dcrSubmissions.findIndex(s => s.id === req.params.id);
   if (idx === -1) return res.status(404).json({ error: 'Submission not found' });
@@ -2915,6 +2957,9 @@ app.get('/hexnode/*', (req, res) => {
 app.get('/webbing/*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'webbing', 'index.html'));
 });
+
+
+
 // ══════════════════════════════════════════════════════════════════════
 // ██  Device Location Tracking (with persistent history)
 // ══════════════════════════════════════════════════════════════════════

@@ -315,6 +315,7 @@ GG7YJ21SJF88"></textarea>
                 <nav class="topbar-tabs" id="topbar-tabs">
                     <button class="topbar-tab active" data-tab="groups" id="tab-groups">Groups</button>
                     <button class="topbar-tab" data-tab="provisioning" id="tab-provisioning">Provisioning</button>
+                    <a class="nav-link" data-section="requests" id="nav-requests" style="cursor:pointer; display:flex; align-items:center; color:#8892b0; text-decoration:none; margin-left:12px; font-weight:500;">📋 Requests</a>
                 </nav>
             </div>
             <div class="topbar-right">
@@ -595,6 +596,68 @@ GG7YJ21SJF88"></textarea>
                 <tbody id="prov-tbody">
                 </tbody>
             </table>
+        </div>
+        <!-- Requests Section -->
+        <section class="content-section hidden" id="requests-section">
+            <div class="section-header">
+                <h2>📋 Device Configuration Requests</h2>
+            </div>
+
+            <!-- Status Filter Tabs -->
+            <div class="filter-tabs" style="display:flex;gap:8px;margin-bottom:16px;">
+                <button class="btn btn-sm dcr-filter active" data-status="all">All</button>
+                <button class="btn btn-sm dcr-filter" data-status="pending">⏳ Pending</button>
+                <button class="btn btn-sm dcr-filter" data-status="in_progress">🔧 In Progress</button>
+                <button class="btn btn-sm dcr-filter" data-status="completed">✅ Completed</button>
+            </div>
+
+            <!-- Submissions Table -->
+            <div class="device-table-wrap" id="dcr-table-wrap">
+                <table class="device-table" id="dcr-table">
+                    <thead>
+                        <tr>
+                            <th>Order #</th>
+                            <th>Event</th>
+                            <th>Company</th>
+                            <th>Mode</th>
+                            <th>Submitted</th>
+                            <th>Status</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dcr-table-body">
+                        <!-- Populated by JS -->
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="empty-state hidden" id="dcr-empty">
+                <p>No configuration requests found.</p>
+            </div>
+        </section>
+    </div>
+
+    <!-- DCR Detail Modal -->
+    <div class="modal-overlay hidden" id="dcr-modal-overlay">
+        <div class="modal-panel" style="max-width:750px;max-height:85vh;overflow-y:auto;background:#112240;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,0.5);">
+            <div class="modal-header" style="padding:16px 24px;border-bottom:1px solid #2a3050;display:flex;justify-content:space-between;align-items:center;">
+                <h3 id="dcr-modal-title" style="margin:0;color:#ccd6f6;">Request Details</h3>
+                <button class="modal-close" id="dcr-modal-close" style="background:none;border:none;color:#8892b0;font-size:1.5rem;cursor:pointer;">&times;</button>
+            </div>
+            <div class="modal-body" id="dcr-modal-body" style="padding:24px;color:#ccd6f6;">
+                <!-- Populated by JS -->
+            </div>
+            <div class="modal-footer" style="display:flex;gap:8px;justify-content:space-between;align-items:center;padding:16px 24px;border-top:1px solid #2a3050;">
+                <div style="display:flex;gap:8px;">
+                    <button class="btn btn-primary btn-sm" id="dcr-status-progress">🔧 Mark In Progress</button>
+                    <button class="btn btn-sm" id="dcr-status-complete" style="background:#22c55e;color:#fff;">✅ Complete</button>
+                    <button class="btn btn-sm" id="dcr-status-cancel" style="background:#ef4444;color:#fff;">✕ Cancel</button>
+                </div>
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <input type="text" id="dcr-note-input" placeholder="Add a note..." style="background:#1a1f36;color:#ccd6f6;border:1px solid #2a3050;border-radius:6px;padding:6px 10px;font-size:0.85rem;width:200px;">
+                    <button class="btn btn-outline btn-sm" id="dcr-add-note">Add Note</button>
+                </div>
+            </div>
         </div>
     </div>
 

@@ -204,6 +204,22 @@
         bulkCount:         $('#bulk-count'),
         bulkUnenroll:      $('#bulk-unenroll'),
         selectAllDevices:  $('#select-all-devices'),
+
+        // DCR Requests
+        dcrTableBody:      $('#dcr-table-body'),
+        dcrTableWrap:      $('#dcr-table-wrap'),
+        dcrEmpty:          $('#dcr-empty'),
+        dcrModalOverlay:   $('#dcr-modal-overlay'),
+        dcrModalBody:      $('#dcr-modal-body'),
+        dcrModalTitle:     $('#dcr-modal-title'),
+        dcrModalClose:     $('#dcr-modal-close'),
+        dcrStatusProgress: $('#dcr-status-progress'),
+        dcrStatusComplete: $('#dcr-status-complete'),
+        dcrStatusCancel:   $('#dcr-status-cancel'),
+        dcrNoteInput:      $('#dcr-note-input'),
+        dcrAddNote:        $('#dcr-add-note'),
+        navRequests:       $('#nav-requests'),
+        requestsSection:   $('#requests-section'),
     };
 
     // ---- State ----
@@ -243,6 +259,11 @@
         selectedAppIds: [],   // [{id, name}]
         groupMapInstance: null,
         deviceMapInstance: null,
+        
+        // DCR State
+        dcrSubmissions: [],
+        dcrFilter: 'all',
+        currentDcr: null,
     };
 
     // ================================================
@@ -1588,6 +1609,223 @@
     }
 
     // ================================================
+    //  DCR SUBMISSIONS
+    // ================================================
+
+    async function fetchDcrSubmissions() {
+        try {
+            const url = state.dcrFilter === 'all' 
+                ? '/api/dcr/submissions' 
+                : `/api/dcr/submissions?status=${state.dcrFilter}`;
+            const resp = await fetch(url);
+            state.dcrSubmissions = await resp.json();
+            renderDcrTable();
+        } catch (err) {
+            showToast('Failed to load requests.', 'error');
+        }
+    }
+
+    function renderDcrTable() {
+        const subs = state.dcrSubmissions;
+        if (!subs.length) {
+            dom.dcrTableWrap.classList.add('hidden');
+            dom.dcrEmpty.classList.remove('hidden');
+            return;
+        }
+        dom.dcrTableWrap.classList.remove('hidden');
+        dom.dcrEmpty.classList.add('hidden');
+
+        const statusBadge = (s) => {
+            const map = {
+                pending: '<span style="color:#f59e0b;">⏳ Pending</span>',
+                in_progress: '<span style="color:#3b82f6;">🔧 In Progress</span>',
+                completed: '<span style="color:#22c55e;">✅ Completed</span>',
+                cancelled: '<span style="color:#ef4444;">✕ Cancelled</span>',
+            };
+            return map[s] || s;
+        };
+
+        dom.dcrTableBody.innerHTML = subs.map(sub => `
+            <tr class="device-row" data-dcr-id="${sub.id}" style="cursor:pointer;">
+                <td><strong>${escapeHtml(sub.orderNumber || '—')}</strong></td>
+                <td>${escapeHtml(sub.eventName || '—')}</td>
+                <td>${escapeHtml(sub.company || '—')}</td>
+                <td>${escapeHtml(sub.configMode || '—')}</td>
+                <td>${sub.timestamp ? new Date(sub.timestamp).toLocaleDateString() : '—'}</td>
+                <td>${statusBadge(sub.status)}</td>
+                <td><button class="btn btn-outline btn-sm dcr-view-btn" data-id="${sub.id}">View</button></td>
+            </tr>
+        `).join('');
+    }
+
+    function openDcrDetail(id) {
+        const sub = state.dcrSubmissions.find(s => s.id === id);
+        if (!sub) return;
+        state.currentDcr = sub;
+
+        dom.dcrModalTitle.textContent = `Request: ${sub.orderNumber || sub.id}`;
+
+        // Build detail HTML with sections
+        let html = '';
+
+        // Order & Contact
+        html += `<div style="margin-bottom:16px;">
+            <h4 style="color:#64ffda;margin-bottom:8px;border-bottom:1px solid #2a3050;padding-bottom:4px;">📦 Order & Contact</h4>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;font-size:0.9rem;">
+                ${detailRow('Order #', sub.orderNumber)}
+                ${detailRow('Event', sub.eventName)}
+                ${detailRow('Event Dates', sub.eventDates)}
+                ${detailRow('Venue', sub.venue)}
+                ${detailRow('Contact', sub.contactName)}
+                ${detailRow('Company', sub.company)}
+                ${detailRow('Email', sub.email)}
+                ${detailRow('Phone', sub.phone)}
+            </div>
+        </div>`;
+
+        // Configuration
+        html += `<div style="margin-bottom:16px;">
+            <h4 style="color:#64ffda;margin-bottom:8px;border-bottom:1px solid #2a3050;padding-bottom:4px;">⚙️ Configuration</h4>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;font-size:0.9rem;">
+                ${detailRow('Mode', sub.configMode)}
+                ${detailRow('All Apps on All Devices', sub.allAppsAllDevices)}
+                ${detailRow('Home Screen Layout', sub.homeScreenLayout)}
+                ${detailRow('Custom Layout', sub.customLayoutDescription)}
+                ${detailRow('Naming Convention', sub.namingConvention)}
+                ${detailRow('Custom Naming', sub.customNamingFormat)}
+            </div>
+        </div>`;
+
+        // Apps
+        if (sub.apps && sub.apps.length) {
+            html += `<div style="margin-bottom:16px;">
+                <h4 style="color:#64ffda;margin-bottom:8px;border-bottom:1px solid #2a3050;padding-bottom:4px;">📱 Apps (${sub.apps.length})</h4>
+                <div style="font-size:0.9rem;">
+                    ${sub.apps.map(a => `<span style="display:inline-block;background:#1a1f36;border:1px solid #2a3050;border-radius:6px;padding:3px 10px;margin:2px 4px 2px 0;">${escapeHtml(typeof a === 'string' ? a : a.name || a)}</span>`).join('')}
+                </div>
+            </div>`;
+        }
+
+        // Network & Security
+        html += `<div style="margin-bottom:16px;">
+            <h4 style="color:#64ffda;margin-bottom:8px;border-bottom:1px solid #2a3050;padding-bottom:4px;">🔐 Network & Security</h4>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;font-size:0.9rem;">
+                ${detailRow('Wi-Fi', sub.wifiEnabled)}
+                ${detailRow('SSID', sub.wifiSsid)}
+                ${detailRow('Wi-Fi Security', sub.wifiSecurity)}
+                ${detailRow('Hidden Network', sub.wifiHidden)}
+                ${detailRow('Restrictions', sub.restrictionsEnabled)}
+                ${detailRow('Restriction Type', sub.restrictionType)}
+                ${detailRow('Lockdown Mode', sub.lockdownMode)}
+                ${detailRow('Guided Access Passcode', sub.guidedAccessPasscode)}
+                ${detailRow('Location Services', sub.locationServices)}
+            </div>
+        </div>`;
+
+        // Branding
+        html += `<div style="margin-bottom:16px;">
+            <h4 style="color:#64ffda;margin-bottom:8px;border-bottom:1px solid #2a3050;padding-bottom:4px;">🎨 Branding & Media</h4>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;font-size:0.9rem;">
+                ${detailRow('Custom Wallpaper', sub.customWallpaper)}
+                ${detailRow('Media Instructions', sub.mediaInstructions)}
+                ${detailRow('App Login Enabled', sub.appLoginEnabled)}
+                ${detailRow('App Login Apps', sub.appLoginApps)}
+            </div>
+        </div>`;
+
+        // Web Clips
+        if (sub.webClips || sub.webClipUrls) {
+            html += `<div style="margin-bottom:16px;">
+                <h4 style="color:#64ffda;margin-bottom:8px;border-bottom:1px solid #2a3050;padding-bottom:4px;">🔗 Web Clips</h4>
+                <div style="font-size:0.9rem;">${escapeHtml(JSON.stringify(sub.webClips || sub.webClipUrls || '—'))}</div>
+            </div>`;
+        }
+
+        // Restriction URLs
+        if (sub.restrictionUrls && sub.restrictionUrls.length) {
+            html += `<div style="margin-bottom:16px;">
+                <h4 style="color:#64ffda;margin-bottom:8px;border-bottom:1px solid #2a3050;padding-bottom:4px;">🚫 Restricted URLs</h4>
+                <div style="font-size:0.9rem;">${sub.restrictionUrls.map(u => `<div>${escapeHtml(u)}</div>`).join('')}</div>
+            </div>`;
+        }
+
+        // Additional Comments
+        if (sub.additionalComments) {
+            html += `<div style="margin-bottom:16px;">
+                <h4 style="color:#64ffda;margin-bottom:8px;border-bottom:1px solid #2a3050;padding-bottom:4px;">💬 Additional Comments</h4>
+                <div style="font-size:0.9rem;white-space:pre-wrap;background:#1a1f36;padding:12px;border-radius:8px;">${escapeHtml(sub.additionalComments)}</div>
+            </div>`;
+        }
+
+        // Notes
+        html += `<div style="margin-bottom:8px;">
+            <h4 style="color:#64ffda;margin-bottom:8px;border-bottom:1px solid #2a3050;padding-bottom:4px;">📝 Internal Notes</h4>
+            <div id="dcr-notes-list" style="font-size:0.85rem;">
+                ${(sub.notes && sub.notes.length) ? sub.notes.map(n => `
+                    <div style="background:#1a1f36;padding:8px 12px;border-radius:8px;margin-bottom:6px;border-left:3px solid #3b82f6;">
+                        <div style="color:#ccd6f6;">${escapeHtml(n.text)}</div>
+                        <div style="color:#8892b0;font-size:0.75rem;margin-top:4px;">${escapeHtml(n.author || 'Unknown')} — ${new Date(n.timestamp).toLocaleString()}</div>
+                    </div>
+                `).join('') : '<div style="color:#8892b0;">No notes yet.</div>'}
+            </div>
+        </div>`;
+
+        dom.dcrModalBody.innerHTML = html;
+        dom.dcrModalOverlay.classList.remove('hidden');
+    }
+
+    function detailRow(label, value) {
+        const display = value === undefined || value === null || value === '' ? '—' : escapeHtml(String(value));
+        return `<div><span style="color:#8892b0;">${escapeHtml(label)}:</span> <span style="color:#ccd6f6;">${display}</span></div>`;
+    }
+
+    function closeDcrModal() {
+        dom.dcrModalOverlay.classList.add('hidden');
+        state.currentDcr = null;
+    }
+
+    async function updateDcrStatus(newStatus) {
+        if (!state.currentDcr) return;
+        try {
+            const resp = await fetch(`/api/dcr/${state.currentDcr.id}/status`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: newStatus }),
+            });
+            if (resp.ok) {
+                showToast(`Status updated to ${newStatus.replace('_', ' ')}.`, 'success');
+                closeDcrModal();
+                fetchDcrSubmissions();
+            }
+        } catch (err) {
+            showToast('Failed to update status.', 'error');
+        }
+    }
+
+    async function addDcrNote() {
+        if (!state.currentDcr) return;
+        const text = dom.dcrNoteInput.value.trim();
+        if (!text) return;
+        try {
+            const resp = await fetch(`/api/dcr/${state.currentDcr.id}/notes`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ note: text, author: 'Admin' }),
+            });
+            if (resp.ok) {
+                dom.dcrNoteInput.value = '';
+                const updated = await resp.json();
+                state.currentDcr = updated;
+                // Re-render the modal
+                openDcrDetail(updated.id);
+                showToast('Note added.', 'success');
+            }
+        } catch (err) {
+            showToast('Failed to add note.', 'error');
+        }
+    }
+
+    // ================================================
     //  EVENT HANDLERS
     // ================================================
 
@@ -1609,6 +1847,7 @@
         // Tab switching
         dom.tabGroups.addEventListener('click', () => switchTab('groups'));
         dom.tabProvisioning.addEventListener('click', () => switchTab('provisioning'));
+        if (dom.navRequests) dom.navRequests.addEventListener('click', () => switchTab('requests'));
 
         // Refresh — context-aware
         dom.refreshBtn.addEventListener('click', () => {
@@ -1757,6 +1996,38 @@
         dom.provRetryBtn.addEventListener('click', fetchProvQueue);
 
         // Keyboard
+        // DCR Requests
+        if (dom.dcrModalClose) dom.dcrModalClose.addEventListener('click', closeDcrModal);
+        if (dom.dcrModalOverlay) dom.dcrModalOverlay.addEventListener('click', (e) => { if (e.target === dom.dcrModalOverlay) closeDcrModal(); });
+        if (dom.dcrStatusProgress) dom.dcrStatusProgress.addEventListener('click', () => updateDcrStatus('in_progress'));
+        if (dom.dcrStatusComplete) dom.dcrStatusComplete.addEventListener('click', () => updateDcrStatus('completed'));
+        if (dom.dcrStatusCancel) dom.dcrStatusCancel.addEventListener('click', () => updateDcrStatus('cancelled'));
+        if (dom.dcrAddNote) dom.dcrAddNote.addEventListener('click', addDcrNote);
+        if (dom.dcrNoteInput) dom.dcrNoteInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') addDcrNote(); });
+
+        // DCR filter tabs
+        document.querySelectorAll('.dcr-filter').forEach(btn => {
+            btn.addEventListener('click', () => {
+                document.querySelectorAll('.dcr-filter').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                state.dcrFilter = btn.dataset.status;
+                fetchDcrSubmissions();
+            });
+        });
+
+        // DCR table row clicks
+        document.addEventListener('click', (e) => {
+            const viewBtn = e.target.closest('.dcr-view-btn');
+            if (viewBtn) {
+                openDcrDetail(viewBtn.dataset.id);
+                return;
+            }
+            const row = e.target.closest('[data-dcr-id]');
+            if (row && !e.target.closest('button')) {
+                openDcrDetail(row.dataset.dcrId);
+            }
+        });
+
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') {
                 if (!dom.confirmOverlay.classList.contains('hidden')) {
@@ -1799,6 +2070,10 @@
         // Update tab buttons
         dom.tabGroups.classList.toggle('active', tab === 'groups');
         dom.tabProvisioning.classList.toggle('active', tab === 'provisioning');
+        if (dom.navRequests) dom.navRequests.classList.toggle('active', tab === 'requests');
+
+        // Hide requests section by default
+        if (dom.requestsSection) dom.requestsSection.classList.add('hidden');
 
         if (tab === 'provisioning') {
             // Hide groups-related UI
@@ -1812,6 +2087,18 @@
             $('.toolbar').classList.add('hidden');
 
             fetchProvQueue();
+        } else if (tab === 'requests') {
+            dom.groupsView.classList.add('hidden');
+            dom.devicesView.classList.add('hidden');
+            dom.breadcrumbBar.classList.add('hidden');
+            dom.provisioningView.classList.add('hidden');
+            
+            $('#stats-row').classList.add('hidden');
+            $('.toolbar').classList.add('hidden');
+            
+            if (dom.requestsSection) dom.requestsSection.classList.remove('hidden');
+            fetchDcrSubmissions();
+            stopProvAutoRefresh();
         } else {
             // Show groups UI
             dom.provisioningView.classList.add('hidden');
