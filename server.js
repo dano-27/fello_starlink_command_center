@@ -2885,10 +2885,16 @@ app.get('/api/cobrowse/config', (req, res) => {
 });
 
 function generateCobrowseJWT() {
-  let privateKey = COBROWSE_PRIVATE_KEY;
-  if (!privateKey.includes('-----BEGIN')) {
-    privateKey = privateKey.replace(/\\n/g, '\n');
+  let pem = COBROWSE_PRIVATE_KEY;
+  if (!pem.includes('-----BEGIN')) {
+    pem = pem.replace(/\\n/g, '\n');
   }
+
+  // Use createPrivateKey for Node 22+ OpenSSL compatibility
+  const privateKey = crypto.createPrivateKey({
+    key: pem,
+    format: 'pem'
+  });
 
   const now = Math.floor(Date.now() / 1000);
   const header = base64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
