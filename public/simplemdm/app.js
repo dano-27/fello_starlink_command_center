@@ -1312,17 +1312,26 @@
         const serial = getSerial(device);
         const name = getDeviceName(device);
         try {
-            // Try serial first, then device name as fallback
-            let resp = await fetch(`/api/location/${encodeURIComponent(serial)}`);
-            if (!resp.ok && name) {
-                resp = await fetch(`/api/location/${encodeURIComponent(name)}`);
+            // Fetch all locations and find a match (handles serial/name mismatches)
+            const resp = await fetch('/api/location/all');
+            if (!resp.ok) throw new Error('Failed to fetch locations');
+            const allLocs = await resp.json();
+            const entries = Object.entries(allLocs);
+
+            // Find matching location: try serial, device name, or just use first if only one device
+            let loc = null;
+            for (const [key, l] of entries) {
+                if (key === serial || l.serial === serial) { loc = l; break; }
+                if (key === name || l.deviceName === name) { loc = l; break; }
             }
-            if (!resp.ok) {
+            // If only one device reporting, use it
+            if (!loc && entries.length === 1) loc = entries[0][1];
+
+            if (!loc) {
                 if(dom.deviceMap) dom.deviceMap.style.display = 'none';
                 if(dom.deviceMapEmpty) dom.deviceMapEmpty.classList.remove('hidden');
                 return;
             }
-            const loc = await resp.json();
 
             if(dom.deviceMap) dom.deviceMap.style.display = 'block';
             if(dom.deviceMapEmpty) dom.deviceMapEmpty.classList.add('hidden');
