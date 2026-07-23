@@ -2786,7 +2786,10 @@ app.post('/api/simplemdm/devices/:deviceId/lost_mode', async (req, res) => {
 
     const resp = await fetch(`https://a.simplemdm.com/api/v1/devices/${deviceId}/lost_mode`, {
       method: 'POST',
-      headers: { Authorization: auth },
+      headers: {
+        Authorization: auth,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
       body: params.toString(),
     });
     const text = await resp.text();
