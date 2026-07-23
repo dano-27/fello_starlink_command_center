@@ -142,6 +142,10 @@
         deviceMap:           $('#device-map'),
         deviceMapEmpty:      $('#device-map-empty'),
         deviceMapSection:    $('#device-map-section'),
+        trackFrom:           $('#track-from'),
+        trackTo:             $('#track-to'),
+        showTrackBtn:        $('#show-track-btn'),
+        clearTrackBtn:       $('#clear-track-btn'),
 
         // Confirm
         confirmOverlay:      $('#confirm-overlay'),
@@ -1040,6 +1044,12 @@
         }
 
         renderModalBody(detailDevice);
+        // Set default track date range (last 7 days)
+        const today = new Date().toISOString().split('T')[0];
+        const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+        if (dom.trackFrom) dom.trackFrom.value = weekAgo;
+        if (dom.trackTo) dom.trackTo.value = today;
+        clearDeviceTrack();
         loadDeviceMap(detailDevice);
         dom.modalOverlay.classList.remove('hidden');
         document.body.style.overflow = 'hidden';
@@ -1381,6 +1391,89 @@
             if(dom.deviceMapEmpty) dom.deviceMapEmpty.classList.remove('hidden');
         }
     }
+    let trackLayer = null; // Track polyline + markers layer group
+
+    async function showDeviceTrack() {
+        if (!state.currentDevice || !state.deviceMapInstance) return;
+
+        const serial = getSerial(state.currentDevice);
+        const name = getDeviceName(state.currentDevice);
+        const fromDate = dom.trackFrom?.value || '';
+        const toDate = dom.trackTo?.value || '';
+
+        let url = `/api/location/history/${encodeURIComponent(serial)}`;
+        const params = new URLSearchParams();
+        if (fromDate) params.set('from', new Date(fromDate).toISOString());
+        if (toDate) params.set('to', new Date(toDate + 'T23:59:59').toISOString());
+        if (params.toString()) url += '?' + params.toString();
+
+        try {
+            let resp = await fetch(url);
+            let history = await resp.json();
+
+            // If no results by serial, try by device name "iPad"
+            if (history.length === 0) {
+                resp = await fetch(`/api/location/history/iPad?${params.toString()}`);
+                history = await resp.json();
+            }
+
+            if (history.length === 0) {
+                showToast('No location history found for this date range.', 'warning');
+                return;
+            }
+
+            // Clear previous track
+            clearDeviceTrack();
+
+            const map = state.deviceMapInstance;
+            trackLayer = L.layerGroup().addTo(map);
+
+            // Draw polyline
+            const coords = history.map(h => [h.lat, h.lng]);
+            const polyline = L.polyline(coords, {
+                color: '#3b82f6',
+                weight: 3,
+                opacity: 0.8,
+                dashArray: '8, 6',
+            }).addTo(trackLayer);
+
+            // Add start marker (green)
+            const first = history[0];
+            L.circleMarker([first.lat, first.lng], {
+                radius: 8, color: '#22c55e', fillColor: '#22c55e', fillOpacity: 1,
+            }).addTo(trackLayer).bindPopup(`<b>Start</b><br>${new Date(first.timestamp).toLocaleString()}`);
+
+            // Add end marker (red)
+            const last = history[history.length - 1];
+            L.circleMarker([last.lat, last.lng], {
+                radius: 8, color: '#ef4444', fillColor: '#ef4444', fillOpacity: 1,
+            }).addTo(trackLayer).bindPopup(`<b>Latest</b><br>${new Date(last.timestamp).toLocaleString()}`);
+
+            // Add intermediate dots
+            for (let i = 1; i < history.length - 1; i++) {
+                const h = history[i];
+                L.circleMarker([h.lat, h.lng], {
+                    radius: 4, color: '#3b82f6', fillColor: '#3b82f6', fillOpacity: 0.7,
+                }).addTo(trackLayer).bindPopup(`<b>${name}</b><br>${new Date(h.timestamp).toLocaleString()}`);
+            }
+
+            // Fit map to track bounds
+            map.fitBounds(polyline.getBounds(), { padding: [30, 30] });
+
+            dom.clearTrackBtn?.classList.remove('hidden');
+            showToast(`Showing ${history.length} location pings.`, 'success');
+        } catch (err) {
+            showToast('Failed to load track history.', 'error');
+        }
+    }
+
+    function clearDeviceTrack() {
+        if (trackLayer && state.deviceMapInstance) {
+            state.deviceMapInstance.removeLayer(trackLayer);
+            trackLayer = null;
+        }
+        dom.clearTrackBtn?.classList.add('hidden');
+    }
 
 
     // ================================================
@@ -1644,6 +1737,10 @@
         // Remote actions
         dom.groupLostModeOn.addEventListener('click', enableLostModeAll);
         dom.groupLostModeOff.addEventListener('click', disableLostModeAll);
+        // Track history
+        dom.showTrackBtn?.addEventListener('click', showDeviceTrack);
+        dom.clearTrackBtn?.addEventListener('click', clearDeviceTrack);
+
         dom.actionLock.addEventListener('click', () => executeRemoteAction('lock', 'Lock'));
         dom.actionRestart.addEventListener('click', () => executeRemoteAction('restart', 'Restart'));
         dom.actionShutdown.addEventListener('click', () => executeRemoteAction('shutdown', 'Shutdown'));

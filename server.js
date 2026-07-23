@@ -2916,10 +2916,33 @@ app.get('/webbing/*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'webbing', 'index.html'));
 });
 // ══════════════════════════════════════════════════════════════════════
-// ██  Device Location Tracking
+// ██  Device Location Tracking (with persistent history)
 // ══════════════════════════════════════════════════════════════════════
 
-const deviceLocations = {}; // In-memory store: { serialOrId: { lat, lng, timestamp, deviceName } }
+const deviceLocations = {}; // Latest location per device (in-memory)
+const LOCATION_HISTORY_FILE = path.join(__dirname, 'data', 'location_history.jsonl');
+
+// Ensure data directory exists
+const dataDir = path.join(__dirname, 'data');
+if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+
+// Load latest locations from history file on startup
+try {
+  if (fs.existsSync(LOCATION_HISTORY_FILE)) {
+    const lines = fs.readFileSync(LOCATION_HISTORY_FILE, 'utf8').split('\n').filter(l => l.trim());
+    for (const line of lines) {
+      try {
+        const entry = JSON.parse(line);
+        const key = entry.serial || entry.deviceName || 'unknown';
+        deviceLocations[key] = entry;
+        if (entry.deviceName && entry.deviceName !== key) deviceLocations[entry.deviceName] = entry;
+      } catch (_) {}
+    }
+    console.log(`[Location] Loaded ${lines.length} historical entries, ${Object.keys(deviceLocations).length} latest locations`);
+  }
+} catch (err) {
+  console.error('[Location] Error loading history:', err.message);
+}
 
 // Device reports its location (called from FelloRemote iOS app)
 app.post('/api/location/report', (req, res) => {
@@ -2933,16 +2956,24 @@ app.post('/api/location/report', (req, res) => {
     deviceId: deviceId || null,
     serial: serial || null,
   };
-  // Store under all available keys for flexible lookup
+
+  // Update latest location in memory
   if (serial) deviceLocations[serial] = locData;
   if (deviceId) deviceLocations[deviceId] = locData;
   if (deviceName) deviceLocations[deviceName] = locData;
+
+  // Append to history file (persistent)
+  try {
+    fs.appendFileSync(LOCATION_HISTORY_FILE, JSON.stringify(locData) + '\n');
+  } catch (err) {
+    console.error('[Location] Failed to write history:', err.message);
+  }
+
   res.json({ ok: true });
 });
 
-// Get all device locations (deduplicated)
+// Get all device locations — latest only (deduplicated)
 app.get('/api/location/all', (req, res) => {
-  // Deduplicate by lat+lng+deviceName
   const seen = new Set();
   const unique = {};
   for (const [key, loc] of Object.entries(deviceLocations)) {
@@ -2955,12 +2986,40 @@ app.get('/api/location/all', (req, res) => {
   res.json(unique);
 });
 
-// Get single device location — tries exact match, then searches by device name
+// Get location history for a device (supports date range)
+// ?from=2026-07-20T00:00:00Z&to=2026-07-23T23:59:59Z
+app.get('/api/location/history/:id', (req, res) => {
+  const id = req.params.id;
+  const from = req.query.from ? new Date(req.query.from) : new Date(Date.now() - 7 * 24 * 60 * 60 * 1000); // default: last 7 days
+  const to = req.query.to ? new Date(req.query.to) : new Date();
+
+  try {
+    if (!fs.existsSync(LOCATION_HISTORY_FILE)) {
+      return res.json([]);
+    }
+    const lines = fs.readFileSync(LOCATION_HISTORY_FILE, 'utf8').split('\n').filter(l => l.trim());
+    const history = [];
+    for (const line of lines) {
+      try {
+        const entry = JSON.parse(line);
+        const ts = new Date(entry.timestamp);
+        if (ts < from || ts > to) continue;
+        // Match by serial, deviceName, or deviceId
+        if (entry.serial === id || entry.deviceName === id || entry.deviceId === id) {
+          history.push(entry);
+        }
+      } catch (_) {}
+    }
+    res.json(history);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to read history: ' + err.message });
+  }
+});
+
+// Get single device location — tries exact match, then searches
 app.get('/api/location/:id', (req, res) => {
   const id = req.params.id;
-  // Exact match
   if (deviceLocations[id]) return res.json(deviceLocations[id]);
-  // Search by device name containing the ID
   const match = Object.values(deviceLocations).find(loc =>
     loc.deviceName === id || loc.serial === id || loc.deviceId === id
   );

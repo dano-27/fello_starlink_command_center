@@ -50,6 +50,14 @@
                     <p id="device-map-empty" class="hidden" style="text-align:center;color:#8892b0;padding:20px;font-size:0.85rem;">
                         No location data available for this device.
                     </p>
+                    <div id="track-controls" style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                        <label style="color:#8892b0;font-size:0.8rem;">From:</label>
+                        <input type="date" id="track-from" style="background:#1a1f36;color:#ccd6f6;border:1px solid #2a3050;border-radius:6px;padding:4px 8px;font-size:0.8rem;">
+                        <label style="color:#8892b0;font-size:0.8rem;">To:</label>
+                        <input type="date" id="track-to" style="background:#1a1f36;color:#ccd6f6;border:1px solid #2a3050;border-radius:6px;padding:4px 8px;font-size:0.8rem;">
+                        <button class="btn btn-outline btn-sm" id="show-track-btn">📍 Show Track</button>
+                        <button class="btn btn-outline btn-sm hidden" id="clear-track-btn" style="color:#e74c3c;border-color:#e74c3c;">✕ Clear Track</button>
+                    </div>
                 </div>
                 <div class="modal-actions">
                     <button class="btn btn-action btn-screen" id="action-view-screen">
