@@ -1668,6 +1668,14 @@
         // Build detail HTML with sections
         let html = '';
 
+        // Status badge
+        const statusColors = { pending: '#f59e0b', in_progress: '#3b82f6', completed: '#22c55e', cancelled: '#ef4444' };
+        const statusLabels = { pending: '⏳ Pending', in_progress: '🔧 In Progress', completed: '✅ Completed', cancelled: '✕ Cancelled' };
+        html += `<div style="margin-bottom:16px;padding:10px 14px;background:#1a1f36;border-radius:8px;border-left:4px solid ${statusColors[sub.status] || '#8892b0'};">
+            <span style="font-size:0.85rem;color:#8892b0;">Status:</span> <strong style="color:${statusColors[sub.status] || '#ccd6f6'};font-size:1rem;">${statusLabels[sub.status] || sub.status}</strong>
+            <span style="float:right;color:#8892b0;font-size:0.8rem;">Submitted: ${sub.timestamp ? new Date(sub.timestamp).toLocaleString() : '—'}</span>
+        </div>`;
+
         // Order & Contact
         html += `<div style="margin-bottom:16px;">
             <h4 style="color:#64ffda;margin-bottom:8px;border-bottom:1px solid #2a3050;padding-bottom:4px;">📦 Order & Contact</h4>
@@ -1692,63 +1700,97 @@
                 ${detailRow('Home Screen Layout', sub.homeScreenLayout)}
                 ${detailRow('Custom Layout', sub.customLayoutDescription)}
                 ${detailRow('Naming Convention', sub.namingConvention)}
-                ${detailRow('Custom Naming', sub.customNamingFormat)}
+                ${detailRow('Custom Naming Format', sub.customNamingFormat)}
+                ${detailRow('Location Services', sub.locationServices)}
             </div>
         </div>`;
 
-        // Apps
+        // Apps — show name + App Store link
         if (sub.apps && sub.apps.length) {
             html += `<div style="margin-bottom:16px;">
                 <h4 style="color:#64ffda;margin-bottom:8px;border-bottom:1px solid #2a3050;padding-bottom:4px;">📱 Apps (${sub.apps.length})</h4>
-                <div style="font-size:0.9rem;">
-                    ${sub.apps.map(a => `<span style="display:inline-block;background:#1a1f36;border:1px solid #2a3050;border-radius:6px;padding:3px 10px;margin:2px 4px 2px 0;">${escapeHtml(typeof a === 'string' ? a : a.name || a)}</span>`).join('')}
-                </div>
-            </div>`;
+                <div style="font-size:0.9rem;">`;
+            if (sub.appLinks && sub.appLinks.length) {
+                html += sub.appLinks.map(a => {
+                    const name = escapeHtml(typeof a === 'string' ? a : a.name || '');
+                    const url = typeof a === 'object' && a.url ? a.url : '';
+                    return url
+                        ? `<div style="display:flex;align-items:center;gap:6px;margin:4px 0;"><span style="background:#1a1f36;border:1px solid #2a3050;border-radius:6px;padding:3px 10px;">${name}</span> <a href="${escapeHtml(url)}" target="_blank" style="color:#3b82f6;font-size:0.8rem;">App Store ↗</a></div>`
+                        : `<span style="display:inline-block;background:#1a1f36;border:1px solid #2a3050;border-radius:6px;padding:3px 10px;margin:2px 4px 2px 0;">${name}</span>`;
+                }).join('');
+            } else {
+                html += sub.apps.map(a => `<span style="display:inline-block;background:#1a1f36;border:1px solid #2a3050;border-radius:6px;padding:3px 10px;margin:2px 4px 2px 0;">${escapeHtml(typeof a === 'string' ? a : a.name || a)}</span>`).join('');
+            }
+            html += `</div></div>`;
         }
 
         // Network & Security
         html += `<div style="margin-bottom:16px;">
             <h4 style="color:#64ffda;margin-bottom:8px;border-bottom:1px solid #2a3050;padding-bottom:4px;">🔐 Network & Security</h4>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;font-size:0.9rem;">
-                ${detailRow('Wi-Fi', sub.wifiEnabled)}
+                ${detailRow('Wi-Fi Enabled', sub.wifiEnabled)}
                 ${detailRow('SSID', sub.wifiSsid)}
                 ${detailRow('Password', sub.wifiPassword)}
-                ${detailRow('Wi-Fi Security', sub.wifiSecurity)}
+                ${detailRow('Security Type', sub.wifiSecurity)}
                 ${detailRow('Hidden Network', sub.wifiHidden)}
-                ${detailRow('Restrictions', sub.restrictionsEnabled)}
+                ${detailRow('Restrictions Enabled', sub.restrictionsEnabled)}
                 ${detailRow('Restriction Type', sub.restrictionType)}
                 ${detailRow('Lockdown Mode', sub.lockdownMode)}
                 ${detailRow('Guided Access Passcode', sub.guidedAccessPasscode)}
-                ${detailRow('Location Services', sub.locationServices)}
             </div>
         </div>`;
 
-        // Branding
+        // Restriction URLs
+        if (sub.restrictionUrls && sub.restrictionUrls.length) {
+            html += `<div style="margin-bottom:16px;">
+                <h4 style="color:#64ffda;margin-bottom:8px;border-bottom:1px solid #2a3050;padding-bottom:4px;">🚫 Restricted URLs (${sub.restrictionType || 'List'})</h4>
+                <div style="font-size:0.9rem;">
+                    ${sub.restrictionUrls.map(u => `<div style="margin:3px 0;"><a href="${escapeHtml(u)}" target="_blank" style="color:#3b82f6;">${escapeHtml(u)}</a></div>`).join('')}
+                </div>
+            </div>`;
+        }
+
+        // Web Clips
+        if ((sub.webClips && sub.webClips.length) || (sub.webClipUrls && sub.webClipUrls.length)) {
+            html += `<div style="margin-bottom:16px;">
+                <h4 style="color:#64ffda;margin-bottom:8px;border-bottom:1px solid #2a3050;padding-bottom:4px;">🔗 Web Clips</h4>
+                <div style="font-size:0.9rem;">`;
+            const names = sub.webClips || [];
+            const urls = sub.webClipUrls || [];
+            const max = Math.max(names.length, urls.length);
+            for (let i = 0; i < max; i++) {
+                const name = names[i] ? escapeHtml(names[i]) : `Clip ${i + 1}`;
+                const url = urls[i] ? escapeHtml(urls[i]) : '';
+                html += `<div style="margin:4px 0;background:#1a1f36;padding:6px 10px;border-radius:6px;border:1px solid #2a3050;">
+                    <strong style="color:#ccd6f6;">${name}</strong>
+                    ${url ? ` — <a href="${url}" target="_blank" style="color:#3b82f6;">${url}</a>` : ''}
+                </div>`;
+            }
+            html += `</div></div>`;
+        }
+
+        // Branding & Media
         html += `<div style="margin-bottom:16px;">
             <h4 style="color:#64ffda;margin-bottom:8px;border-bottom:1px solid #2a3050;padding-bottom:4px;">🎨 Branding & Media</h4>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;font-size:0.9rem;">
                 ${detailRow('Custom Wallpaper', sub.customWallpaper)}
                 ${detailRow('Media Instructions', sub.mediaInstructions)}
-                ${detailRow('App Login Enabled', sub.appLoginEnabled)}
-                ${detailRow('App Login Apps', sub.appLoginApps)}
             </div>
         </div>`;
 
-        // Web Clips
-        if (sub.webClips || sub.webClipUrls) {
-            html += `<div style="margin-bottom:16px;">
-                <h4 style="color:#64ffda;margin-bottom:8px;border-bottom:1px solid #2a3050;padding-bottom:4px;">🔗 Web Clips</h4>
-                <div style="font-size:0.9rem;">${escapeHtml(JSON.stringify(sub.webClips || sub.webClipUrls || '—'))}</div>
+        // App Login / Credentials
+        html += `<div style="margin-bottom:16px;">
+            <h4 style="color:#64ffda;margin-bottom:8px;border-bottom:1px solid #2a3050;padding-bottom:4px;">🔑 App Login & Credentials</h4>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;font-size:0.9rem;">
+                ${detailRow('App Login Required', sub.appLoginEnabled)}
+            </div>`;
+        if (sub.appLoginApps && sub.appLoginApps.length) {
+            html += `<div style="margin-top:6px;font-size:0.9rem;">
+                <span style="color:#8892b0;">Apps needing login:</span>
+                ${sub.appLoginApps.map(a => `<span style="display:inline-block;background:#1a1f36;border:1px solid #2a3050;border-radius:6px;padding:2px 8px;margin:2px 4px 2px 0;font-size:0.85rem;">${escapeHtml(a)}</span>`).join('')}
             </div>`;
         }
-
-        // Restriction URLs
-        if (sub.restrictionUrls && sub.restrictionUrls.length) {
-            html += `<div style="margin-bottom:16px;">
-                <h4 style="color:#64ffda;margin-bottom:8px;border-bottom:1px solid #2a3050;padding-bottom:4px;">🚫 Restricted URLs</h4>
-                <div style="font-size:0.9rem;">${sub.restrictionUrls.map(u => `<div>${escapeHtml(u)}</div>`).join('')}</div>
-            </div>`;
-        }
+        html += `</div>`;
 
         // Additional Comments
         if (sub.additionalComments) {
