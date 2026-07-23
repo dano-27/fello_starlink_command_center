@@ -1310,8 +1310,13 @@
 
     async function loadDeviceMap(device) {
         const serial = getSerial(device);
+        const name = getDeviceName(device);
         try {
-            const resp = await fetch(`/api/location/${encodeURIComponent(serial)}`);
+            // Try serial first, then device name as fallback
+            let resp = await fetch(`/api/location/${encodeURIComponent(serial)}`);
+            if (!resp.ok && name) {
+                resp = await fetch(`/api/location/${encodeURIComponent(name)}`);
+            }
             if (!resp.ok) {
                 if(dom.deviceMap) dom.deviceMap.style.display = 'none';
                 if(dom.deviceMapEmpty) dom.deviceMapEmpty.classList.remove('hidden');

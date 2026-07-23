@@ -2925,8 +2925,7 @@ const deviceLocations = {}; // In-memory store: { serialOrId: { lat, lng, timest
 app.post('/api/location/report', (req, res) => {
   const { deviceId, serial, lat, lng, deviceName } = req.body;
   if (!lat || !lng) return res.status(400).json({ error: 'lat and lng required' });
-  const key = serial || deviceId || 'unknown';
-  deviceLocations[key] = {
+  const locData = {
     lat: parseFloat(lat),
     lng: parseFloat(lng),
     timestamp: new Date().toISOString(),
@@ -2934,19 +2933,39 @@ app.post('/api/location/report', (req, res) => {
     deviceId: deviceId || null,
     serial: serial || null,
   };
+  // Store under all available keys for flexible lookup
+  if (serial) deviceLocations[serial] = locData;
+  if (deviceId) deviceLocations[deviceId] = locData;
+  if (deviceName) deviceLocations[deviceName] = locData;
   res.json({ ok: true });
 });
 
-// Get all device locations
+// Get all device locations (deduplicated)
 app.get('/api/location/all', (req, res) => {
-  res.json(deviceLocations);
+  // Deduplicate by lat+lng+deviceName
+  const seen = new Set();
+  const unique = {};
+  for (const [key, loc] of Object.entries(deviceLocations)) {
+    const sig = `${loc.lat},${loc.lng},${loc.deviceName}`;
+    if (!seen.has(sig)) {
+      seen.add(sig);
+      unique[key] = loc;
+    }
+  }
+  res.json(unique);
 });
 
-// Get single device location
+// Get single device location — tries exact match, then searches by device name
 app.get('/api/location/:id', (req, res) => {
-  const loc = deviceLocations[req.params.id];
-  if (!loc) return res.status(404).json({ error: 'No location data for this device' });
-  res.json(loc);
+  const id = req.params.id;
+  // Exact match
+  if (deviceLocations[id]) return res.json(deviceLocations[id]);
+  // Search by device name containing the ID
+  const match = Object.values(deviceLocations).find(loc =>
+    loc.deviceName === id || loc.serial === id || loc.deviceId === id
+  );
+  if (match) return res.json(match);
+  res.status(404).json({ error: 'No location data for this device' });
 });
 
 
