@@ -1051,13 +1051,16 @@ app.post('/api/dcr/:id/upload', upload.array('files', 20), (req, res) => {
     res.set('Access-Control-Allow-Origin', origin || '*');
   }
   try {
-    const files = (req.files || []).map(f => ({
+    // categories is a parallel array matching files — one category per file
+    const cats = req.body.categories || [];
+    const catArray = Array.isArray(cats) ? cats : [cats];
+    const files = (req.files || []).map((f, i) => ({
       name: f.originalname,
       storedName: f.filename,
       size: f.size,
       type: f.mimetype,
       url: `/api/dcr/${req.params.id}/files/${f.filename}`,
-      category: req.body.category || 'general',
+      category: catArray[i] || 'general',
     }));
 
     // Update submission with file references
