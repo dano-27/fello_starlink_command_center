@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "express": "^4.21.0",
-    "jose": "^6.2.3"
+    "jose": "^6.2.3",
+    "multer": "^2.2.0"
   }
 }

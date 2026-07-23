@@ -1800,6 +1800,48 @@
             </div>`;
         }
 
+        // Uploaded Files
+        if (sub.files && sub.files.length) {
+            const formatSize = (bytes) => {
+                if (bytes < 1024) return bytes + ' B';
+                if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+                return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+            };
+            const catIcons = { wallpaper: '🖼️', vpn_profile: '🔒', config_profile: '⚙️', credentials: '📋', media: '🎬', general: '📎' };
+            const catLabels = { wallpaper: 'Wallpaper', vpn_profile: 'VPN Profile', config_profile: 'Config Profile', credentials: 'Credentials', media: 'Media', general: 'Files' };
+
+            // Group by category
+            const grouped = {};
+            sub.files.forEach(f => {
+                const cat = f.category || 'general';
+                if (!grouped[cat]) grouped[cat] = [];
+                grouped[cat].push(f);
+            });
+
+            html += `<div style="margin-bottom:16px;">
+                <h4 style="color:#64ffda;margin-bottom:8px;border-bottom:1px solid #2a3050;padding-bottom:4px;">📎 Uploaded Files (${sub.files.length})</h4>`;
+
+            for (const [cat, files] of Object.entries(grouped)) {
+                html += `<div style="margin-bottom:8px;">
+                    <div style="color:#8892b0;font-size:0.8rem;margin-bottom:4px;">${catIcons[cat] || '📎'} ${catLabels[cat] || cat}</div>`;
+                files.forEach(f => {
+                    const isImage = f.type && f.type.startsWith('image/');
+                    html += `<div style="display:flex;align-items:center;gap:8px;margin:4px 0;background:#1a1f36;padding:8px 12px;border-radius:6px;border:1px solid #2a3050;">`;
+                    if (isImage) {
+                        html += `<img src="${f.url}" style="width:40px;height:40px;object-fit:cover;border-radius:4px;border:1px solid #2a3050;">`;
+                    }
+                    html += `<div style="flex:1;min-width:0;">
+                            <div style="color:#ccd6f6;font-size:0.85rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(f.name)}</div>
+                            <div style="color:#8892b0;font-size:0.75rem;">${formatSize(f.size || 0)}</div>
+                        </div>
+                        <a href="${f.url}" download="${escapeHtml(f.name)}" target="_blank" style="color:#3b82f6;font-size:0.8rem;white-space:nowrap;">⬇ Download</a>
+                    </div>`;
+                });
+                html += `</div>`;
+            }
+            html += `</div>`;
+        }
+
         // Notes
         html += `<div style="margin-bottom:8px;">
             <h4 style="color:#64ffda;margin-bottom:8px;border-bottom:1px solid #2a3050;padding-bottom:4px;">📝 Internal Notes</h4>

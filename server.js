@@ -1,4 +1,26 @@
 const express = require('express');
+const multer = require('multer');
+
+// File upload config — uses /data for Railway volume persistence, falls back to ./data
+const UPLOAD_DIR = fs.existsSync('/data') ? '/data/uploads' : path.join(__dirname, 'data', 'uploads');
+if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      const subId = req.params.id || 'temp';
+      const dir = path.join(UPLOAD_DIR, subId);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      cb(null, dir);
+    },
+    filename: (req, file, cb) => {
+      // Preserve original filename with timestamp prefix to avoid collisions
+      const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+      cb(null, `${Date.now()}-${safeName}`);
+    }
+  }),
+  limits: { fileSize: 50 * 1024 * 1024 } // 50MB per file
+});
 const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs');
@@ -156,7 +178,7 @@ async function abmUnassignDevices(serials) {
 const app = express();
 const PORT = process.env.PORT || 3456;
 
-app.use(express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '50mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ── In-memory token cache ────────────────────────────────────────────
@@ -892,6 +914,17 @@ app.options('/api/dcr/submit', (req, res) => {
   return res.sendStatus(204);
 });
 
+app.options('/api/dcr/:id/upload', (req, res) => {
+  const origin = req.headers.origin || '';
+  const allowed = serverConfig.allowedOrigins || [];
+  if (allowed.length === 0 || allowed.includes(origin)) {
+    res.set('Access-Control-Allow-Origin', origin || '*');
+    res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+    res.set('Access-Control-Allow-Headers', 'Content-Type');
+  }
+  return res.sendStatus(204);
+});
+
 app.post('/api/dcr/submit', async (req, res) => {
   // CORS headers
   const origin = req.headers.origin || '';
@@ -947,12 +980,14 @@ app.post('/api/dcr/submit', async (req, res) => {
         status: 'success',
         message: 'Submission received and provisioning started',
         runId: provBody.runId,
+        id: submission.id,
       });
     } catch (e) {
       console.error(`[DCR] Auto-provision failed:`, e.message);
       return res.json({
         status: 'partial',
         message: 'Submission logged but auto-provisioning failed: ' + e.message,
+        id: submission.id,
       });
     }
   }
@@ -960,6 +995,7 @@ app.post('/api/dcr/submit', async (req, res) => {
   return res.json({
     status: 'success',
     message: 'Submission received (no SimpleMDM key configured — provisioning skipped)',
+    id: submission.id,
   });
 });
 
@@ -1005,6 +1041,50 @@ app.post('/api/dcr/:id/notes', (req, res) => {
   });
   saveDcrLog(dcrSubmissions);
   return res.json(sub);
+});
+
+// DCR — upload files for a submission
+app.post('/api/dcr/:id/upload', upload.array('files', 20), (req, res) => {
+  try {
+    const files = (req.files || []).map(f => ({
+      name: f.originalname,
+      storedName: f.filename,
+      size: f.size,
+      type: f.mimetype,
+      url: `/api/dcr/${req.params.id}/files/${f.filename}`,
+      category: req.body.category || 'general',
+    }));
+
+    // Update submission with file references
+    const sub = dcrSubmissions.find(s => s.id === req.params.id);
+    if (sub) {
+      if (!sub.files) sub.files = [];
+      sub.files.push(...files);
+      saveDcrLog(dcrSubmissions);
+    }
+
+    res.json({ status: 'success', files });
+  } catch (err) {
+    res.status(500).json({ error: 'Upload failed: ' + err.message });
+  }
+});
+
+// DCR — serve uploaded files
+app.get('/api/dcr/:id/files/:filename', (req, res) => {
+  const filePath = path.join(UPLOAD_DIR, req.params.id, req.params.filename);
+  if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found' });
+  res.sendFile(filePath);
+});
+
+// DCR — list files for a submission
+app.get('/api/dcr/:id/files', (req, res) => {
+  const dir = path.join(UPLOAD_DIR, req.params.id);
+  if (!fs.existsSync(dir)) return res.json([]);
+  const files = fs.readdirSync(dir).map(name => {
+    const stat = fs.statSync(path.join(dir, name));
+    return { name, size: stat.size, url: `/api/dcr/${req.params.id}/files/${name}` };
+  });
+  res.json(files);
 });
 
 // DCR — delete submission
