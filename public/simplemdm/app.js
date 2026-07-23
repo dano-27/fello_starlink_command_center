@@ -1289,17 +1289,29 @@
 
             const bounds = [];
             const smdmDevices = state.filteredDevices || state.devices || [];
-            entries.forEach(loc => {
+            entries.forEach((loc, idx) => {
                 const marker = L.marker([loc.lat, loc.lng]).addTo(map);
                 const time = new Date(loc.timestamp).toLocaleString();
-                // Use SimpleMDM device name if we can match
+                // Use SimpleMDM device name
                 let displayName = loc.deviceName || 'Device';
-                const matched = smdmDevices.find(d => {
-                    const s = getSerial(d);
-                    const n = getDeviceName(d);
-                    return s === loc.serial || n === loc.deviceName;
-                });
-                if (matched) displayName = getDeviceName(matched);
+
+                // If same number of devices and locations, match by index
+                if (smdmDevices.length === entries.length) {
+                    displayName = getDeviceName(smdmDevices[idx]);
+                } else {
+                    // Try to find a match by serial
+                    const matched = smdmDevices.find(d => {
+                        const s = getSerial(d);
+                        return s === loc.serial;
+                    });
+                    if (matched) {
+                        displayName = getDeviceName(matched);
+                    } else if (smdmDevices.length === 1) {
+                        // Only one device in group, use its name
+                        displayName = getDeviceName(smdmDevices[0]);
+                    }
+                }
+
                 marker.bindPopup(`<b>${displayName}</b><br>Last seen: ${time}`);
                 bounds.push([loc.lat, loc.lng]);
             });
