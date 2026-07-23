@@ -2770,6 +2770,54 @@ app.post('/api/simplemdm/groups/:groupId/delete-with-cleanup', async (req, res) 
   return res.json(results);
 });
 
+// Lost Mode — enable (SimpleMDM requires form-encoded body)
+app.post('/api/simplemdm/devices/:deviceId/lost_mode', async (req, res) => {
+  const auth = req.headers.authorization;
+  if (!auth) return res.status(401).json({ error: 'Missing Authorization header' });
+
+  const { deviceId } = req.params;
+  const { message, phone_number, footnote } = req.body || {};
+
+  try {
+    const params = new URLSearchParams();
+    if (message) params.append('message', message);
+    if (phone_number) params.append('phone_number', phone_number);
+    if (footnote) params.append('footnote', footnote);
+
+    const resp = await fetch(`https://a.simplemdm.com/api/v1/devices/${deviceId}/lost_mode`, {
+      method: 'POST',
+      headers: { Authorization: auth },
+      body: params.toString(),
+    });
+    const text = await resp.text();
+    let data;
+    try { data = JSON.parse(text); } catch (_) { data = { raw: text }; }
+    res.status(resp.status).json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Lost Mode — disable
+app.delete('/api/simplemdm/devices/:deviceId/lost_mode', async (req, res) => {
+  const auth = req.headers.authorization;
+  if (!auth) return res.status(401).json({ error: 'Missing Authorization header' });
+
+  const { deviceId } = req.params;
+  try {
+    const resp = await fetch(`https://a.simplemdm.com/api/v1/devices/${deviceId}/lost_mode`, {
+      method: 'DELETE',
+      headers: { Authorization: auth },
+    });
+    const text = await resp.text();
+    let data;
+    try { data = JSON.parse(text); } catch (_) { data = { raw: text }; }
+    res.status(resp.status).json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Generic SimpleMDM proxy — forwards /api/simplemdm/* to SimpleMDM API
 app.all('/api/simplemdm/*', async (req, res) => {
   const auth = req.headers.authorization;
