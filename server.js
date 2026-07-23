@@ -1044,6 +1044,12 @@ app.post('/api/dcr/:id/notes', (req, res) => {
 
 // DCR — upload files for a submission
 app.post('/api/dcr/:id/upload', upload.array('files', 20), (req, res) => {
+  // CORS headers
+  const origin = req.headers.origin || '';
+  const allowed = serverConfig.allowedOrigins || [];
+  if (allowed.length === 0 || allowed.includes(origin)) {
+    res.set('Access-Control-Allow-Origin', origin || '*');
+  }
   try {
     const files = (req.files || []).map(f => ({
       name: f.originalname,
