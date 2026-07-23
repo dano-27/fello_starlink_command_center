@@ -186,8 +186,8 @@
         screenViewerErrorMsg: $('#screen-viewer-error-msg'),
         actionViewScreen:     $('#action-view-screen'),
         // Bulk Actions
-        groupLockAll:      $('#group-lock-all'),
-        groupUnlockAll:    $('#group-unlock-all'),
+        groupLostModeOn:   $('#group-lost-mode-on'),
+        groupLostModeOff:  $('#group-lost-mode-off'),
         bulkActions:       $('#bulk-actions'),
         bulkCount:         $('#bulk-count'),
         bulkUnenroll:      $('#bulk-unenroll'),
@@ -1276,7 +1276,52 @@
         }
     }
 
-    async function groupBulkAction(action, actionLabel, icon) {
+    async function enableLostModeAll() {
+        const devices = state.filteredDevices || state.devices;
+        if (!devices || devices.length === 0) {
+            showToast('No devices in this group.', 'warning');
+            return;
+        }
+
+        // Prompt for Lost Mode details
+        const message = prompt('Lost Mode message (displayed on device screen):', 'This device has been locked by Fello. Please contact support.');
+        if (message === null) return; // cancelled
+        const phone = prompt('Contact phone number (optional):', '');
+
+        const confirmed = await showConfirm(
+            'Enable Lost Mode on All Devices?',
+            `This will lock all ${devices.length} device${devices.length !== 1 ? 's' : ''} and display the message:\n\n"${message}"\n\nDevices will be unusable until Lost Mode is disabled.`,
+            '📍'
+        );
+        if (!confirmed) return;
+
+        showToast(`Enabling Lost Mode on ${devices.length} devices…`, 'info');
+
+        let success = 0;
+        let failed = 0;
+        const body = { message };
+        if (phone) body.phone_number = phone;
+
+        await Promise.allSettled(
+            devices.map(device =>
+                apiRequest(`/devices/${device.id}/lost_mode`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                })
+                    .then(() => { success++; })
+                    .catch(() => { failed++; })
+            )
+        );
+
+        if (failed === 0) {
+            showToast(`Lost Mode enabled on all ${success} devices.`, 'success');
+        } else {
+            showToast(`Lost Mode: ${success} enabled, ${failed} failed.`, 'warning');
+        }
+    }
+
+    async function disableLostModeAll() {
         const devices = state.filteredDevices || state.devices;
         if (!devices || devices.length === 0) {
             showToast('No devices in this group.', 'warning');
@@ -1284,28 +1329,28 @@
         }
 
         const confirmed = await showConfirm(
-            `${actionLabel} All Devices?`,
-            `Are you sure you want to ${actionLabel.toLowerCase()} all ${devices.length} device${devices.length !== 1 ? 's' : ''} in this group? This action will be sent immediately.`,
-            icon
+            'Disable Lost Mode on All Devices?',
+            `This will unlock all ${devices.length} device${devices.length !== 1 ? 's' : ''} and return them to normal use.`,
+            '📍'
         );
         if (!confirmed) return;
 
-        showToast(`Sending ${actionLabel.toLowerCase()} command to ${devices.length} devices…`, 'info');
+        showToast(`Disabling Lost Mode on ${devices.length} devices…`, 'info');
 
         let success = 0;
         let failed = 0;
         await Promise.allSettled(
             devices.map(device =>
-                apiRequest(`/devices/${device.id}/${action}`, { method: 'POST' })
+                apiRequest(`/devices/${device.id}/lost_mode`, { method: 'DELETE' })
                     .then(() => { success++; })
                     .catch(() => { failed++; })
             )
         );
 
         if (failed === 0) {
-            showToast(`${actionLabel} command sent to all ${success} devices successfully.`, 'success');
+            showToast(`Lost Mode disabled on all ${success} devices.`, 'success');
         } else {
-            showToast(`${actionLabel}: ${success} succeeded, ${failed} failed.`, failed > 0 ? 'warning' : 'success');
+            showToast(`Lost Mode: ${success} disabled, ${failed} failed.`, 'warning');
         }
     }
 
@@ -1457,8 +1502,8 @@
         dom.bulkUnenroll.addEventListener('click', bulkUnenrollDevices);
 
         // Remote actions
-        dom.groupLockAll.addEventListener('click', () => groupBulkAction('lock', 'Lock', '🔒'));
-        dom.groupUnlockAll.addEventListener('click', () => groupBulkAction('clear_passcode', 'Unlock', '🔓'));
+        dom.groupLostModeOn.addEventListener('click', enableLostModeAll);
+        dom.groupLostModeOff.addEventListener('click', disableLostModeAll);
         dom.actionLock.addEventListener('click', () => executeRemoteAction('lock', 'Lock'));
         dom.actionRestart.addEventListener('click', () => executeRemoteAction('restart', 'Restart'));
         dom.actionShutdown.addEventListener('click', () => executeRemoteAction('shutdown', 'Shutdown'));
