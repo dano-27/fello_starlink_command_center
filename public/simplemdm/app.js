@@ -1288,10 +1288,19 @@
             }).addTo(map);
 
             const bounds = [];
+            const smdmDevices = state.filteredDevices || state.devices || [];
             entries.forEach(loc => {
                 const marker = L.marker([loc.lat, loc.lng]).addTo(map);
                 const time = new Date(loc.timestamp).toLocaleString();
-                marker.bindPopup(`<b>${loc.deviceName || 'Device'}</b><br>Last seen: ${time}`);
+                // Use SimpleMDM device name if we can match
+                let displayName = loc.deviceName || 'Device';
+                const matched = smdmDevices.find(d => {
+                    const s = getSerial(d);
+                    const n = getDeviceName(d);
+                    return s === loc.serial || n === loc.deviceName;
+                });
+                if (matched) displayName = getDeviceName(matched);
+                marker.bindPopup(`<b>${displayName}</b><br>Last seen: ${time}`);
                 bounds.push([loc.lat, loc.lng]);
             });
 
@@ -1351,7 +1360,8 @@
 
             const marker = L.marker([loc.lat, loc.lng]).addTo(map);
             const time = new Date(loc.timestamp).toLocaleString();
-            marker.bindPopup(`<b>${loc.deviceName || 'Device'}</b><br>Last seen: ${time}`).openPopup();
+            const displayName = name || loc.deviceName || 'Device';
+            marker.bindPopup(`<b>${displayName}</b><br>Last seen: ${time}`).openPopup();
 
             setTimeout(() => map.invalidateSize(), 200);
         } catch (err) {
