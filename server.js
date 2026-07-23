@@ -1,4 +1,7 @@
 const express = require('express');
+const path = require('path');
+const crypto = require('crypto');
+const fs = require('fs');
 const multer = require('multer');
 
 // File upload config — uses /data for Railway volume persistence, falls back to ./data
@@ -14,16 +17,12 @@ const upload = multer({
       cb(null, dir);
     },
     filename: (req, file, cb) => {
-      // Preserve original filename with timestamp prefix to avoid collisions
       const safeName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
       cb(null, `${Date.now()}-${safeName}`);
     }
   }),
   limits: { fileSize: 50 * 1024 * 1024 } // 50MB per file
 });
-const path = require('path');
-const crypto = require('crypto');
-const fs = require('fs');
 
 // ── ABM (Apple Business Manager) API ─────────────────────────────────
 const ABM_CONFIG = {
