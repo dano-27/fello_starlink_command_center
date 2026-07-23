@@ -838,7 +838,10 @@ app.post('/api/unstow/:userTerminalId', async (req, res) => {
 
 
 // ── Server Config (persisted to JSON) ───────────────────────────────
-const CONFIG_FILE = path.join(__dirname, 'automation-config.json');
+// Use /data volume on Railway for persistence, fall back to local for dev
+const PERSIST_DIR = fs.existsSync('/data') ? '/data' : path.join(__dirname, 'data');
+if (!fs.existsSync(PERSIST_DIR)) fs.mkdirSync(PERSIST_DIR, { recursive: true });
+const CONFIG_FILE = path.join(PERSIST_DIR, 'automation-config.json');
 
 function loadConfig() {
   try {
@@ -880,7 +883,7 @@ app.put('/api/automation/config', (req, res) => {
 });
 
 // ── DCR Submissions Log (persisted to JSON) ─────────────────────────
-const DCR_LOG_FILE = path.join(__dirname, 'dcr-submissions.json');
+const DCR_LOG_FILE = path.join(PERSIST_DIR, 'dcr-submissions.json');
 
 function loadDcrLog() {
   try {
@@ -3053,7 +3056,7 @@ app.get('/webbing/*', (req, res) => {
 // ══════════════════════════════════════════════════════════════════════
 
 const deviceLocations = {}; // Latest location per device (in-memory)
-const LOCATION_HISTORY_FILE = path.join(__dirname, 'data', 'location_history.jsonl');
+const LOCATION_HISTORY_FILE = path.join(PERSIST_DIR, 'location_history.jsonl');
 
 // Ensure data directory exists
 const dataDir = path.join(__dirname, 'data');
