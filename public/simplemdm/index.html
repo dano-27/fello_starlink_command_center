@@ -9,6 +9,8 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="index.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </head>
 <body>
     <!-- Toast Container -->
@@ -42,6 +44,13 @@
             </div>
             <div class="modal-footer">
                 <h4>Remote Actions</h4>
+                <div class="detail-section" id="device-map-section" style="margin-top:16px;">
+                    <h4 style="margin-bottom:8px;color:#ccd6f6;">📍 Device Location</h4>
+                    <div id="device-map" style="width:100%;height:250px;border-radius:10px;overflow:hidden;"></div>
+                    <p id="device-map-empty" class="hidden" style="text-align:center;color:#8892b0;padding:20px;font-size:0.85rem;">
+                        No location data available for this device.
+                    </p>
+                </div>
                 <div class="modal-actions">
                     <button class="btn btn-action btn-screen" id="action-view-screen">
                         <span class="action-icon">📺</span> View Screen
@@ -383,6 +392,7 @@ GG7YJ21SJF88"></textarea>
                 <button class="group-tab active" data-gtab="devices">Devices</button>
                 <button class="group-tab" data-gtab="profiles">Profiles</button>
                 <button class="group-tab" data-gtab="apps">Apps</button>
+                <button class="group-tab" data-gtab="map">Map</button>
             </nav>
 
             <!-- TAB: Devices -->
@@ -484,6 +494,14 @@ GG7YJ21SJF88"></textarea>
                         <!-- Profile options injected by JS -->
                     </div>
                 </div>
+            </div>
+
+            <!-- TAB: Map -->
+            <div class="group-tab-content hidden" id="gtab-map">
+                <div id="group-map" style="width:100%;height:450px;border-radius:12px;overflow:hidden;margin-top:8px;"></div>
+                <p id="group-map-empty" class="hidden" style="text-align:center;color:#8892b0;padding:40px;">
+                    No location data available. Install the Fello Remote app on devices to enable location tracking.
+                </p>
             </div>
 
             <!-- TAB: Apps -->

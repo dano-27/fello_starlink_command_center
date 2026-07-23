@@ -93,6 +93,11 @@
         appPickerSearch:     $('#app-picker-search'),
         appPickerList:       $('#app-picker-list'),
 
+        // Map Tab
+        groupMap:            $('#group-map'),
+        groupMapEmpty:       $('#group-map-empty'),
+        gtabMap:             $('#gtab-map'),
+
         // Wallpaper Modal
         wpModalOverlay:      $('#wallpaper-modal-overlay'),
         wpModalClose:        $('#wallpaper-modal-close'),
@@ -134,6 +139,9 @@
         actionLock:          $('#action-lock'),
         actionRestart:       $('#action-restart'),
         actionShutdown:      $('#action-shutdown'),
+        deviceMap:           $('#device-map'),
+        deviceMapEmpty:      $('#device-map-empty'),
+        deviceMapSection:    $('#device-map-section'),
 
         // Confirm
         confirmOverlay:      $('#confirm-overlay'),
@@ -229,6 +237,8 @@
         wpImageBase64: null,
         appCatalogLoaded: false,
         selectedAppIds: [],   // [{id, name}]
+        groupMapInstance: null,
+        deviceMapInstance: null,
     };
 
     // ================================================
@@ -1030,6 +1040,7 @@
         }
 
         renderModalBody(detailDevice);
+        loadDeviceMap(detailDevice);
         dom.modalOverlay.classList.remove('hidden');
         document.body.style.overflow = 'hidden';
     }
@@ -1242,6 +1253,99 @@
         dom.screenViewerOverlay.classList.add('hidden');
         dom.screenViewerIframe.src = 'about:blank';
     }
+
+    // ================================================
+    //  DEVICE LOCATION MAPS
+    // ================================================
+
+    async function loadGroupMap() {
+        try {
+            const resp = await fetch('/api/location/all');
+            const locations = await resp.json();
+            const entries = Object.values(locations);
+
+            if (entries.length === 0) {
+                if(dom.groupMap) dom.groupMap.style.display = 'none';
+                if(dom.groupMapEmpty) dom.groupMapEmpty.classList.remove('hidden');
+                return;
+            }
+
+            if(dom.groupMap) dom.groupMap.style.display = 'block';
+            if(dom.groupMapEmpty) dom.groupMapEmpty.classList.add('hidden');
+
+            // Destroy existing map if any
+            if (state.groupMapInstance) {
+                state.groupMapInstance.remove();
+                state.groupMapInstance = null;
+            }
+
+            const map = L.map(dom.groupMap).setView([entries[0].lat, entries[0].lng], 10);
+            state.groupMapInstance = map;
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors',
+                maxZoom: 19,
+            }).addTo(map);
+
+            const bounds = [];
+            entries.forEach(loc => {
+                const marker = L.marker([loc.lat, loc.lng]).addTo(map);
+                const time = new Date(loc.timestamp).toLocaleString();
+                marker.bindPopup(`<b>${loc.deviceName || 'Device'}</b><br>Last seen: ${time}`);
+                bounds.push([loc.lat, loc.lng]);
+            });
+
+            if (bounds.length > 1) {
+                map.fitBounds(bounds, { padding: [40, 40] });
+            }
+
+            // Fix map rendering issue when tab becomes visible
+            setTimeout(() => map.invalidateSize(), 200);
+        } catch (err) {
+            console.error('Failed to load group map:', err);
+            if(dom.groupMap) dom.groupMap.style.display = 'none';
+            if(dom.groupMapEmpty) dom.groupMapEmpty.classList.remove('hidden');
+        }
+    }
+
+    async function loadDeviceMap(device) {
+        const serial = getSerial(device);
+        try {
+            const resp = await fetch(`/api/location/${encodeURIComponent(serial)}`);
+            if (!resp.ok) {
+                if(dom.deviceMap) dom.deviceMap.style.display = 'none';
+                if(dom.deviceMapEmpty) dom.deviceMapEmpty.classList.remove('hidden');
+                return;
+            }
+            const loc = await resp.json();
+
+            if(dom.deviceMap) dom.deviceMap.style.display = 'block';
+            if(dom.deviceMapEmpty) dom.deviceMapEmpty.classList.add('hidden');
+
+            if (state.deviceMapInstance) {
+                state.deviceMapInstance.remove();
+                state.deviceMapInstance = null;
+            }
+
+            const map = L.map(dom.deviceMap).setView([loc.lat, loc.lng], 15);
+            state.deviceMapInstance = map;
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors',
+                maxZoom: 19,
+            }).addTo(map);
+
+            const marker = L.marker([loc.lat, loc.lng]).addTo(map);
+            const time = new Date(loc.timestamp).toLocaleString();
+            marker.bindPopup(`<b>${loc.deviceName || 'Device'}</b><br>Last seen: ${time}`).openPopup();
+
+            setTimeout(() => map.invalidateSize(), 200);
+        } catch (err) {
+            if(dom.deviceMap) dom.deviceMap.style.display = 'none';
+            if(dom.deviceMapEmpty) dom.deviceMapEmpty.classList.remove('hidden');
+        }
+    }
+
 
     // ================================================
     //  REMOTE ACTIONS
@@ -2048,6 +2152,7 @@
         dom.gtabDevices.classList.toggle('hidden', tab !== 'devices');
         dom.gtabProfiles.classList.toggle('hidden', tab !== 'profiles');
         dom.gtabApps.classList.toggle('hidden', tab !== 'apps');
+        if(dom.gtabMap) dom.gtabMap.classList.toggle('hidden', tab !== 'map');
 
         // Fetch data when switching to a tab
         if (tab === 'profiles' && state.groupProfiles.length === 0) {
@@ -2055,6 +2160,9 @@
         }
         if (tab === 'apps' && state.groupApps.length === 0) {
             fetchGroupApps();
+        }
+        if (tab === 'map') {
+            loadGroupMap();
         }
     }
 

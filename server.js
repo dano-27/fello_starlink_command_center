@@ -2915,6 +2915,39 @@ app.get('/hexnode/*', (req, res) => {
 app.get('/webbing/*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'webbing', 'index.html'));
 });
+// ══════════════════════════════════════════════════════════════════════
+// ██  Device Location Tracking
+// ══════════════════════════════════════════════════════════════════════
+
+const deviceLocations = {}; // In-memory store: { serialOrId: { lat, lng, timestamp, deviceName } }
+
+// Device reports its location (called from FelloRemote iOS app)
+app.post('/api/location/report', (req, res) => {
+  const { deviceId, serial, lat, lng, deviceName } = req.body;
+  if (!lat || !lng) return res.status(400).json({ error: 'lat and lng required' });
+  const key = serial || deviceId || 'unknown';
+  deviceLocations[key] = {
+    lat: parseFloat(lat),
+    lng: parseFloat(lng),
+    timestamp: new Date().toISOString(),
+    deviceName: deviceName || 'Unknown Device',
+    deviceId: deviceId || null,
+    serial: serial || null,
+  };
+  res.json({ ok: true });
+});
+
+// Get all device locations
+app.get('/api/location/all', (req, res) => {
+  res.json(deviceLocations);
+});
+
+// Get single device location
+app.get('/api/location/:id', (req, res) => {
+  const loc = deviceLocations[req.params.id];
+  if (!loc) return res.status(404).json({ error: 'No location data for this device' });
+  res.json(loc);
+});
 
 
 // ── Cobrowse.io Screen Viewer ────────────────────────────────────────
