@@ -4130,6 +4130,12 @@ app.get('/api/webbing/branches/:branchId/match', async (req, res) => {
         unmatchedWebbing: unmatchedWebbing.length,
         unmatchedMdm: unmatchedMdm.length,
         total: matches.length + unmatchedWebbing.length + unmatchedMdm.length
+      },
+      debug: {
+        groupsSearched: allGroups.length,
+        groupFound: group ? group.attributes.name : null,
+        groupId: group ? group.id : null,
+        mdmDevicesWithImei: simpleMdmDevices.size
       }
     });
     
