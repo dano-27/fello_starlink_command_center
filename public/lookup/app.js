@@ -225,7 +225,7 @@
         mdmImei: ipad.imei || '',
         // Bridge fields
         imei: m.ipadImei,
-        eid: ipad.allImeis?.length > 1 ? ipad.allImeis.slice(1).join(', ') : '',
+        eid: ipad.abmEid || '',
         // SIM fields
         simSerial: m.simSerial,
         iccid: m.simIccid,
@@ -253,7 +253,7 @@
         wifiMac: d.wifiMac || '',
         mdmImei: d.imei || '',
         imei: d.abmImei || '',
-        eid: '',
+        eid: d.abmEid || '',
         simSerial: '', iccid: '', carrier: '', simStatus: null,
         plan: '', ip: '', simModel: '', vendor: ''
       });

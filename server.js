@@ -4427,6 +4427,7 @@ app.get('/api/lookup', async (req, res) => {
             
             ipad.abmImei = abmData.imei;
             ipad.allImeis = abmData.allImeis;
+            ipad.abmEid = abmData.eid || null;
             
             // Find matching Webbing SIM by IMEI
             const matchedSim = webbingDevices.find(sim => 
