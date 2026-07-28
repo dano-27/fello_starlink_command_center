@@ -37,6 +37,23 @@
   </main>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+  <!-- Device Detail Drawer -->
+  <div class="drawer-overlay" id="drawer-overlay">
+    <div class="drawer" id="device-drawer">
+      <div class="drawer-header">
+        <h2 id="drawer-title">Device Details</h2>
+        <button class="drawer-close" id="drawer-close">&times;</button>
+      </div>
+      <div class="drawer-body" id="drawer-body"></div>
+    </div>
+  </div>
+
+  <!-- Screen Share Overlay -->
+  <div class="screen-overlay" id="screen-overlay" style="display:none;">
+    <iframe id="screen-iframe" src="about:blank" allow="clipboard-read; clipboard-write"></iframe>
+    <button class="screen-overlay-close" id="screen-close">✕ End Screen Share</button>
+  </div>
+
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="app.js"></script>
 </body>

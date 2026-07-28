@@ -211,6 +211,9 @@
       const sim = web.find(w => (w.serial || w.ssid) === m.simSerial) || {};
       window._fleetRows.push({
         linked: true,
+        mdmId: ipad.id || null,
+        simDeviceId: sim.serviceDeviceId || null,
+        simStatusRaw: sim.status || m.simStatus || '',
         // iPad fields
         name: m.ipadName,
         ipadSerial: m.ipadSerial,
@@ -241,6 +244,9 @@
     for (const d of unmatchedIpads) {
       window._fleetRows.push({
         linked: false,
+        mdmId: d.id || null,
+        simDeviceId: null,
+        simStatusRaw: '',
         name: d.name || d.device_name || '',
         ipadSerial: d.serial || d.serial_number || '',
         model: d.model || d.model_name || '',
@@ -262,6 +268,9 @@
     for (const w of unmatchedSims) {
       window._fleetRows.push({
         linked: false,
+        mdmId: null,
+        simDeviceId: w.serviceDeviceId || null,
+        simStatusRaw: w.status || '',
         name: '', ipadSerial: '', model: '', os: '', battery: null,
         capacity: '', lastSeenAt: '', enrolledAt: '',
         phoneNumber: '', wifiMac: '', mdmImei: '',
@@ -353,8 +362,8 @@
         </thead>
         <tbody>
           ${rows.length === 0 ? `<tr><td colspan="${visCols.length}">No devices found.</td></tr>` : ''}
-          ${rows.map(r => `
-            <tr style="${!r.linked ? 'opacity: 0.6;' : ''}">
+          ${rows.map((r, idx) => `
+            <tr data-row-idx="${idx}" style="cursor:pointer;${!r.linked ? 'opacity: 0.6;' : ''}" onclick="window.openDeviceDrawer(${idx})">
               ${visCols.map(c => {
                 const style = c.key === ipadBorderCol ? 'border-right: 2px solid var(--border);' : '';
                 return `<td style="${style}" class="${isMonoCol(c.key) ? 'mono' : ''}">${formatCell(c.key, r[c.key], r)}</td>`;
@@ -697,5 +706,455 @@
       </div>
     `;
   }
+
+  // ══════════════════════════════════════════════════════════════
+  //  DEVICE DETAIL DRAWER
+  // ══════════════════════════════════════════════════════════════
+  
+  const drawerOverlay = document.getElementById('drawer-overlay');
+  const drawerBody = document.getElementById('drawer-body');
+  const drawerTitle = document.getElementById('drawer-title');
+  const drawerClose = document.getElementById('drawer-close');
+  let drawerMap = null;
+  
+  drawerClose.addEventListener('click', closeDrawer);
+  drawerOverlay.addEventListener('click', (e) => {
+    if (e.target === drawerOverlay) closeDrawer();
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') closeDrawer();
+  });
+
+  function closeDrawer() {
+    drawerOverlay.classList.remove('open');
+    if (drawerMap) { drawerMap.remove(); drawerMap = null; }
+  }
+
+  function showToast(msg, type = 'success') {
+    const t = document.createElement('div');
+    t.className = `drawer-toast ${type}`;
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 3000);
+  }
+
+  async function drawerAction(url, method = 'POST', body = null) {
+    try {
+      const opts = { method };
+      if (body) { opts.headers = {'Content-Type':'application/json'}; opts.body = JSON.stringify(body); }
+      const res = await fetch(url, opts);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      showToast('Action completed');
+      return await res.json().catch(() => ({}));
+    } catch (e) {
+      showToast(`Error: ${e.message}`, 'error');
+      throw e;
+    }
+  }
+
+  // Carrier plan mapping
+  const CARRIER_PLANS = [
+    { id: 20, label: 'Pay as You Go (US, CA, MX)' },
+    { id: 21, label: 'AT&T (US)' },
+    { id: 22, label: 'T-Mobile (US)' },
+    { id: 23, label: 'Verizon (US)' },
+    { id: 30, label: 'Rogers (Canada)' },
+    { id: 31, label: 'Bell (Canada)' },
+  ];
+
+  window.openDeviceDrawer = function(idx) {
+    const row = window._fleetRows[idx];
+    if (!row) return;
+
+    drawerTitle.innerHTML = `
+      ${esc(row.name || row.simSerial || 'Device')}
+      <span class="drawer-subtitle">${esc(row.ipadSerial || '')}</span>
+    `;
+
+    const hasIpad = !!row.mdmId;
+    const hasSim = !!row.simDeviceId;
+    const isActive = String(row.simStatusRaw).toLowerCase().includes('active') || row.simStatus === 3;
+
+    let html = '';
+
+    // ── Device Info ──
+    html += `
+      <div class="drawer-section">
+        <div class="drawer-section-header" onclick="this.parentElement.classList.toggle('collapsed')">
+          <span class="ds-icon">📱</span> Device Info <span class="ds-chevron">▼</span>
+        </div>
+        <div class="drawer-section-body">
+          <div class="info-grid">
+            <div class="info-item"><div class="info-label">iPad Name</div><div class="info-value">${esc(row.name) || '—'}</div></div>
+            <div class="info-item"><div class="info-label">iPad Serial</div><div class="info-value">${esc(row.ipadSerial) || '—'}</div></div>
+            <div class="info-item"><div class="info-label">Model</div><div class="info-value">${esc(row.model) || '—'}</div></div>
+            <div class="info-item"><div class="info-label">OS</div><div class="info-value">${esc(row.os) || '—'}</div></div>
+            <div class="info-item"><div class="info-label">Battery</div><div class="info-value">${row.battery || '—'}</div></div>
+            <div class="info-item"><div class="info-label">Last Seen</div><div class="info-value">${esc(row.lastSeenAt) || '—'}</div></div>
+            <div class="info-item"><div class="info-label">IMEI</div><div class="info-value">${esc(row.imei) || '—'}</div></div>
+            <div class="info-item"><div class="info-label">EID</div><div class="info-value" style="font-size:0.65rem">${esc(row.eid) || '—'}</div></div>
+            <div class="info-item"><div class="info-label">SIM Serial</div><div class="info-value">${esc(row.simSerial) || '—'}</div></div>
+            <div class="info-item"><div class="info-label">ICCID</div><div class="info-value" style="font-size:0.65rem">${esc(row.iccid) || '—'}</div></div>
+            <div class="info-item"><div class="info-label">Carrier</div><div class="info-value">${esc(row.carrier) || '—'}</div></div>
+            <div class="info-item"><div class="info-label">SIM Status</div><div class="info-value">${row.simStatus ? getStatusBadge(row.simStatus) : '—'}</div></div>
+            <div class="info-item"><div class="info-label">Plan</div><div class="info-value">${esc(row.plan) || '—'}</div></div>
+            <div class="info-item"><div class="info-label">IP Address</div><div class="info-value">${esc(row.ip) || '—'}</div></div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // ── Screen Share ──
+    if (hasIpad) {
+      html += `
+        <div class="drawer-section">
+          <div class="drawer-section-header" onclick="this.parentElement.classList.toggle('collapsed')">
+            <span class="ds-icon">📺</span> Screen Share <span class="ds-chevron">▼</span>
+          </div>
+          <div class="drawer-section-body">
+            <button class="action-btn" style="width:100%; flex-direction:row; justify-content:center; gap:8px; padding:12px;" 
+                    onclick="window.startScreenShare('${esc(row.ipadSerial)}', '${esc(row.name)}')">
+              <span class="action-icon">📺</span> Start Screen Share
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
+    // ── iPad Actions ──
+    if (hasIpad) {
+      const did = row.mdmId;
+      html += `
+        <div class="drawer-section">
+          <div class="drawer-section-header" onclick="this.parentElement.classList.toggle('collapsed')">
+            <span class="ds-icon">🔧</span> iPad Controls <span class="ds-chevron">▼</span>
+          </div>
+          <div class="drawer-section-body">
+            <div class="action-grid">
+              <button class="action-btn" onclick="window.mdmAction(${did}, 'lock', this)">
+                <span class="action-icon">🔒</span> Lock
+              </button>
+              <button class="action-btn" onclick="window.mdmAction(${did}, 'restart', this)">
+                <span class="action-icon">🔄</span> Restart
+              </button>
+              <button class="action-btn" onclick="window.mdmAction(${did}, 'shutdown', this)">
+                <span class="action-icon">⏻</span> Shutdown
+              </button>
+              <button class="action-btn" onclick="window.mdmAction(${did}, 'push_apps', this)">
+                <span class="action-icon">📲</span> Push Apps
+              </button>
+              <button class="action-btn" onclick="window.mdmAction(${did}, 'refresh', this)">
+                <span class="action-icon">🔃</span> Refresh
+              </button>
+              <button class="action-btn" onclick="window.mdmAction(${did}, 'clear_passcode', this)">
+                <span class="action-icon">🔓</span> Clear Code
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+
+      // ── Lost Mode ──
+      html += `
+        <div class="drawer-section">
+          <div class="drawer-section-header" onclick="this.parentElement.classList.toggle('collapsed')">
+            <span class="ds-icon">📍</span> Lost Mode <span class="ds-chevron">▼</span>
+          </div>
+          <div class="drawer-section-body">
+            <div class="action-grid" style="grid-template-columns: 1fr 1fr;">
+              <button class="action-btn" onclick="window.enableLostMode(${did}, this)">
+                <span class="action-icon">🔴</span> Enable Lost Mode
+              </button>
+              <button class="action-btn" onclick="window.disableLostMode(${did}, this)">
+                <span class="action-icon">🟢</span> Disable Lost Mode
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    // ── SIM Actions ──
+    if (hasSim) {
+      const sid = row.simDeviceId;
+      html += `
+        <div class="drawer-section">
+          <div class="drawer-section-header" onclick="this.parentElement.classList.toggle('collapsed')">
+            <span class="ds-icon">📶</span> SIM Controls <span class="ds-chevron">▼</span>
+          </div>
+          <div class="drawer-section-body">
+            <div class="sim-toggle-row">
+              <button class="sim-toggle-btn active-btn" onclick="window.simAction(${sid}, 'activate', this)">
+                ▶ Activate
+              </button>
+              <button class="sim-toggle-btn suspend-btn" onclick="window.simAction(${sid}, 'suspend', this)">
+                ⏸ Suspend
+              </button>
+            </div>
+          </div>
+        </div>
+      `;
+
+      // ── Change Carrier ──
+      html += `
+        <div class="drawer-section">
+          <div class="drawer-section-header" onclick="this.parentElement.classList.toggle('collapsed')">
+            <span class="ds-icon">🔄</span> Change Carrier <span class="ds-chevron">▼</span>
+          </div>
+          <div class="drawer-section-body">
+            <div class="carrier-row">
+              <select class="carrier-select" id="carrier-select-${sid}">
+                ${CARRIER_PLANS.map(p => `<option value="${p.id}">${esc(p.label)}</option>`).join('')}
+              </select>
+              <button class="carrier-apply-btn" onclick="window.changeCarrier(${sid})">Apply</button>
+            </div>
+          </div>
+        </div>
+      `;
+
+      // ── Send SMS ──
+      html += `
+        <div class="drawer-section collapsed">
+          <div class="drawer-section-header" onclick="this.parentElement.classList.toggle('collapsed')">
+            <span class="ds-icon">📨</span> Send SMS <span class="ds-chevron">▼</span>
+          </div>
+          <div class="drawer-section-body">
+            <div class="sms-row">
+              <input type="text" class="sms-input" id="sms-input-${sid}" placeholder="Enter message...">
+              <button class="sms-send-btn" onclick="window.sendSms(${sid})">Send</button>
+            </div>
+          </div>
+        </div>
+      `;
+
+      // ── Live Telemetry ──
+      html += `
+        <div class="drawer-section">
+          <div class="drawer-section-header" onclick="this.parentElement.classList.toggle('collapsed')">
+            <span class="ds-icon">📊</span> Live Telemetry <span class="ds-chevron">▼</span>
+          </div>
+          <div class="drawer-section-body">
+            <div class="telemetry-grid" id="telemetry-${sid}">
+              <div class="telemetry-item"><div class="telemetry-label">Loading...</div></div>
+            </div>
+            <button class="action-btn" style="width:100%; margin-top:8px; flex-direction:row; justify-content:center; gap:6px;"
+                    onclick="window.loadTelemetry(${sid})">
+              <span class="action-icon">🔃</span> Refresh
+            </button>
+          </div>
+        </div>
+      `;
+
+      // ── Location ──
+      html += `
+        <div class="drawer-section collapsed">
+          <div class="drawer-section-header" onclick="this.parentElement.classList.toggle('collapsed')">
+            <span class="ds-icon">📍</span> Location <span class="ds-chevron">▼</span>
+          </div>
+          <div class="drawer-section-body">
+            <button class="action-btn" style="width:100%; flex-direction:row; justify-content:center; gap:6px;"
+                    onclick="window.loadLocation(${sid}, '${esc(row.ipadSerial)}')">
+              <span class="action-icon">📍</span> Get Location
+            </button>
+            <div id="drawer-map-${sid}" class="drawer-map" style="display:none;"></div>
+          </div>
+        </div>
+      `;
+    }
+
+    // ── Danger Zone ──
+    if (hasIpad) {
+      html += `
+        <div class="drawer-section danger collapsed">
+          <div class="drawer-section-header" onclick="this.parentElement.classList.toggle('collapsed')">
+            <span class="ds-icon">⚠️</span> Danger Zone <span class="ds-chevron">▼</span>
+          </div>
+          <div class="drawer-section-body">
+            <button class="danger-btn" onclick="window.wipeDevice(${row.mdmId}, '${esc(row.name)}')">
+              🗑 Factory Reset (Wipe Device)
+            </button>
+          </div>
+        </div>
+      `;
+    }
+
+    drawerBody.innerHTML = html;
+    drawerOverlay.classList.add('open');
+
+    // Auto-load telemetry if SIM exists
+    if (hasSim) {
+      window.loadTelemetry(row.simDeviceId);
+    }
+  };
+
+  // ── MDM Device Actions ──
+  window.mdmAction = async function(deviceId, action, btn) {
+    if (!confirm(`Are you sure you want to ${action} this device?`)) return;
+    btn.classList.add('loading');
+    try {
+      await drawerAction(`/api/simplemdm/devices/${deviceId}/${action}`);
+      btn.classList.add('success');
+      setTimeout(() => btn.classList.remove('success'), 2000);
+    } finally {
+      btn.classList.remove('loading');
+    }
+  };
+
+  // ── Lost Mode ──
+  window.enableLostMode = async function(deviceId, btn) {
+    const msg = prompt('Lost Mode message:', 'This iPad has been reported lost. Please contact the administrator.');
+    if (!msg) return;
+    btn.classList.add('loading');
+    try {
+      await drawerAction(`/api/simplemdm/devices/${deviceId}/lost_mode`, 'POST', { message: msg });
+      btn.classList.add('success');
+    } finally {
+      btn.classList.remove('loading');
+    }
+  };
+
+  window.disableLostMode = async function(deviceId, btn) {
+    if (!confirm('Disable Lost Mode?')) return;
+    btn.classList.add('loading');
+    try {
+      await drawerAction(`/api/simplemdm/devices/${deviceId}/lost_mode`, 'DELETE');
+      btn.classList.add('success');
+    } finally {
+      btn.classList.remove('loading');
+    }
+  };
+
+  // ── SIM Actions ──
+  window.simAction = async function(simId, action, btn) {
+    if (!confirm(`${action} this SIM?`)) return;
+    btn.classList.add('loading');
+    try {
+      await drawerAction(`/api/webbing/devices/${simId}/${action}`);
+      btn.classList.add('success');
+    } finally {
+      btn.classList.remove('loading');
+    }
+  };
+
+  // ── Change Carrier ──
+  window.changeCarrier = async function(simId) {
+    const sel = document.getElementById(`carrier-select-${simId}`);
+    const planId = sel.value;
+    const planName = sel.options[sel.selectedIndex].text;
+    if (!confirm(`Change carrier to: ${planName}?`)) return;
+    await drawerAction(`/api/webbing/devices/${simId}/change-plan`, 'POST', { productId: parseInt(planId) });
+  };
+
+  // ── Send SMS ──
+  window.sendSms = async function(simId) {
+    const input = document.getElementById(`sms-input-${simId}`);
+    const msg = input.value.trim();
+    if (!msg) return;
+    await drawerAction(`/api/webbing/devices/${simId}/sms`, 'POST', { message: msg });
+    input.value = '';
+  };
+
+  // ── Live Telemetry ──
+  window.loadTelemetry = async function(simId) {
+    const container = document.getElementById(`telemetry-${simId}`);
+    if (!container) return;
+    container.innerHTML = '<div class="telemetry-item"><div class="telemetry-label">Loading...</div></div>';
+    try {
+      const res = await fetch(`/api/webbing/devices/${simId}/live`);
+      const data = await res.json();
+      const live = data.liveData || data;
+      container.innerHTML = `
+        <div class="telemetry-item"><div class="telemetry-label">IP Address</div><div class="telemetry-value">${esc(live.ipAddress || live.ip || '—')}</div></div>
+        <div class="telemetry-item"><div class="telemetry-label">Carrier</div><div class="telemetry-value">${esc(live.vplmnName || live.carrier || '—')}</div></div>
+        <div class="telemetry-item"><div class="telemetry-label">Home Network</div><div class="telemetry-value">${esc(live.hplmnName || '—')}</div></div>
+        <div class="telemetry-item"><div class="telemetry-label">Session</div><div class="telemetry-value">${esc(live.sessionState || live.state || '—')}</div></div>
+        <div class="telemetry-item"><div class="telemetry-label">Device</div><div class="telemetry-value">${esc(live.model || '—')}</div></div>
+        <div class="telemetry-item"><div class="telemetry-label">Vendor</div><div class="telemetry-value">${esc(live.vendor || '—')}</div></div>
+      `;
+    } catch (e) {
+      container.innerHTML = `<div class="telemetry-item"><div class="telemetry-label" style="color:var(--red)">Error loading telemetry</div></div>`;
+    }
+  };
+
+  // ── Location ──
+  window.loadLocation = async function(simId, serial) {
+    const mapDiv = document.getElementById(`drawer-map-${simId}`);
+    if (!mapDiv) return;
+    mapDiv.style.display = 'block';
+    
+    try {
+      // Try cell tower location first
+      const res = await fetch(`/api/webbing/devices/${simId}/location`);
+      const data = await res.json();
+      const loc = data.location || data;
+      const lat = parseFloat(loc.latitude || loc.lat);
+      const lng = parseFloat(loc.longitude || loc.lng || loc.lon);
+      
+      if (!isNaN(lat) && !isNaN(lng)) {
+        if (drawerMap) drawerMap.remove();
+        drawerMap = L.map(mapDiv).setView([lat, lng], 14);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '© OpenStreetMap'
+        }).addTo(drawerMap);
+        L.marker([lat, lng]).addTo(drawerMap).bindPopup('Cell tower location').openPopup();
+        
+        // Also try GPS from Fello app
+        if (serial) {
+          try {
+            const gpsRes = await fetch(`/api/location/${encodeURIComponent(serial)}`);
+            const gpsData = await gpsRes.json();
+            if (gpsData.latitude && gpsData.longitude) {
+              L.marker([gpsData.latitude, gpsData.longitude], {
+                icon: L.divIcon({ className: '', html: '<div style="background:var(--blue);width:12px;height:12px;border-radius:50%;border:2px solid white;"></div>' })
+              }).addTo(drawerMap).bindPopup('GPS location (Fello App)');
+            }
+          } catch (e) { /* GPS not available */ }
+        }
+        
+        setTimeout(() => drawerMap.invalidateSize(), 100);
+      } else {
+        mapDiv.innerHTML = '<p style="color:var(--text-muted);padding:20px;text-align:center;">Location not available</p>';
+      }
+    } catch (e) {
+      mapDiv.innerHTML = `<p style="color:var(--red);padding:20px;text-align:center;">Error: ${e.message}</p>`;
+    }
+  };
+
+  // ── Screen Share ──
+  window.startScreenShare = async function(serial, name) {
+    try {
+      showToast('Connecting to screen share...');
+      const res = await fetch('/api/cobrowse/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ serial, deviceName: name })
+      });
+      const data = await res.json();
+      if (data.sessionUrl) {
+        const overlay = document.getElementById('screen-overlay');
+        const iframe = document.getElementById('screen-iframe');
+        iframe.src = data.sessionUrl;
+        overlay.style.display = 'flex';
+        closeDrawer();
+      } else {
+        showToast(data.error || 'Device not online for screen share', 'error');
+      }
+    } catch (e) {
+      showToast(`Screen share error: ${e.message}`, 'error');
+    }
+  };
+
+  // Screen share close
+  document.getElementById('screen-close').addEventListener('click', () => {
+    document.getElementById('screen-overlay').style.display = 'none';
+    document.getElementById('screen-iframe').src = 'about:blank';
+  });
+
+  // ── Wipe Device ──
+  window.wipeDevice = async function(deviceId, name) {
+    if (!confirm(`⚠️ FACTORY RESET: This will ERASE ALL DATA on "${name}". This cannot be undone!\n\nAre you sure?`)) return;
+    if (!confirm(`FINAL WARNING: Type the device name to confirm.\n\nDevice: ${name}\n\nProceed with factory reset?`)) return;
+    await drawerAction(`/api/simplemdm/devices/${deviceId}/wipe`);
+  };
 
 })();
