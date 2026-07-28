@@ -151,112 +151,98 @@
       </div>
     `;
 
-    // Matched Pairs section (only if we have matches)
+    // Build unified rows: matched pairs + unmatched iPads + unmatched SIMs
     const matched = data.matches || [];
-    if (matched.length > 0) {
-      html += `
-      <div class="section" id="sec-matches" style="border-color: var(--green);">
+    const unmatchedIpads = mdm.filter(d => !d.matchedSimSerial);
+    const unmatchedSims = web.filter(w => !w.matchedIpadName);
+    
+    const rows = [];
+    // Matched pairs first
+    for (const m of matched) {
+      const ipad = mdm.find(d => d.serial === m.ipadSerial) || {};
+      const sim = web.find(w => (w.serial || w.ssid) === m.simSerial) || {};
+      rows.push({
+        name: m.ipadName,
+        ipadSerial: m.ipadSerial,
+        model: ipad.model || ipad.model_name || '',
+        os: ipad.osVersion || ipad.os_version || '',
+        battery: ipad.batteryLevel || ipad.battery_level || null,
+        imei: m.ipadImei,
+        simSerial: m.simSerial,
+        iccid: m.simIccid,
+        carrier: m.simCarrier,
+        simStatus: sim.statusId || sim.status || m.simStatus,
+        ip: m.simIp,
+        linked: true
+      });
+    }
+    // Unmatched iPads
+    for (const d of unmatchedIpads) {
+      rows.push({
+        name: d.name || d.device_name || '',
+        ipadSerial: d.serial || d.serial_number || '',
+        model: d.model || d.model_name || '',
+        os: d.osVersion || d.os_version || '',
+        battery: d.batteryLevel || d.battery_level || null,
+        imei: d.abmImei || '',
+        simSerial: '', iccid: '', carrier: '', simStatus: null, ip: '',
+        linked: false
+      });
+    }
+    // Unmatched SIMs
+    for (const w of unmatchedSims) {
+      rows.push({
+        name: '',
+        ipadSerial: '',
+        model: '', os: '', battery: null,
+        imei: w.imei || '',
+        simSerial: w.ssid || w.serial || '',
+        iccid: w.iccid || '',
+        carrier: w.carrier || w.network || '',
+        simStatus: w.statusId || w.status,
+        ip: w.ip || w.ipAddress || '',
+        linked: false
+      });
+    }
+
+    html += `
+      <div class="section" id="sec-unified">
         <div class="section-header" onclick="this.parentElement.classList.toggle('collapsed')">
-          <div class="section-title"><span class="section-icon">🔗</span> Matched Pairs (iPad ↔ SIM)</div>
+          <div class="section-title"><span class="section-icon">📋</span> Fleet Overview — iPad + SIM Pairs</div>
           <div class="chevron">▼</div>
         </div>
         <div class="section-content table-responsive">
           <table>
             <thead>
               <tr>
+                <th style="border-right: 2px solid var(--border);">🔗</th>
                 <th>iPad Name</th>
                 <th>iPad Serial</th>
+                <th>Model</th>
+                <th>OS</th>
+                <th style="border-right: 2px solid var(--border);">Battery</th>
                 <th>IMEI</th>
                 <th>SIM Serial</th>
-                <th>SIM ICCID</th>
+                <th>ICCID</th>
                 <th>Carrier</th>
                 <th>SIM Status</th>
               </tr>
             </thead>
             <tbody>
-              ${matched.map(m => `
-                <tr>
-                  <td>${esc(m.ipadName)}</td>
-                  <td class="mono">${esc(m.ipadSerial)}</td>
-                  <td class="mono">${esc(m.ipadImei)}</td>
-                  <td class="mono">${esc(m.simSerial)}</td>
-                  <td class="mono">${esc(m.simIccid)}</td>
-                  <td>${esc(m.simCarrier)}</td>
-                  <td>${getStatusBadge(m.simStatus)}</td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-        </div>
-      </div>`;
-    } else if (stats.abmStatus === 'connected') {
-      html += `<div class="section" style="border-color: var(--amber);"><div class="section-content" style="padding: 16px; color: var(--amber);">⚠️ ABM connected but no IMEI matches found. The iPads in this group may not be in your ABM inventory.</div></div>`;
-    }
-
-    // iPads section
-    html += `
-      <div class="section" id="sec-ipads">
-        <div class="section-header" onclick="this.parentElement.classList.toggle('collapsed')">
-          <div class="section-title"><span class="section-icon">📱</span> iPads (MDM)</div>
-          <div class="chevron">▼</div>
-        </div>
-        <div class="section-content table-responsive">
-          <table>
-            <thead>
-              <tr>
-                <th>Device Name</th>
-                <th>Serial</th>
-                <th>Model</th>
-                <th>OS</th>
-                <th>Battery</th>
-                <th>Matched SIM</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${mdm.length === 0 ? '<tr><td colspan="6">No iPads found.</td></tr>' : ''}
-              ${mdm.map(d => `
-                <tr>
-                  <td>${esc(d.name || d.device_name)}</td>
-                  <td class="mono">${esc(d.serial_number || d.serial)}</td>
-                  <td>${esc(d.model_name || d.model)}</td>
-                  <td>${esc(d.os_version || d.osVersion)}</td>
-                  <td>${d.battery_level || d.batteryLevel ? (d.battery_level || d.batteryLevel) + '%' : '-'}</td>
-                  <td class="mono">${d.matchedSimSerial ? '<span class="badge badge-active">✓ ' + esc(d.matchedSimSerial) + '</span>' : '<span style="color: var(--text-muted);">—</span>'}</td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- SIM Lines Section -->
-      <div class="section" id="sec-sims">
-        <div class="section-header" onclick="this.parentElement.classList.toggle('collapsed')">
-          <div class="section-title"><span class="section-icon">📡</span> SIM Lines (Webbing)</div>
-          <div class="chevron">▼</div>
-        </div>
-        <div class="section-content table-responsive">
-          <table>
-            <thead>
-              <tr>
-                <th>SIM Serial</th>
-                <th>IMEI</th>
-                <th>ICCID</th>
-                <th>Status</th>
-                <th>Carrier</th>
-                <th>Matched iPad</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${web.length === 0 ? '<tr><td colspan="6">No SIM lines found.</td></tr>' : ''}
-              ${web.map(w => `
-                <tr>
-                  <td class="mono">${esc(w.ssid || w.serial)}</td>
-                  <td class="mono">${esc(w.imei)}</td>
-                  <td class="mono">${esc(w.iccid)}</td>
-                  <td>${getStatusBadge(w.statusId || w.status)}</td>
-                  <td>${esc(w.carrier || w.network)}</td>
-                  <td class="mono">${w.matchedIpadName ? '<span class="badge badge-active">✓ ' + esc(w.matchedIpadName) + '</span>' : '<span style="color: var(--text-muted);">—</span>'}</td>
+              ${rows.length === 0 ? '<tr><td colspan="11">No devices found.</td></tr>' : ''}
+              ${rows.map(r => `
+                <tr style="${!r.linked ? 'opacity: 0.6;' : ''}">
+                  <td style="border-right: 2px solid var(--border); text-align: center;">${r.linked ? '<span style="color: var(--green);">✓</span>' : '<span style="color: var(--amber);">✗</span>'}</td>
+                  <td>${esc(r.name) || '<span style="color:var(--text-muted)">—</span>'}</td>
+                  <td class="mono">${esc(r.ipadSerial) || '<span style="color:var(--text-muted)">—</span>'}</td>
+                  <td>${esc(r.model) || '—'}</td>
+                  <td>${esc(r.os) || '—'}</td>
+                  <td style="border-right: 2px solid var(--border);">${r.battery ? r.battery + '%' : '—'}</td>
+                  <td class="mono" style="font-size: 0.75rem;">${esc(r.imei) || '<span style="color:var(--text-muted)">—</span>'}</td>
+                  <td class="mono">${esc(r.simSerial) || '<span style="color:var(--text-muted)">—</span>'}</td>
+                  <td class="mono" style="font-size: 0.75rem;">${esc(r.iccid) || '<span style="color:var(--text-muted)">—</span>'}</td>
+                  <td>${esc(r.carrier) || '—'}</td>
+                  <td>${r.simStatus ? getStatusBadge(r.simStatus) : '—'}</td>
                 </tr>
               `).join('')}
             </tbody>
