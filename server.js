@@ -4166,12 +4166,23 @@ async function buildAbmImeiMap() {
 app.get('/api/debug/abm-devices', async (req, res) => {
   try {
     if (!abmPrivateKey) {
-      return res.json({ error: 'ABM private key not loaded. Check ABM_DEVICE_API_KEY or ABM_PRIVATE_KEY env var.' });
+      return res.json({ error: 'ABM private key not loaded.' });
     }
     
     const token = await getAbmToken();
-    const limit = parseInt(req.query.limit) || 3;
     
+    // If serial param provided, do a single device lookup
+    const serial = req.query.serial;
+    if (serial) {
+      const resp = await fetch(`${ABM_CONFIG.apiBase}/orgDevices/${serial}`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = resp.ok ? await resp.json() : { error: resp.status, body: await resp.text() };
+      return res.json({ singleDeviceLookup: serial, data });
+    }
+    
+    // Otherwise list devices (return raw response to see pagination format)
+    const limit = parseInt(req.query.limit) || 5;
     const url = `${ABM_CONFIG.apiBase}/orgDevices?limit=${limit}`;
     const resp = await fetch(url, {
       headers: { 'Authorization': `Bearer ${token}` }
@@ -4182,14 +4193,14 @@ app.get('/api/debug/abm-devices', async (req, res) => {
       return res.json({ error: `ABM API error: ${resp.status}`, details: err });
     }
     
-    const data = await resp.json();
-    const items = data.devices || data.data || [];
+    // Return the ENTIRE raw response to see pagination format
+    const rawData = await resp.json();
+    const topLevelKeys = Object.keys(rawData);
     
     res.json({
       status: 'connected',
-      count: items.length,
-      sampleFields: items.length > 0 ? Object.keys(items[0]) : [],
-      devices: items
+      topLevelKeys,
+      rawData
     });
   } catch (err) {
     res.status(500).json({ error: err.message, stack: err.stack?.split('\n').slice(0, 3) });
