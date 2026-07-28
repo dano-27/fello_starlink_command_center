@@ -4062,96 +4062,26 @@ app.get('/api/webbing/branches/:branchId/match', async (req, res) => {
     
     console.log(`[Match] Scanned ${totalFetched} SimpleMDM devices, found ${simpleMdmDevices.length} matching "${branchName}"`);
     
-    // Step 3: Fetch full details for each matched device to get ICCID from individual endpoint
-    let debugAttributes = null;
-    for (const mdmDev of simpleMdmDevices) {
-      try {
-        const detailResp = await fetch(`https://a.simplemdm.com/api/v1/devices/${mdmDev.id}`, {
-          headers: { 'Authorization': auth }
-        });
-        if (detailResp.ok) {
-          const detailData = await detailResp.json();
-          const attr = detailData.data?.attributes || {};
-          
-          // Log first device's full attributes for debugging
-          if (!debugAttributes) {
-            debugAttributes = Object.keys(attr);
-            console.log(`[Match] Sample device attributes: ${JSON.stringify(debugAttributes)}`);
-            // Also log any ICCID/IMEI-like values
-            for (const [k, v] of Object.entries(attr)) {
-              if (v && typeof v === 'string' && (k.toLowerCase().includes('icc') || k.toLowerCase().includes('imei') || k.toLowerCase().includes('subscriber'))) {
-                console.log(`[Match]   ${k} = ${v}`);
-              }
-            }
-          }
-          
-          // Try to get ICCID — check multiple possible fields
-          const iccid = attr.iccid || attr.ICCID || attr.service_subscription_iccid || null;
-          const imei = attr.imei || attr.IMEI || attr.service_subscription_imei || null;
-          
-          if (iccid) mdmDev.iccid = String(iccid).replace(/\s/g, '');
-          if (imei) mdmDev.imei = String(imei).replace(/\s/g, '');
-          
-          // Update other fields from detailed response
-          mdmDev.batteryLevel = attr.battery_level;
-          mdmDev.lastSeenAt = attr.last_seen_at;
-        }
-      } catch (err) {
-        console.error(`[Match] Failed to fetch device detail ${mdmDev.id}:`, err.message);
-      }
-    }
-    
-    // Step 4: Match Webbing SIMs to SimpleMDM iPads by ICCID
-    const mdmByIccid = new Map();
-    for (const mdmDev of simpleMdmDevices) {
-      if (mdmDev.iccid) {
-        mdmByIccid.set(mdmDev.iccid, mdmDev);
-      }
-    }
-    console.log(`[Match] SimpleMDM devices with ICCID: ${mdmByIccid.size} / ${simpleMdmDevices.length}`);
-    
-    const matches = [];
-    const unmatchedWebbing = [];
-    const matchedMdmIds = new Set();
-    
-    for (const w of webbingMatches) {
-      const wIccid = w.iccid ? String(w.iccid).replace(/\s/g, '') : null;
-      if (wIccid && mdmByIccid.has(wIccid)) {
-        const mdmDev = mdmByIccid.get(wIccid);
-        matches.push({ webbing: w, simpleMdm: mdmDev });
-        matchedMdmIds.add(mdmDev.id);
-      } else {
-        unmatchedWebbing.push(w);
-      }
-    }
-    
-    const unmatchedMdm = simpleMdmDevices.filter(d => !matchedMdmIds.has(d.id));
-    
-    // Sort all arrays
-    matches.sort((a, b) => {
-      const numA = parseInt((a.simpleMdm.name.match(/\((\d+)\)/) || [])[1]) || 0;
-      const numB = parseInt((b.simpleMdm.name.match(/\((\d+)\)/) || [])[1]) || 0;
+    // Sort MDM devices by the number in parentheses: "FE13916 (1)" → 1
+    simpleMdmDevices.sort((a, b) => {
+      const numA = parseInt((a.name.match(/\((\d+)\)/) || [])[1]) || 0;
+      const numB = parseInt((b.name.match(/\((\d+)\)/) || [])[1]) || 0;
       return numA - numB;
     });
     
-    console.log(`[Match] Results: ${matches.length} matched, ${unmatchedWebbing.length} unmatched SIMs, ${unmatchedMdm.length} unmatched iPads`);
+    // NOTE: SimpleMDM API does NOT expose eSIM ICCID/IMEI (confirmed null).
+    // 1:1 matching is not possible via API. Return side-by-side inventory.
+    const countMatch = simpleMdmDevices.length === webbingMatches.length;
     
     res.json({
       branchName: branchName,
-      matches: matches,
-      unmatchedWebbing: unmatchedWebbing,
-      unmatchedMdm: unmatchedMdm,
+      webbingDevices: webbingMatches,
+      simpleMdmDevices: simpleMdmDevices,
       stats: {
-        matched: matches.length,
-        unmatchedWebbing: unmatchedWebbing.length,
-        unmatchedMdm: unmatchedMdm.length,
-        total: webbingMatches.length,
-        mdmTotal: simpleMdmDevices.length,
+        webbingCount: webbingMatches.length,
+        mdmCount: simpleMdmDevices.length,
+        countMatch: countMatch,
         totalScanned: totalFetched
-      },
-      debug: {
-        sampleAttributes: debugAttributes,
-        mdmWithIccid: mdmByIccid.size
       }
     });
     
