@@ -4038,6 +4038,8 @@ app.get('/api/webbing/branches/:branchId/match', async (req, res) => {
     }
     
     console.log(`[Match] Searched ${allGroups.length} SimpleMDM device_groups for "${branchName}"`);
+    const groupNames = allGroups.map(g => g.attributes.name);
+    console.log(`[Match] All device_group names: ${JSON.stringify(groupNames)}`);
     const group = allGroups.find(g => g.attributes.name.toLowerCase() === branchName.toLowerCase());
     console.log(`[Match] Found group: ${group ? group.attributes.name + ' (ID: ' + group.id + ')' : 'NOT FOUND'}`);
     
@@ -4107,6 +4109,7 @@ app.get('/api/webbing/branches/:branchId/match', async (req, res) => {
       },
       debug: {
         groupsSearched: allGroups.length,
+        allGroupNames: groupNames,
         groupFound: group ? group.attributes.name : null,
         groupId: group ? group.id : null,
         mdmDevicesWithImei: simpleMdmDevices.size
