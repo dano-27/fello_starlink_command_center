@@ -3978,21 +3978,25 @@ app.get('/api/webbing/branches/:branchId/match', async (req, res) => {
     
     const branchName = devices[0].BranchName;
     const webbingMatches = [];
+    const client = getWebbingClient();
     
     // Fetch live data for each device to get IMEI
     for (const d of devices) {
       try {
-        const live = await client.getLiveData(d.ServiceDeviceID);
+        const liveResult = await client.getLiveData(d.ServiceDeviceID);
+        // The parsed response has fields directly on the result object
+        const imei = liveResult.IMEI ? String(liveResult.IMEI) : null;
+        const iccid = liveResult.ICCID ? String(liveResult.ICCID) : null;
         webbingMatches.push({
           serviceDeviceId: d.ServiceDeviceID,
           serial: d.Serial,
-          imei: live.IMEI,
-          iccid: live.ICCID,
+          imei,
+          iccid,
           ssid: d.SSID,
           status: d.StatusName,
           plan: d.ProductName,
-          carrier: live.VPLMN || live.CarrierName,
-          ip: live.IP
+          carrier: liveResult.VPLMN || liveResult.CarrierName || null,
+          ip: liveResult.IP || null
         });
       } catch (err) {
         console.error(`Failed to get live data for ${d.ServiceDeviceID}:`, err.message);
