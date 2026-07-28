@@ -3903,10 +3903,9 @@ app.get('/api/webbing/branches/:branchId/usage', async (req, res) => {
       try {
         const usageData = await client.getDeviceUsage(device.ServiceDeviceID, start, end, interval);
         let records = [];
-        if (usageData && usageData.DeviceUsageRecord) {
-            records = Array.isArray(usageData.DeviceUsageRecord) ? usageData.DeviceUsageRecord : [usageData.DeviceUsageRecord];
-        } else if (usageData && usageData.DeviceUsageRecords && usageData.DeviceUsageRecords.DeviceUsageRecord) {
-            records = Array.isArray(usageData.DeviceUsageRecords.DeviceUsageRecord) ? usageData.DeviceUsageRecords.DeviceUsageRecord : [usageData.DeviceUsageRecords.DeviceUsageRecord];
+        const usage = usageData?.Usage;
+        if (usage && usage.DeviceUsageRecord) {
+            records = Array.isArray(usage.DeviceUsageRecord) ? usage.DeviceUsageRecord : [usage.DeviceUsageRecord];
         }
 
         let usageMB = 0;
