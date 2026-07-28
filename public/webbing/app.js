@@ -233,11 +233,21 @@
     document.getElementById('btn-bulk-resume').onclick = () => handleBulkAction('activate');
     
     // Match with SimpleMDM
-    document.getElementById('btn-match-mdm').onclick = handleMatchWithSimpleMDM;
+    const matchBtn = document.getElementById('btn-match-mdm');
+    if (matchBtn) {
+      matchBtn.replaceWith(matchBtn.cloneNode(true));
+      document.getElementById('btn-match-mdm').addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log('[Webbing] Match button clicked, branch:', currentBranch);
+        handleMatchWithSimpleMDM();
+      });
+    }
   }
   
   async function handleMatchWithSimpleMDM() {
-    if (!currentBranch) return;
+    console.log('[Webbing] handleMatchWithSimpleMDM called, currentBranch:', currentBranch);
+    if (!currentBranch) { console.log('[Webbing] No current branch, aborting'); return; }
     
     document.getElementById('match-results-container').classList.remove('hidden');
     document.getElementById('match-loading-container').classList.remove('hidden');
