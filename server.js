@@ -4015,7 +4015,7 @@ app.get('/api/webbing/branches/:branchId/match', async (req, res) => {
       await new Promise(r => setTimeout(r, 150));
     }
     
-    // Fetch SimpleMDM assignment groups (paginate through all)
+    // Fetch SimpleMDM device_groups (paginate through all)
     const mdmKey = getSimpleMdmKey();
     const auth = 'Basic ' + Buffer.from(mdmKey + ':').toString('base64');
     
@@ -4023,10 +4023,10 @@ app.get('/api/webbing/branches/:branchId/match', async (req, res) => {
     let hasMore = true;
     let startingAfter = '';
     while (hasMore) {
-      const url = `https://a.simplemdm.com/api/v1/assignment_groups?limit=100${startingAfter ? `&starting_after=${startingAfter}` : ''}`;
+      const url = `https://a.simplemdm.com/api/v1/device_groups?limit=100${startingAfter ? `&starting_after=${startingAfter}` : ''}`;
       const groupsResp = await fetch(url, { headers: { 'Authorization': auth } });
       if (!groupsResp.ok) {
-        console.error(`[Match] SimpleMDM groups fetch failed: ${groupsResp.status}`);
+        console.error(`[Match] SimpleMDM device_groups fetch failed: ${groupsResp.status}`);
         break;
       }
       const groupsData = await groupsResp.json();
@@ -4037,43 +4037,17 @@ app.get('/api/webbing/branches/:branchId/match', async (req, res) => {
       if (!startingAfter) break;
     }
     
-    console.log(`[Match] Searched ${allGroups.length} SimpleMDM groups for "${branchName}"`);
+    console.log(`[Match] Searched ${allGroups.length} SimpleMDM device_groups for "${branchName}"`);
     const group = allGroups.find(g => g.attributes.name.toLowerCase() === branchName.toLowerCase());
     console.log(`[Match] Found group: ${group ? group.attributes.name + ' (ID: ' + group.id + ')' : 'NOT FOUND'}`);
     
     const simpleMdmDevices = new Map();
     
     if (group) {
-      // Collect all device IDs — both direct and via device_groups
-      let allDeviceIds = [];
-      
-      // Direct device refs on the assignment group
+      // Get devices directly from the device group
       const devRel = group.relationships?.devices?.data || [];
-      allDeviceIds = devRel.filter(d => d.type === 'device').map(d => d.id);
-      console.log(`[Match] Group has ${allDeviceIds.length} direct device refs`);
-      
-      // Device groups (indirect) — assignment groups contain device_groups which hold the actual devices
-      const dgRel = group.relationships?.device_groups?.data || [];
-      console.log(`[Match] Group has ${dgRel.length} device_group refs`);
-      for (const dg of dgRel) {
-        try {
-          const dgResp = await fetch(`https://a.simplemdm.com/api/v1/device_groups/${dg.id}`, {
-            headers: { 'Authorization': auth }
-          });
-          if (dgResp.ok) {
-            const dgData = await dgResp.json();
-            const dgDevs = dgData.data?.relationships?.devices?.data || [];
-            allDeviceIds = allDeviceIds.concat(dgDevs.filter(d => d.type === 'device').map(d => d.id));
-            console.log(`[Match]   device_group ${dg.id}: ${dgDevs.length} devices`);
-          }
-        } catch (err) {
-          console.error(`[Match] Failed to fetch device_group ${dg.id}:`, err.message);
-        }
-      }
-      
-      // Deduplicate
-      allDeviceIds = [...new Set(allDeviceIds)];
-      console.log(`[Match] Total unique SimpleMDM device IDs: ${allDeviceIds.length}`);
+      const allDeviceIds = devRel.filter(d => d.type === 'device').map(d => d.id);
+      console.log(`[Match] Device group has ${allDeviceIds.length} devices`);
       
       // Fetch each device's details
       for (const devId of allDeviceIds) {
