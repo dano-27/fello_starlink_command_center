@@ -696,20 +696,27 @@
 
   async function loadLiveData(device) {
     const el = document.getElementById('live-data-content');
-    el.innerHTML = '<div class="loading-spinner">Loading...</div>';
+    el.innerHTML = '<div class="loading-spinner">Loading live data...</div>';
     try {
       const res = await fetch(`/api/webbing/devices/${device.ServiceDeviceID}/live`);
       if (!res.ok) { el.innerHTML = '<p class="error-text">Failed to load live data.</p>'; return; }
       const data = await res.json();
       const live = data.LiveData || data;
       el.innerHTML = `<div class="info-grid">
+        <div class="info-item"><label>IMEI</label><span class="mono">${esc(live.IMEI || '—')}</span></div>
+        <div class="info-item"><label>ICCID</label><span class="mono">${esc(live.ICCID || '—')}</span></div>
+        <div class="info-item"><label>Vendor</label><span>${esc(live.Vendor || '—')}</span></div>
+        <div class="info-item"><label>Model</label><span>${esc(live.Model || '—')}</span></div>
         <div class="info-item"><label>Carrier (VPLMN)</label><span>${esc(live.VPLMN || live.CarrierName || '—')}</span></div>
+        <div class="info-item"><label>Home Network (HPLMN)</label><span>${esc(live.HPLMN || '—')}</span></div>
+        <div class="info-item"><label>Country</label><span>${esc(live.CountryName || live.Country || '—')}</span></div>
         <div class="info-item"><label>MCC/MNC</label><span>${esc(live.MCCMNC || '—')}</span></div>
         <div class="info-item"><label>APN</label><span>${esc(live.APN || '—')}</span></div>
-        <div class="info-item"><label>IP</label><span class="mono">${esc(live.IP || '—')}</span></div>
+        <div class="info-item"><label>IP Address</label><span class="mono">${esc(live.IP || '—')}</span></div>
         <div class="info-item"><label>Active</label><span class="status-badge ${live.IsActive ? 'active' : 'inactive'}">${live.IsActive ? 'Yes' : 'No'}</span></div>
         <div class="info-item"><label>Last Active</label><span>${esc(live.LastActiveDate || '—')}</span></div>
-        <div class="info-item"><label>Country</label><span>${esc(live.CountryName || '—')}</span></div>
+        <div class="info-item"><label>PDI#</label><span class="mono">${esc(live.PDI || live.PDPID || '—')}</span></div>
+        <div class="info-item"><label>IMSI</label><span class="mono">${esc(live.IMSI || '—')}</span></div>
       </div>`;
     } catch (e) { el.innerHTML = `<p class="error-text">${e.message}</p>`; }
   }
