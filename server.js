@@ -3515,6 +3515,141 @@ app.get('/api/webbing/stats', (req, res) => {
   });
 });
 
+// ── Branches List (aggregated from cache) ───────────────────────────────
+app.get('/api/webbing/branches/list', (req, res) => {
+  try {
+    const { search, page = 1, pageSize = 50 } = req.query;
+    const branchMap = {};
+
+    webbingDeviceCache.forEach(d => {
+      const key = d.BranchID || 0;
+      if (!branchMap[key]) {
+        branchMap[key] = {
+          branchId: d.BranchID,
+          branchName: d.BranchName || 'Unknown',
+          total: 0,
+          active: 0,
+          suspended: 0,
+          inactive: 0,
+          deactivated: 0,
+          plans: {},
+          devices: []
+        };
+      }
+      const b = branchMap[key];
+      b.total++;
+      if (d.StatusID === 3) b.active++;
+      else if (d.StatusID === 4) b.suspended++;
+      else if (d.StatusID === 2) b.inactive++;
+      else if (d.StatusID === 5) b.deactivated++;
+      const plan = d.ProductName || 'Unknown';
+      b.plans[plan] = (b.plans[plan] || 0) + 1;
+    });
+
+    let branches = Object.values(branchMap);
+
+    // Search
+    if (search) {
+      const q = search.toLowerCase();
+      branches = branches.filter(b =>
+        b.branchName.toLowerCase().includes(q) ||
+        String(b.branchId).includes(q)
+      );
+    }
+
+    // Sort by device count descending
+    branches.sort((a, b) => b.total - a.total);
+
+    // Stats
+    const stats = {
+      totalBranches: Object.keys(branchMap).length,
+      filteredBranches: branches.length,
+      totalDevices: webbingDeviceCache.length,
+      activeDevices: webbingDeviceCache.filter(d => d.StatusID === 3).length,
+      suspendedDevices: webbingDeviceCache.filter(d => d.StatusID === 4).length
+    };
+
+    // Paginate
+    const p = parseInt(page);
+    const ps = parseInt(pageSize);
+    const start = (p - 1) * ps;
+    const paged = branches.slice(start, start + ps);
+
+    res.json({
+      branches: paged,
+      stats,
+      pagination: {
+        page: p,
+        pageSize: ps,
+        totalRecords: branches.length,
+        totalPages: Math.ceil(branches.length / ps)
+      },
+      lastSync: webbingCacheTime
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Branch Detail (devices in a branch) ─────────────────────────────────
+app.get('/api/webbing/branches/:branchId/devices', (req, res) => {
+  try {
+    const branchId = parseInt(req.params.branchId);
+    const { page = 1, pageSize = 100, search, status } = req.query;
+    let devices = webbingDeviceCache.filter(d => d.BranchID === branchId);
+
+    const branchName = devices.length > 0 ? devices[0].BranchName : 'Unknown';
+
+    // Filter by status
+    if (status && status !== '0') {
+      devices = devices.filter(d => d.StatusID == status);
+    }
+
+    // Search within branch
+    if (search) {
+      const q = search.toLowerCase();
+      devices = devices.filter(d =>
+        (d.SSID && d.SSID.toLowerCase().includes(q)) ||
+        (d.Serial && d.Serial.toLowerCase().includes(q)) ||
+        (d.IMEI && d.IMEI.toLowerCase().includes(q)) ||
+        (d.ProductName && d.ProductName.toLowerCase().includes(q))
+      );
+    }
+
+    // Stats for this branch
+    const allBranchDevices = webbingDeviceCache.filter(d => d.BranchID === branchId);
+    const stats = {
+      total: allBranchDevices.length,
+      filtered: devices.length,
+      active: allBranchDevices.filter(d => d.StatusID === 3).length,
+      suspended: allBranchDevices.filter(d => d.StatusID === 4).length,
+      inactive: allBranchDevices.filter(d => d.StatusID === 2).length,
+      deactivated: allBranchDevices.filter(d => d.StatusID === 5).length
+    };
+
+    // Paginate
+    const p = parseInt(page);
+    const ps = parseInt(pageSize);
+    const start = (p - 1) * ps;
+    const paged = devices.slice(start, start + ps);
+
+    res.json({
+      branchId,
+      branchName,
+      devices: paged,
+      stats,
+      pagination: {
+        page: p,
+        pageSize: ps,
+        totalRecords: devices.length,
+        totalPages: Math.ceil(devices.length / ps)
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Live Telemetry ──────────────────────────────────────────────────────
 app.get('/api/webbing/devices/:id/live', async (req, res) => {
   try {
