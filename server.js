@@ -4261,34 +4261,83 @@ async function buildAbmImeiMap() {
   return map;
 }
 
-// ── Debug: Test ABM API connection ────────────────────────────────────
+// ── Debug: Test ABM API connection (step-by-step) ─────────────────────
 app.get('/api/debug/abm-devices', async (req, res) => {
+  const steps = [];
   try {
+    // Step 1: Check credentials
     const creds = getAbmCredentials();
-    if (!creds) return res.json({ error: 'ABM credentials not configured. Set ABM_CLIENT_ID, ABM_KEY_ID, ABM_DEVICE_API_KEY' });
+    if (!creds) return res.json({ error: 'ABM credentials not configured', steps });
+    steps.push({ step: 'credentials', status: 'ok', clientId: creds.clientId, keyId: creds.keyId, keyLength: creds.privateKey.length, keyStartsWith: creds.privateKey.substring(0, 30) });
     
-    const token = await getAbmAccessToken();
-    const limit = parseInt(req.query.limit) || 5;
+    // Step 2: Generate JWT
+    let jwt;
+    try {
+      jwt = generateAbmJwt(creds);
+      steps.push({ step: 'jwt', status: 'ok', jwtLength: jwt.length, jwtPreview: jwt.substring(0, 50) + '...' });
+    } catch (jwtErr) {
+      steps.push({ step: 'jwt', status: 'error', error: jwtErr.message, stack: jwtErr.stack?.split('\n').slice(0, 3) });
+      return res.json({ error: 'JWT generation failed', steps });
+    }
     
+    // Step 3: Get access token
+    let token;
+    try {
+      // Reset cache to force fresh token
+      abmTokenCache = { token: null, expiresAt: 0 };
+      
+      const tokenResp = await fetch('https://account.apple.com/auth/oauth2/v2/token', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          grant_type: 'client_credentials',
+          client_id: creds.clientId,
+          client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
+          client_assertion: jwt,
+          scope: 'device.read'
+        }).toString()
+      });
+      
+      const tokenText = await tokenResp.text();
+      if (!tokenResp.ok) {
+        steps.push({ step: 'token', status: 'error', httpStatus: tokenResp.status, body: tokenText });
+        return res.json({ error: 'Token request failed', steps });
+      }
+      
+      const tokenData = JSON.parse(tokenText);
+      token = tokenData.access_token;
+      steps.push({ step: 'token', status: 'ok', expiresIn: tokenData.expires_in, tokenPreview: token.substring(0, 20) + '...' });
+    } catch (tokenErr) {
+      steps.push({ step: 'token', status: 'error', error: tokenErr.message });
+      return res.json({ error: 'Token request failed', steps });
+    }
+    
+    // Step 4: Fetch devices
+    const limit = parseInt(req.query.limit) || 3;
     const url = `https://api-business.apple.com/v1/orgDevices?limit=${limit}`;
     const resp = await fetch(url, {
       headers: { 'Authorization': `Bearer ${token}` }
     });
     
+    const respText = await resp.text();
     if (!resp.ok) {
-      const err = await resp.text();
-      return res.status(resp.status).json({ error: `ABM API error: ${resp.status}`, details: err });
+      steps.push({ step: 'devices', status: 'error', httpStatus: resp.status, body: respText.substring(0, 500) });
+      return res.json({ error: 'Device fetch failed', steps });
     }
     
-    const data = await resp.json();
+    const data = JSON.parse(respText);
+    const items = data.devices || data.data || [];
+    steps.push({ step: 'devices', status: 'ok', count: items.length });
+    
     res.json({
       status: 'connected',
-      count: (data.devices || data.data || []).length,
-      sampleFields: (data.devices || data.data || []).length > 0 ? Object.keys((data.devices || data.data)[0]) : [],
-      raw: data
+      steps,
+      sampleFields: items.length > 0 ? Object.keys(items[0]) : [],
+      devices: items
     });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    steps.push({ step: 'unexpected', error: err.message, stack: err.stack?.split('\n').slice(0, 3) });
+    res.status(500).json({ error: err.message, steps });
   }
 });
 
