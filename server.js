@@ -4091,9 +4091,43 @@ app.get('/api/webbing/branches/:branchId/match', async (req, res) => {
   }
 });
 
+// ── Debug: Inspect DEP device fields from ABM ─────────────────────────
+app.get('/api/debug/dep-devices', async (req, res) => {
+  try {
+    const mdmKey = getSimpleMdmKey();
+    const auth = 'Basic ' + Buffer.from(mdmKey + ':').toString('base64');
+    const limit = parseInt(req.query.limit) || 5;
+    
+    const url = `https://a.simplemdm.com/api/v1/dep_servers/10650/dep_devices?limit=${limit}`;
+    const resp = await fetch(url, { headers: { 'Authorization': auth } });
+    if (!resp.ok) return res.status(resp.status).json({ error: `DEP fetch failed: ${resp.status}` });
+    
+    const data = await resp.json();
+    const items = data.data || [];
+    
+    // Extract and log all attribute keys from the first device
+    const sampleAttrs = items.length > 0 ? Object.keys(items[0].attributes || {}) : [];
+    
+    // Return raw data so we can see all fields
+    res.json({
+      count: items.length,
+      hasMore: data.has_more,
+      sampleAttributeKeys: sampleAttrs,
+      devices: items.map(d => ({
+        id: d.id,
+        type: d.type,
+        attributes: d.attributes
+      }))
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ══════════════════════════════════════════════════════════════════════════
 //  UNIFIED LOOKUP HUB
 // ══════════════════════════════════════════════════════════════════════════
+
 
 app.get('/api/lookup', async (req, res) => {
   const query = (req.query.q || '').trim();
