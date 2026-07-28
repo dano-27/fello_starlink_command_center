@@ -105,13 +105,29 @@ async function getAbmToken() {
   return abmTokenCache.token;
 }
 
-async function abmLookupDevice(serial) {
-  const token = await getAbmToken();
-  const resp = await fetch(`${ABM_CONFIG.apiBase}/orgDevices/${serial}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!resp.ok) return null;
-  return (await resp.json()).data;
+async function abmLookupDevice(serial, retries = 3) {
+  for (let attempt = 0; attempt < retries; attempt++) {
+    const token = await getAbmToken();
+    const resp = await fetch(`${ABM_CONFIG.apiBase}/orgDevices/${serial}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    
+    if (resp.ok) {
+      return (await resp.json()).data;
+    }
+    
+    // Rate limited or server error — retry with backoff
+    if ((resp.status === 429 || resp.status >= 500) && attempt < retries - 1) {
+      const delay = (attempt + 1) * 1000; // 1s, 2s, 3s
+      console.log(`[ABM] Rate limited on ${serial} (${resp.status}), retrying in ${delay}ms...`);
+      await new Promise(r => setTimeout(r, delay));
+      continue;
+    }
+    
+    console.log(`[ABM] Lookup failed for ${serial}: HTTP ${resp.status}`);
+    return null;
+  }
+  return null;
 }
 
 async function abmAssignToSimpleMdm(serials) {
@@ -4441,8 +4457,8 @@ app.get('/api/lookup', async (req, res) => {
             } catch (lookupErr) {
               console.error(`[Lookup] ABM lookup error for ${serial}:`, lookupErr.message);
             }
-            // Small delay to avoid rate limiting
-            await new Promise(r => setTimeout(r, 100));
+            // Delay to avoid ABM rate limiting
+            await new Promise(r => setTimeout(r, 250));
           }
           console.log(`[Lookup] ABM IMEI matching: ${matches.length} pairs out of ${simpleMdmDevices.length} iPads`);
         }
