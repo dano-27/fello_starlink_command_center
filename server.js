@@ -4130,22 +4130,36 @@ async function getAbmDeviceList(limit = 1000) {
 // Build serial→IMEI map from ABM devices
 async function buildAbmImeiMap() {
   const devices = await getAbmDeviceList();
-  const map = new Map();
+  const serialToImei = new Map();  // iPad serial → IMEI
+  const imeiToSerial = new Map();  // IMEI → iPad serial (reverse lookup for matching)
   
   for (const d of devices) {
-    const serial = (d.serialNumber || d.serial_number || '').toUpperCase();
-    const imei = d.imei || d.IMEI || null;
-    if (serial && imei) {
-      map.set(serial, {
-        imei: String(imei).replace(/\s/g, ''),
-        eid: d.eid || d.EID || null,
-        model: d.model || d.deviceModel || null
+    const attr = d.attributes || d;
+    const serial = (attr.serialNumber || attr.serial_number || d.id || '').toUpperCase();
+    const imeis = attr.imei || attr.IMEI || [];
+    const imeiList = Array.isArray(imeis) ? imeis : [imeis];
+    const eid = attr.eid || '';
+    const model = attr.deviceModel || attr.model || '';
+    
+    if (serial && imeiList.length > 0) {
+      const primaryImei = String(imeiList[0]).replace(/\s/g, '');
+      serialToImei.set(serial, {
+        imei: primaryImei,
+        allImeis: imeiList.map(i => String(i).replace(/\s/g, '')),
+        eid: eid || null,
+        model: model
       });
+      
+      // Also build reverse map: IMEI → serial
+      for (const imei of imeiList) {
+        const cleanImei = String(imei).replace(/\s/g, '');
+        if (cleanImei) imeiToSerial.set(cleanImei, serial);
+      }
     }
   }
   
-  console.log(`[ABM] Built IMEI map: ${map.size} devices with IMEI out of ${devices.length} total`);
-  return map;
+  console.log(`[ABM] Built IMEI map: ${serialToImei.size} devices with IMEI out of ${devices.length} total`);
+  return { serialToImei, imeiToSerial };
 }
 
 // ── Debug: Test ABM API connection ────────────────────────────────────
@@ -4347,6 +4361,54 @@ app.get('/api/lookup', async (req, res) => {
       // NOTE: Branch usage is skipped in lookup (requires per-device API calls, too slow)
       // Users can access the full usage report from the Webbing IoT dashboard
       
+      // Step 4: ABM IMEI Bridge — match iPads to SIM lines via IMEI
+      const matches = [];
+      let abmStatus = 'unavailable';
+      try {
+        if (abmPrivateKey) {
+          const { serialToImei, imeiToSerial } = await buildAbmImeiMap();
+          abmStatus = 'connected';
+          
+          // For each SimpleMDM iPad, look up its IMEI from ABM, then find the matching Webbing SIM
+          for (const ipad of simpleMdmDevices) {
+            const abmData = serialToImei.get((ipad.serial || '').toUpperCase());
+            if (abmData) {
+              ipad.abmImei = abmData.imei;
+              ipad.allImeis = abmData.allImeis;
+              
+              // Find matching Webbing SIM by IMEI
+              const matchedSim = webbingDevices.find(sim => 
+                sim.imei && abmData.allImeis.some(abmImei => 
+                  sim.imei.includes(abmImei) || abmImei.includes(sim.imei)
+                )
+              );
+              
+              if (matchedSim) {
+                matches.push({
+                  ipadName: ipad.name,
+                  ipadSerial: ipad.serial,
+                  ipadImei: abmData.imei,
+                  simSerial: matchedSim.serial,
+                  simImei: matchedSim.imei,
+                  simIccid: matchedSim.iccid,
+                  simCarrier: matchedSim.carrier,
+                  simStatus: matchedSim.status,
+                  simIp: matchedSim.ip
+                });
+                // Mark both as matched
+                ipad.matchedSimSerial = matchedSim.serial;
+                matchedSim.matchedIpadName = ipad.name;
+                matchedSim.matchedIpadSerial = ipad.serial;
+              }
+            }
+          }
+          console.log(`[Lookup] ABM IMEI matching: ${matches.length} pairs out of ${simpleMdmDevices.length} iPads`);
+        }
+      } catch (e) {
+        console.error('[Lookup] ABM IMEI matching error:', e.message);
+        abmStatus = 'error';
+      }
+      
       const activeCount = webbingDevices.filter(d => d.statusId === 3).length;
       const suspendedCount = webbingDevices.filter(d => d.statusId === 4).length;
       
@@ -4357,13 +4419,16 @@ app.get('/api/lookup', async (req, res) => {
         branchId: branchId,
         webbingDevices,
         simpleMdmDevices,
+        matches,
         usage: null,
         stats: {
           webbingCount: webbingDevices.length,
           mdmCount: simpleMdmDevices.length,
           countMatch: webbingDevices.length === simpleMdmDevices.length,
+          matchedCount: matches.length,
           activeCount,
-          suspendedCount
+          suspendedCount,
+          abmStatus
         }
       });
       

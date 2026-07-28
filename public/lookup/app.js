@@ -134,13 +134,13 @@
           <div class="stat-label">SIM Lines</div>
           <div class="stat-value">${esc(stats.webbingCount || web.length)}</div>
         </div>
+        <div class="stat-card stat-green">
+          <div class="stat-label">🔗 Matched</div>
+          <div class="stat-value">${esc(stats.matchedCount || 0)} / ${esc(Math.max(stats.mdmCount, stats.webbingCount) || 0)}</div>
+        </div>
         <div class="stat-card stat-amber">
           <div class="stat-label">Counts Match</div>
           <div class="stat-value">${matchIcon} ${stats.countMatch ? 'Yes' : 'No'}</div>
-        </div>
-        <div class="stat-card stat-green">
-          <div class="stat-label">Total Usage</div>
-          <div class="stat-value">${formatMB(usage.totalMB)}</div>
         </div>
       </div>
 
@@ -149,8 +149,52 @@
         <button class="btn btn-warning" onclick="window.bulkAction('${esc(branchId)}', 'suspend')">⏸ Bulk Suspend SIMs</button>
         <button class="btn btn-success" onclick="window.bulkAction('${esc(branchId)}', 'activate')">▶ Bulk Activate SIMs</button>
       </div>
+    `;
 
-      <!-- iPads Section -->
+    // Matched Pairs section (only if we have matches)
+    const matched = data.matches || [];
+    if (matched.length > 0) {
+      html += `
+      <div class="section" id="sec-matches" style="border-color: var(--green);">
+        <div class="section-header" onclick="this.parentElement.classList.toggle('collapsed')">
+          <div class="section-title"><span class="section-icon">🔗</span> Matched Pairs (iPad ↔ SIM)</div>
+          <div class="chevron">▼</div>
+        </div>
+        <div class="section-content table-responsive">
+          <table>
+            <thead>
+              <tr>
+                <th>iPad Name</th>
+                <th>iPad Serial</th>
+                <th>IMEI</th>
+                <th>SIM Serial</th>
+                <th>SIM ICCID</th>
+                <th>Carrier</th>
+                <th>SIM Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${matched.map(m => `
+                <tr>
+                  <td>${esc(m.ipadName)}</td>
+                  <td class="mono">${esc(m.ipadSerial)}</td>
+                  <td class="mono">${esc(m.ipadImei)}</td>
+                  <td class="mono">${esc(m.simSerial)}</td>
+                  <td class="mono">${esc(m.simIccid)}</td>
+                  <td>${esc(m.simCarrier)}</td>
+                  <td>${getStatusBadge(m.simStatus)}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+    } else if (stats.abmStatus === 'connected') {
+      html += `<div class="section" style="border-color: var(--amber);"><div class="section-content" style="padding: 16px; color: var(--amber);">⚠️ ABM connected but no IMEI matches found. The iPads in this group may not be in your ABM inventory.</div></div>`;
+    }
+
+    // iPads section
+    html += `
       <div class="section" id="sec-ipads">
         <div class="section-header" onclick="this.parentElement.classList.toggle('collapsed')">
           <div class="section-title"><span class="section-icon">📱</span> iPads (MDM)</div>
@@ -163,9 +207,9 @@
                 <th>Device Name</th>
                 <th>Serial</th>
                 <th>Model</th>
-                <th>OS Version</th>
+                <th>OS</th>
                 <th>Battery</th>
-                <th>Last Seen</th>
+                <th>Matched SIM</th>
               </tr>
             </thead>
             <tbody>
@@ -175,9 +219,9 @@
                   <td>${esc(d.name || d.device_name)}</td>
                   <td class="mono">${esc(d.serial_number || d.serial)}</td>
                   <td>${esc(d.model_name || d.model)}</td>
-                  <td>${esc(d.os_version)}</td>
-                  <td>${d.battery_level ? d.battery_level + '%' : '-'}</td>
-                  <td>${d.last_seen_at ? new Date(d.last_seen_at).toLocaleString() : '-'}</td>
+                  <td>${esc(d.os_version || d.osVersion)}</td>
+                  <td>${d.battery_level || d.batteryLevel ? (d.battery_level || d.batteryLevel) + '%' : '-'}</td>
+                  <td class="mono">${d.matchedSimSerial ? '<span class="badge badge-active">✓ ' + esc(d.matchedSimSerial) + '</span>' : '<span style="color: var(--text-muted);">—</span>'}</td>
                 </tr>
               `).join('')}
             </tbody>
@@ -195,17 +239,16 @@
           <table>
             <thead>
               <tr>
-                <th>SIM Serial (SSID)</th>
+                <th>SIM Serial</th>
                 <th>IMEI</th>
                 <th>ICCID</th>
                 <th>Status</th>
                 <th>Carrier</th>
-                <th>Plan</th>
-                <th>IP</th>
+                <th>Matched iPad</th>
               </tr>
             </thead>
             <tbody>
-              ${web.length === 0 ? '<tr><td colspan="7">No SIM lines found.</td></tr>' : ''}
+              ${web.length === 0 ? '<tr><td colspan="6">No SIM lines found.</td></tr>' : ''}
               ${web.map(w => `
                 <tr>
                   <td class="mono">${esc(w.ssid || w.serial)}</td>
@@ -213,8 +256,7 @@
                   <td class="mono">${esc(w.iccid)}</td>
                   <td>${getStatusBadge(w.statusId || w.status)}</td>
                   <td>${esc(w.carrier || w.network)}</td>
-                  <td>${esc(w.planName || w.plan)}</td>
-                  <td class="mono">${esc(w.ipAddress || w.ip)}</td>
+                  <td class="mono">${w.matchedIpadName ? '<span class="badge badge-active">✓ ' + esc(w.matchedIpadName) + '</span>' : '<span style="color: var(--text-muted);">—</span>'}</td>
                 </tr>
               `).join('')}
             </tbody>
