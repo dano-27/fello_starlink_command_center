@@ -4098,7 +4098,7 @@ app.get('/api/webbing/branches/:branchId/match', async (req, res) => {
 function getAbmCredentials() {
   const clientId = process.env.ABM_CLIENT_ID;
   const keyId = process.env.ABM_KEY_ID;
-  const privateKey = process.env.ABM_PRIVATE_KEY;
+  const privateKey = process.env.ABM_DEVICE_API_KEY;
   if (!clientId || !keyId || !privateKey) return null;
   return { clientId, keyId, privateKey };
 }
@@ -4253,7 +4253,7 @@ async function buildAbmImeiMap() {
 app.get('/api/debug/abm-devices', async (req, res) => {
   try {
     const creds = getAbmCredentials();
-    if (!creds) return res.json({ error: 'ABM credentials not configured. Set ABM_CLIENT_ID, ABM_KEY_ID, ABM_PRIVATE_KEY' });
+    if (!creds) return res.json({ error: 'ABM credentials not configured. Set ABM_CLIENT_ID, ABM_KEY_ID, ABM_DEVICE_API_KEY' });
     
     const token = await getAbmAccessToken();
     const limit = parseInt(req.query.limit) || 5;
