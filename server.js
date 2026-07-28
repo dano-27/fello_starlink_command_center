@@ -3233,9 +3233,8 @@ app.post('/api/cobrowse/connect', async (req, res) => {
   const token = generateCobrowseJWT();
 
   try {
-    // List devices from Cobrowse API
+    // List ALL devices from Cobrowse API (filter in code — API param names differ from dashboard)
     const listUrl = new URL('https://cobrowse.io/api/1/devices');
-    listUrl.searchParams.set('filter_app', 'Fello Remote');
 
     console.log(`[Cobrowse] Searching for device: serial=${serial}, name=${deviceName}`);
 
@@ -3249,14 +3248,19 @@ app.post('/api/cobrowse/connect', async (req, res) => {
     }
 
     const allDevices = await devicesResp.json();
-    // Filter to online devices only
-    const devices = (allDevices || []).filter(d => d.online);
-    console.log(`[Cobrowse] Found ${allDevices.length} total device(s), ${devices.length} online:`, allDevices.map(d => ({
+    console.log(`[Cobrowse] API returned ${allDevices.length} total device(s):`, JSON.stringify(allDevices.map(d => ({
       id: d.id,
       name: d.custom_data?.device_name,
+      app: d.custom_data?.app,
       serial: d.custom_data?.serial_number,
-      online: d.online
-    })));
+      online: d.online,
+      last_active: d.last_active
+    })), null, 2));
+
+    // Filter to Fello Remote + online devices
+    const felloDevices = allDevices.filter(d => d.custom_data?.app === 'Fello Remote');
+    const devices = felloDevices.filter(d => d.online);
+    console.log(`[Cobrowse] ${felloDevices.length} Fello Remote device(s), ${devices.length} online`);
 
     if (!devices || devices.length === 0) {
       return res.json({ error: 'No Fello Remote devices are currently online. Make sure the app is open on the iPad.', devices: [] });
