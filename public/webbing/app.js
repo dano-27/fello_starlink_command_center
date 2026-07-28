@@ -206,6 +206,9 @@
     document.getElementById('btn-back-to-branches').onclick = () => {
       document.getElementById('view-branch-detail').classList.remove('active');
       document.getElementById('view-branches').classList.add('active');
+      document.getElementById('match-results-container').classList.add('hidden');
+      document.getElementById('match-summary-bar').classList.add('hidden');
+      document.getElementById('match-table-container').classList.add('hidden');
       currentBranch = null;
     };
 
@@ -228,6 +231,89 @@
     document.getElementById('btn-bulk-change-plan').onclick = () => handleBulkAction('change-plan');
     document.getElementById('btn-bulk-suspend').onclick = () => handleBulkAction('suspend');
     document.getElementById('btn-bulk-resume').onclick = () => handleBulkAction('activate');
+    
+    // Match with SimpleMDM
+    document.getElementById('btn-match-mdm').onclick = handleMatchWithSimpleMDM;
+  }
+  
+  async function handleMatchWithSimpleMDM() {
+    if (!currentBranch) return;
+    
+    document.getElementById('match-results-container').classList.remove('hidden');
+    document.getElementById('match-loading-container').classList.remove('hidden');
+    document.getElementById('match-summary-bar').classList.add('hidden');
+    document.getElementById('match-table-container').classList.add('hidden');
+    document.getElementById('match-loading-text').textContent = 'Fetching live data and matching devices with SimpleMDM...';
+    
+    try {
+      const res = await fetch(`/api/webbing/branches/${currentBranch.branchId}/match`);
+      if (!res.ok) throw new Error('Match failed');
+      const data = await res.json();
+      
+      document.getElementById('match-loading-container').classList.add('hidden');
+      document.getElementById('match-summary-bar').classList.remove('hidden');
+      document.getElementById('match-table-container').classList.remove('hidden');
+      
+      document.getElementById('match-stat-matched').textContent = data.stats.matched;
+      document.getElementById('match-stat-unmatched-sims').textContent = data.stats.unmatchedWebbing;
+      document.getElementById('match-stat-unmatched-ipads').textContent = data.stats.unmatchedMdm;
+      document.getElementById('match-stat-total').textContent = data.stats.total;
+      
+      const tbody = document.getElementById('match-devices-tbody');
+      let rowsHtml = '';
+      
+      // Matched
+      data.matches.forEach(m => {
+        rowsHtml += `<tr style="background: rgba(34,197,94,0.1);">
+          <td><strong>${esc(m.simpleMdm.name)}</strong></td>
+          <td>${esc(m.simpleMdm.serial)}</td>
+          <td class="mono">${esc(m.webbing.imei)}</td>
+          <td class="mono">${esc(m.webbing.iccid)}</td>
+          <td>${esc(m.webbing.serial)}</td>
+          <td><span class="status-badge ${m.webbing.status === 'Active' ? 'active' : 'suspended'}">${esc(m.webbing.status)}</span></td>
+          <td>${esc(m.webbing.carrier || '—')}</td>
+          <td>${esc(m.webbing.plan || '—')}</td>
+          <td class="mono">${esc(m.webbing.ip || '—')}</td>
+        </tr>`;
+      });
+      
+      // Unmatched Webbing (SIMs)
+      data.unmatchedWebbing.forEach(w => {
+        rowsHtml += `<tr style="background: rgba(245,158,11,0.1);">
+          <td>—</td>
+          <td>—</td>
+          <td class="mono">${esc(w.imei || '—')}</td>
+          <td class="mono">${esc(w.iccid || '—')}</td>
+          <td>${esc(w.serial)}</td>
+          <td><span class="status-badge ${w.status === 'Active' ? 'active' : 'suspended'}">${esc(w.status)}</span></td>
+          <td>${esc(w.carrier || '—')}</td>
+          <td>${esc(w.plan || '—')}</td>
+          <td class="mono">${esc(w.ip || '—')}</td>
+        </tr>`;
+      });
+      
+      // Unmatched MDM (iPads)
+      data.unmatchedMdm.forEach(m => {
+        rowsHtml += `<tr style="background: rgba(239,68,68,0.1);">
+          <td><strong>${esc(m.name)}</strong></td>
+          <td>${esc(m.serial)}</td>
+          <td class="mono">${esc(m.imei || '—')}</td>
+          <td>—</td>
+          <td>—</td>
+          <td>—</td>
+          <td>—</td>
+          <td>—</td>
+          <td>—</td>
+        </tr>`;
+      });
+      
+      if (!rowsHtml) rowsHtml = '<tr><td colspan="9" class="empty-row">No data found.</td></tr>';
+      tbody.innerHTML = rowsHtml;
+      
+    } catch (e) {
+      document.getElementById('match-loading-container').classList.add('hidden');
+      alert(`Error matching devices: ${e.message}`);
+    }
   }
 
   async function handleBulkAction(action) {

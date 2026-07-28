@@ -3966,6 +3966,130 @@ app.get('/api/webbing/branches/:branchId/usage', async (req, res) => {
   }
 });
 
+// ── Webbing to SimpleMDM Match ───────────────────────────────────────
+app.get('/api/webbing/branches/:branchId/match', async (req, res) => {
+  try {
+    const branchId = parseInt(req.params.branchId, 10);
+    const devices = (webbingDeviceCache || []).filter(d => d.BranchID === branchId);
+    
+    if (!devices.length) {
+      return res.status(404).json({ error: 'No devices found for this branch in cache' });
+    }
+    
+    const branchName = devices[0].BranchName;
+    const webbingMatches = [];
+    
+    // Fetch live data for each device to get IMEI
+    for (const d of devices) {
+      try {
+        const live = await client.getLiveData(d.ServiceDeviceID);
+        webbingMatches.push({
+          serviceDeviceId: d.ServiceDeviceID,
+          serial: d.Serial,
+          imei: live.IMEI,
+          iccid: live.ICCID,
+          ssid: d.SSID,
+          status: d.StatusName,
+          plan: d.ProductName,
+          carrier: live.VPLMN || live.CarrierName,
+          ip: live.IP
+        });
+      } catch (err) {
+        console.error(`Failed to get live data for ${d.ServiceDeviceID}:`, err.message);
+        webbingMatches.push({
+          serviceDeviceId: d.ServiceDeviceID,
+          serial: d.Serial,
+          imei: null,
+          iccid: null,
+          ssid: d.SSID,
+          status: d.StatusName,
+          plan: d.ProductName,
+          carrier: null,
+          ip: null
+        });
+      }
+      await new Promise(r => setTimeout(r, 150));
+    }
+    
+    // Fetch SimpleMDM assignment groups
+    const mdmKey = getSimpleMdmKey();
+    const auth = 'Basic ' + Buffer.from(mdmKey + ':').toString('base64');
+    
+    const groupsResp = await fetch('https://a.simplemdm.com/api/v1/assignment_groups?limit=100', {
+      headers: { 'Authorization': auth }
+    });
+    
+    if (!groupsResp.ok) throw new Error('Failed to fetch SimpleMDM assignment groups');
+    
+    const groupsData = await groupsResp.json();
+    const group = groupsData.data.find(g => g.attributes.name.toLowerCase() === branchName.toLowerCase());
+    
+    const simpleMdmDevices = new Map();
+    
+    if (group && group.relationships && group.relationships.devices && group.relationships.devices.data) {
+      for (const dev of group.relationships.devices.data) {
+        if (dev.type === 'device') {
+          try {
+            const devResp = await fetch(`https://a.simplemdm.com/api/v1/devices/${dev.id}`, {
+              headers: { 'Authorization': auth }
+            });
+            if (devResp.ok) {
+              const devData = await devResp.json();
+              const attr = devData.data.attributes;
+              if (attr.imei) {
+                simpleMdmDevices.set(attr.imei, {
+                  id: devData.data.id,
+                  name: attr.name,
+                  serial: attr.serial_number,
+                  imei: attr.imei,
+                  model: attr.model_name,
+                  osVersion: attr.os_version
+                });
+              }
+            }
+          } catch (err) {
+            console.error(`Failed to fetch SimpleMDM device ${dev.id}:`, err.message);
+          }
+        }
+      }
+    }
+    
+    const matches = [];
+    const unmatchedWebbing = [];
+    
+    for (const w of webbingMatches) {
+      if (w.imei && simpleMdmDevices.has(w.imei)) {
+        matches.push({
+          webbing: w,
+          simpleMdm: simpleMdmDevices.get(w.imei)
+        });
+        simpleMdmDevices.delete(w.imei);
+      } else {
+        unmatchedWebbing.push(w);
+      }
+    }
+    
+    const unmatchedMdm = Array.from(simpleMdmDevices.values());
+    
+    res.json({
+      branchName: branchName,
+      matches: matches,
+      unmatchedWebbing: unmatchedWebbing,
+      unmatchedMdm: unmatchedMdm,
+      stats: {
+        matched: matches.length,
+        unmatchedWebbing: unmatchedWebbing.length,
+        unmatchedMdm: unmatchedMdm.length,
+        total: matches.length + unmatchedWebbing.length + unmatchedMdm.length
+      }
+    });
+    
+  } catch (error) {
+    console.error('Match endpoint error:', error);
+    res.status(500).json({ error: 'Failed to perform match' });
+  }
+});
+
 // Hub landing page
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
