@@ -253,7 +253,7 @@
     document.getElementById('match-loading-container').classList.remove('hidden');
     document.getElementById('match-summary-bar').classList.add('hidden');
     document.getElementById('match-table-container').classList.add('hidden');
-    document.getElementById('match-loading-text').textContent = 'Fetching live data and matching devices with SimpleMDM...';
+    document.getElementById('match-loading-text').textContent = 'Fetching live data and scanning SimpleMDM devices...';
     
     try {
       const res = await fetch(`/api/webbing/branches/${currentBranch.branchId}/match`);
@@ -264,61 +264,53 @@
       document.getElementById('match-summary-bar').classList.remove('hidden');
       document.getElementById('match-table-container').classList.remove('hidden');
       
-      document.getElementById('match-stat-matched').textContent = data.stats.matched;
-      document.getElementById('match-stat-unmatched-sims').textContent = data.stats.unmatchedWebbing;
-      document.getElementById('match-stat-unmatched-ipads').textContent = data.stats.unmatchedMdm;
-      document.getElementById('match-stat-total').textContent = data.stats.total;
+      // Update stats
+      document.getElementById('match-stat-matched').textContent = data.stats.mdmCount;
+      document.getElementById('match-stat-unmatched-sims').textContent = data.stats.webbingCount;
+      document.getElementById('match-stat-unmatched-ipads').textContent = data.stats.totalScanned;
+      document.getElementById('match-stat-total').textContent = data.stats.webbingCount;
       
+      // Build two-section view
       const tbody = document.getElementById('match-devices-tbody');
-      let rowsHtml = '';
+      let html = '';
       
-      // Matched
-      data.matches.forEach(m => {
-        rowsHtml += `<tr style="background: rgba(34,197,94,0.1);">
-          <td><strong>${esc(m.simpleMdm.name)}</strong></td>
-          <td>${esc(m.simpleMdm.serial)}</td>
-          <td class="mono">${esc(m.webbing.imei)}</td>
-          <td class="mono">${esc(m.webbing.iccid)}</td>
-          <td>${esc(m.webbing.serial)}</td>
-          <td><span class="status-badge ${m.webbing.status === 'Active' ? 'active' : 'suspended'}">${esc(m.webbing.status)}</span></td>
-          <td>${esc(m.webbing.carrier || '—')}</td>
-          <td>${esc(m.webbing.plan || '—')}</td>
-          <td class="mono">${esc(m.webbing.ip || '—')}</td>
-        </tr>`;
-      });
+      // Section: SimpleMDM iPads
+      html += `<tr><td colspan="9" style="background: rgba(59,130,246,0.15); font-weight: 700; font-size: 14px; padding: 12px 16px; color: #60a5fa; letter-spacing: 0.5px;">📱 SimpleMDM iPads (${data.simpleMdmDevices.length} found)</td></tr>`;
       
-      // Unmatched Webbing (SIMs)
-      data.unmatchedWebbing.forEach(w => {
-        rowsHtml += `<tr style="background: rgba(245,158,11,0.1);">
-          <td>—</td>
-          <td>—</td>
-          <td class="mono">${esc(w.imei || '—')}</td>
-          <td class="mono">${esc(w.iccid || '—')}</td>
+      if (data.simpleMdmDevices.length > 0) {
+        data.simpleMdmDevices.forEach(d => {
+          const lastSeen = d.lastSeenAt ? new Date(d.lastSeenAt).toLocaleDateString() : '—';
+          html += `<tr style="background: rgba(34,197,94,0.06);">
+            <td><strong>${esc(d.name)}</strong></td>
+            <td>${esc(d.serial || '—')}</td>
+            <td>${esc(d.model || '—')}</td>
+            <td>${esc(d.osVersion || '—')}</td>
+            <td>${d.batteryLevel ? d.batteryLevel + '%' : '—'}</td>
+            <td>${lastSeen}</td>
+            <td colspan="3"></td>
+          </tr>`;
+        });
+      } else {
+        html += `<tr><td colspan="9" style="text-align: center; color: #94a3b8; padding: 16px;">No SimpleMDM iPads found with name starting with "${esc(data.branchName)}"</td></tr>`;
+      }
+      
+      // Section: Webbing SIM Lines
+      html += `<tr><td colspan="9" style="background: rgba(168,85,247,0.15); font-weight: 700; font-size: 14px; padding: 12px 16px; color: #a78bfa; letter-spacing: 0.5px; margin-top: 8px;">📡 Webbing SIM Lines (${data.webbingDevices.length})</td></tr>`;
+      
+      data.webbingDevices.forEach(w => {
+        html += `<tr>
           <td>${esc(w.serial)}</td>
+          <td class="mono" style="font-size: 11px;">${esc(w.imei || '—')}</td>
+          <td class="mono" style="font-size: 11px;">${esc(w.iccid || '—')}</td>
           <td><span class="status-badge ${w.status === 'Active' ? 'active' : 'suspended'}">${esc(w.status)}</span></td>
           <td>${esc(w.carrier || '—')}</td>
           <td>${esc(w.plan || '—')}</td>
           <td class="mono">${esc(w.ip || '—')}</td>
+          <td colspan="2"></td>
         </tr>`;
       });
       
-      // Unmatched MDM (iPads)
-      data.unmatchedMdm.forEach(m => {
-        rowsHtml += `<tr style="background: rgba(239,68,68,0.1);">
-          <td><strong>${esc(m.name)}</strong></td>
-          <td>${esc(m.serial)}</td>
-          <td class="mono">${esc(m.imei || '—')}</td>
-          <td>—</td>
-          <td>—</td>
-          <td>—</td>
-          <td>—</td>
-          <td>—</td>
-          <td>—</td>
-        </tr>`;
-      });
-      
-      if (!rowsHtml) rowsHtml = '<tr><td colspan="9" class="empty-row">No data found.</td></tr>';
-      tbody.innerHTML = rowsHtml;
+      tbody.innerHTML = html;
       
     } catch (e) {
       document.getElementById('match-loading-container').classList.add('hidden');

@@ -4015,20 +4015,18 @@ app.get('/api/webbing/branches/:branchId/match', async (req, res) => {
       await new Promise(r => setTimeout(r, 150));
     }
     
-    // Fetch ALL SimpleMDM devices and match by IMEI directly
-    // (SimpleMDM groups are broad categories, not per-branch)
+    // Match SimpleMDM iPads by device name prefix
+    // Device names follow pattern: "FE13916 (1)", "FE13916 (2)", etc.
+    // eSIM IMEI is NOT in attributes.imei (it's in Service Subscription, not exposed by API)
     const mdmKey = getSimpleMdmKey();
     const auth = 'Basic ' + Buffer.from(mdmKey + ':').toString('base64');
     
-    // Build IMEI set from Webbing devices for targeted lookup
-    const webbingImeis = new Set(webbingMatches.map(w => w.imei).filter(Boolean));
-    console.log(`[Match] Webbing devices with IMEI: ${webbingImeis.size}`);
-    
-    // Fetch all SimpleMDM devices (paginated)
-    const simpleMdmDevices = new Map();
+    const branchPrefix = branchName.toLowerCase();
+    const simpleMdmDevices = [];
     let hasMore = true;
     let startingAfter = '';
     let totalFetched = 0;
+    
     while (hasMore) {
       const url = `https://a.simplemdm.com/api/v1/devices?limit=100${startingAfter ? `&starting_after=${startingAfter}` : ''}`;
       const devResp = await fetch(url, { headers: { 'Authorization': auth } });
@@ -4042,15 +4040,17 @@ app.get('/api/webbing/branches/:branchId/match', async (req, res) => {
       
       for (const d of items) {
         const attr = d.attributes || {};
-        const imei = attr.imei ? String(attr.imei).trim() : null;
-        if (imei && webbingImeis.has(imei)) {
-          simpleMdmDevices.set(imei, {
+        const name = (attr.name || '').trim();
+        // Match device names starting with branch name (case-insensitive)
+        if (name.toLowerCase().startsWith(branchPrefix)) {
+          simpleMdmDevices.push({
             id: d.id,
-            name: attr.name,
+            name: name,
             serial: attr.serial_number,
-            imei: imei,
             model: attr.model_name,
-            osVersion: attr.os_version
+            osVersion: attr.os_version,
+            batteryLevel: attr.battery_level,
+            lastSeenAt: attr.last_seen_at
           });
         }
       }
@@ -4058,44 +4058,27 @@ app.get('/api/webbing/branches/:branchId/match', async (req, res) => {
       hasMore = devData.has_more === true;
       startingAfter = items.length > 0 ? items[items.length - 1].id : '';
       if (!startingAfter) break;
-      
-      // Early exit if we've matched all Webbing IMEIs
-      if (simpleMdmDevices.size >= webbingImeis.size) break;
-    }
-    console.log(`[Match] Scanned ${totalFetched} SimpleMDM devices, matched ${simpleMdmDevices.size} by IMEI`);
-    
-    const matches = [];
-    const unmatchedWebbing = [];
-    
-    for (const w of webbingMatches) {
-      if (w.imei && simpleMdmDevices.has(w.imei)) {
-        matches.push({
-          webbing: w,
-          simpleMdm: simpleMdmDevices.get(w.imei)
-        });
-        simpleMdmDevices.delete(w.imei);
-      } else {
-        unmatchedWebbing.push(w);
-      }
     }
     
-    const unmatchedMdm = Array.from(simpleMdmDevices.values());
+    // Sort MDM devices by the number in parentheses: "FE13916 (1)" → 1
+    simpleMdmDevices.sort((a, b) => {
+      const numA = parseInt((a.name.match(/\((\d+)\)/) || [])[1]) || 0;
+      const numB = parseInt((b.name.match(/\((\d+)\)/) || [])[1]) || 0;
+      return numA - numB;
+    });
     
+    console.log(`[Match] Scanned ${totalFetched} SimpleMDM devices, found ${simpleMdmDevices.length} matching "${branchName}"`);
+    
+    // Since we can't do 1:1 IMEI matching (eSIM IMEI not in API),
+    // return both lists side by side for the user to view together
     res.json({
       branchName: branchName,
-      matches: matches,
-      unmatchedWebbing: unmatchedWebbing,
-      unmatchedMdm: unmatchedMdm,
+      webbingDevices: webbingMatches,
+      simpleMdmDevices: simpleMdmDevices,
       stats: {
-        matched: matches.length,
-        unmatchedWebbing: unmatchedWebbing.length,
-        unmatchedMdm: unmatchedMdm.length,
-        total: matches.length + unmatchedWebbing.length + unmatchedMdm.length
-      },
-      debug: {
-        mdmDevicesScanned: totalFetched,
-        mdmDevicesMatched: simpleMdmDevices.size,
-        webbingDevicesWithImei: webbingImeis.size
+        webbingCount: webbingMatches.length,
+        mdmCount: simpleMdmDevices.length,
+        totalScanned: totalFetched
       }
     });
     
