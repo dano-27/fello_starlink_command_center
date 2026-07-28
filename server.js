@@ -3233,10 +3233,9 @@ app.post('/api/cobrowse/connect', async (req, res) => {
   const token = generateCobrowseJWT();
 
   try {
-    // List ONLY online devices from Cobrowse API
+    // List devices from Cobrowse API
     const listUrl = new URL('https://cobrowse.io/api/1/devices');
     listUrl.searchParams.set('filter_app', 'Fello Remote');
-    listUrl.searchParams.set('filter_online', '1');
 
     console.log(`[Cobrowse] Searching for device: serial=${serial}, name=${deviceName}`);
 
@@ -3249,8 +3248,10 @@ app.post('/api/cobrowse/connect', async (req, res) => {
       return res.status(502).json({ error: `Cobrowse API error: ${devicesResp.status} ${errText}` });
     }
 
-    const devices = await devicesResp.json();
-    console.log(`[Cobrowse] Found ${devices.length} online device(s):`, devices.map(d => ({
+    const allDevices = await devicesResp.json();
+    // Filter to online devices only
+    const devices = (allDevices || []).filter(d => d.online);
+    console.log(`[Cobrowse] Found ${allDevices.length} total device(s), ${devices.length} online:`, allDevices.map(d => ({
       id: d.id,
       name: d.custom_data?.device_name,
       serial: d.custom_data?.serial_number,
