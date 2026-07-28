@@ -4136,32 +4136,14 @@ function generateAbmJwt(credentials) {
   const b64url = (obj) => Buffer.from(JSON.stringify(obj)).toString('base64url');
   const signingInput = `${b64url(header)}.${b64url(payload)}`;
   
-  const sign = crypto.createSign('SHA256');
-  sign.update(signingInput);
-  sign.end();
+  // Sign with ES256 — use ieee-p1363 format to get raw r||s directly (no DER parsing needed)
+  const signature = crypto.sign(
+    'SHA256',
+    Buffer.from(signingInput),
+    { key: credentials.privateKey, dsaEncoding: 'ieee-p1363' }
+  );
   
-  // Sign with the EC private key
-  const derSig = sign.sign(credentials.privateKey);
-  
-  // Convert DER signature to raw r||s format for ES256
-  // DER: 30 <len> 02 <rlen> <r> 02 <slen> <s>
-  let offset = 2;
-  const rLen = derSig[offset + 1];
-  const rStart = offset + 2;
-  let r = derSig.subarray(rStart, rStart + rLen);
-  offset = rStart + rLen;
-  const sLen = derSig[offset + 1];
-  const sStart = offset + 2;
-  let s = derSig.subarray(sStart, sStart + sLen);
-  
-  // Pad or trim to 32 bytes each
-  if (r.length > 32) r = r.subarray(r.length - 32);
-  if (s.length > 32) s = s.subarray(s.length - 32);
-  if (r.length < 32) r = Buffer.concat([Buffer.alloc(32 - r.length), r]);
-  if (s.length < 32) s = Buffer.concat([Buffer.alloc(32 - s.length), s]);
-  
-  const rawSig = Buffer.concat([r, s]).toString('base64url');
-  
+  const rawSig = signature.toString('base64url');
   return `${signingInput}.${rawSig}`;
 }
 
