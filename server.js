@@ -4111,17 +4111,14 @@ app.get('/api/webbing/branches/:branchId/match', async (req, res) => {
 //  ABM IMEI BRIDGE — uses getAbmToken() from top of file
 // ══════════════════════════════════════════════════════════════════════════
 
-// Fetch all devices from ABM orgDevices endpoint
-async function getAbmDeviceList(limit = 1000) {
+// Fetch all devices from ABM orgDevices endpoint (with correct JSON:API pagination)
+async function getAbmDeviceList() {
   const token = await getAbmToken();
   const devices = [];
-  let cursor = null;
+  let nextUrl = `${ABM_CONFIG.apiBase}/orgDevices?limit=1000`;
   
-  while (true) {
-    let url = `${ABM_CONFIG.apiBase}/orgDevices?limit=${Math.min(limit, 1000)}`;
-    if (cursor) url += `&cursor=${cursor}`;
-    
-    const resp = await fetch(url, {
+  while (nextUrl) {
+    const resp = await fetch(nextUrl, {
       headers: { 'Authorization': `Bearer ${token}` }
     });
     
@@ -4131,23 +4128,34 @@ async function getAbmDeviceList(limit = 1000) {
       throw new Error(`ABM orgDevices failed: ${resp.status}`);
     }
     
-    const data = await resp.json();
-    const items = data.devices || data.data || [];
+    const json = await resp.json();
+    const items = json.data || [];
     devices.push(...items);
     
-    cursor = data.cursor || data.next;
-    if (!cursor || devices.length >= limit) break;
+    // JSON:API pagination: links.next contains the full URL for next page
+    nextUrl = json.links?.next || null;
+    console.log(`[ABM] Fetched page: ${items.length} devices (total: ${devices.length}), hasMore: ${!!nextUrl}`);
   }
   
-  console.log(`[ABM] Fetched ${devices.length} devices from orgDevices`);
+  console.log(`[ABM] Fetched ${devices.length} total devices from orgDevices`);
   return devices;
 }
 
-// Build serial→IMEI map from ABM devices
+// Cache the IMEI map to avoid refetching on every lookup request
+let abmImeiMapCache = { map: null, reverseMap: null, fetchedAt: 0, deviceCount: 0 };
+const ABM_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+// Build serial→IMEI map from ABM devices (with cache)
 async function buildAbmImeiMap() {
+  // Return cached if fresh
+  if (abmImeiMapCache.map && Date.now() - abmImeiMapCache.fetchedAt < ABM_CACHE_TTL) {
+    console.log(`[ABM] Using cached IMEI map (${abmImeiMapCache.map.size} devices, age: ${Math.round((Date.now() - abmImeiMapCache.fetchedAt)/1000)}s)`);
+    return { serialToImei: abmImeiMapCache.map, imeiToSerial: abmImeiMapCache.reverseMap };
+  }
+  
   const devices = await getAbmDeviceList();
-  const serialToImei = new Map();  // iPad serial → IMEI
-  const imeiToSerial = new Map();  // IMEI → iPad serial (reverse lookup for matching)
+  const serialToImei = new Map();
+  const imeiToSerial = new Map();
   
   for (const d of devices) {
     const attr = d.attributes || d;
@@ -4159,6 +4167,8 @@ async function buildAbmImeiMap() {
     
     if (serial && imeiList.length > 0) {
       const primaryImei = String(imeiList[0]).replace(/\s/g, '');
+      if (!primaryImei) continue;
+      
       serialToImei.set(serial, {
         imei: primaryImei,
         allImeis: imeiList.map(i => String(i).replace(/\s/g, '')),
@@ -4166,7 +4176,6 @@ async function buildAbmImeiMap() {
         model: model
       });
       
-      // Also build reverse map: IMEI → serial
       for (const imei of imeiList) {
         const cleanImei = String(imei).replace(/\s/g, '');
         if (cleanImei) imeiToSerial.set(cleanImei, serial);
@@ -4174,6 +4183,8 @@ async function buildAbmImeiMap() {
     }
   }
   
+  // Cache it
+  abmImeiMapCache = { map: serialToImei, reverseMap: imeiToSerial, fetchedAt: Date.now(), deviceCount: devices.length };
   console.log(`[ABM] Built IMEI map: ${serialToImei.size} devices with IMEI out of ${devices.length} total`);
   return { serialToImei, imeiToSerial };
 }
@@ -4393,74 +4404,49 @@ app.get('/api/lookup', async (req, res) => {
       let abmStatus = 'unavailable';
       try {
         if (abmPrivateKey && simpleMdmDevices.length > 0) {
+          // Fetch ALL ABM devices in one batch (cached for 5 min), then match in memory
+          const { serialToImei } = await buildAbmImeiMap();
           abmStatus = 'connected';
           
-          // For each SimpleMDM iPad, look up its IMEI from ABM, then find the matching Webbing SIM
           for (const ipad of simpleMdmDevices) {
             const serial = (ipad.serial || '').toUpperCase();
             if (!serial) { ipad.abmLookupStatus = 'no-serial'; continue; }
             
-            try {
-              let abmDevice = await abmLookupDevice(serial);
-              if (!abmDevice) {
-                ipad.abmLookupStatus = 'not-in-abm';
-                console.log(`[Lookup] ABM: no record for serial ${serial}`);
-                continue;
-              }
-              
-              // Handle double-nested .data wrapper
-              if (abmDevice.data && abmDevice.data.attributes) {
-                abmDevice = abmDevice.data;
-              }
-              
-              // Extract IMEI(s) from ABM response
-              const attr = abmDevice.attributes || abmDevice;
-              const imeis = attr.imei || attr.IMEI || [];
-              const imeiList = Array.isArray(imeis) ? imeis : [imeis];
-              const cleanImeis = imeiList.map(i => String(i).replace(/\s/g, '')).filter(Boolean);
-              
-              if (cleanImeis.length === 0) {
-                ipad.abmLookupStatus = 'no-imei-in-abm';
-                console.log(`[Lookup] ABM: no IMEI for serial ${serial}`);
-                continue;
-              }
-              
-              ipad.abmImei = cleanImeis[0];
-              ipad.allImeis = cleanImeis;
-              
-              // Find matching Webbing SIM by IMEI
-              const matchedSim = webbingDevices.find(sim => 
-                sim.imei && cleanImeis.some(abmImei => 
-                  sim.imei === abmImei || sim.imei.includes(abmImei) || abmImei.includes(sim.imei)
-                )
-              );
-              
-              if (matchedSim) {
-                ipad.abmLookupStatus = 'matched';
-                matches.push({
-                  ipadName: ipad.name,
-                  ipadSerial: ipad.serial,
-                  ipadImei: cleanImeis[0],
-                  simSerial: matchedSim.serial,
-                  simImei: matchedSim.imei,
-                  simIccid: matchedSim.iccid,
-                  simCarrier: matchedSim.carrier,
-                  simStatus: matchedSim.status,
-                  simIp: matchedSim.ip
-                });
-                ipad.matchedSimSerial = matchedSim.serial;
-                matchedSim.matchedIpadName = ipad.name;
-                matchedSim.matchedIpadSerial = ipad.serial;
-              } else {
-                ipad.abmLookupStatus = `imei-no-sim-match:${cleanImeis[0]}`;
-                console.log(`[Lookup] ABM: IMEI ${cleanImeis[0]} for ${serial} — no SIM match in this branch`);
-              }
-            } catch (lookupErr) {
-              ipad.abmLookupStatus = `error:${lookupErr.message}`;
-              console.error(`[Lookup] ABM lookup error for ${serial}:`, lookupErr.message);
+            const abmData = serialToImei.get(serial);
+            if (!abmData) {
+              ipad.abmLookupStatus = 'not-in-abm';
+              continue;
             }
-            // Delay to avoid ABM rate limiting
-            await new Promise(r => setTimeout(r, 250));
+            
+            ipad.abmImei = abmData.imei;
+            ipad.allImeis = abmData.allImeis;
+            
+            // Find matching Webbing SIM by IMEI
+            const matchedSim = webbingDevices.find(sim => 
+              sim.imei && abmData.allImeis.some(abmImei => 
+                sim.imei === abmImei || sim.imei.includes(abmImei) || abmImei.includes(sim.imei)
+              )
+            );
+            
+            if (matchedSim) {
+              ipad.abmLookupStatus = 'matched';
+              matches.push({
+                ipadName: ipad.name,
+                ipadSerial: ipad.serial,
+                ipadImei: abmData.imei,
+                simSerial: matchedSim.serial,
+                simImei: matchedSim.imei,
+                simIccid: matchedSim.iccid,
+                simCarrier: matchedSim.carrier,
+                simStatus: matchedSim.status,
+                simIp: matchedSim.ip
+              });
+              ipad.matchedSimSerial = matchedSim.serial;
+              matchedSim.matchedIpadName = ipad.name;
+              matchedSim.matchedIpadSerial = ipad.serial;
+            } else {
+              ipad.abmLookupStatus = `imei-no-sim-match:${abmData.imei}`;
+            }
           }
           console.log(`[Lookup] ABM IMEI matching: ${matches.length} pairs out of ${simpleMdmDevices.length} iPads`);
         }
