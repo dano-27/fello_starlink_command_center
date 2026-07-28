@@ -1229,7 +1229,7 @@
 
         // Show the viewer modal
         dom.screenViewerName.textContent = name;
-        dom.screenViewerStatus.textContent = 'Connecting...';
+        dom.screenViewerStatus.textContent = 'Searching for device...';
         dom.screenViewerStatus.className = 'screen-viewer-status';
         dom.screenViewerLoading.classList.remove('hidden');
         dom.screenViewerIframe.classList.add('hidden');
@@ -1244,20 +1244,48 @@
         }
 
         try {
-            // Get JWT token for Cobrowse dashboard
-            const tokenResp = await fetch('/api/cobrowse/token', { method: 'POST' });
-            if (!tokenResp.ok) throw new Error('Failed to get auth token');
-            const { token } = await tokenResp.json();
+            // Call backend to find device and create session
+            dom.screenViewerStatus.textContent = 'Connecting to ' + name + '...';
+            const connectResp = await fetch('/api/cobrowse/connect', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ serial, deviceName: name })
+            });
 
-            // Load Cobrowse dashboard filtered to Fello Remote devices only
-            const cobrowseUrl = `https://cobrowse.io/dashboard/devices?token=${encodeURIComponent(token)}&filter_app=Fello+Remote&navigation=none`;
+            if (!connectResp.ok) throw new Error('Failed to connect to Cobrowse API');
+            const result = await connectResp.json();
 
-            dom.screenViewerIframe.src = cobrowseUrl;
+            if (result.error) {
+                showScreenViewerError(result.error);
+                return;
+            }
+
+            let iframeUrl;
+            if (result.mode === 'session' && result.sessionUrl) {
+                // Direct session — auto-connect to the device's screen
+                iframeUrl = result.sessionUrl;
+                dom.screenViewerStatus.textContent = 'Connected to ' + (result.deviceName || name);
+            } else if (result.mode === 'iframe') {
+                // Fallback — show device list filtered
+                const tokenResp = await fetch('/api/cobrowse/token', { method: 'POST' });
+                const { token } = await tokenResp.json();
+                iframeUrl = `https://cobrowse.io/dashboard/devices?token=${encodeURIComponent(token)}&filter_app=Fello+Remote&navigation=none`;
+                dom.screenViewerStatus.textContent = 'Select device to connect';
+            } else {
+                // Last resort — full device dashboard
+                const tokenResp = await fetch('/api/cobrowse/token', { method: 'POST' });
+                const { token } = await tokenResp.json();
+                iframeUrl = `https://cobrowse.io/dashboard/devices?token=${encodeURIComponent(token)}&filter_app=Fello+Remote&navigation=none`;
+            }
+
+            dom.screenViewerIframe.src = iframeUrl;
             dom.screenViewerIframe.onload = () => {
                 dom.screenViewerLoading.classList.add('hidden');
                 dom.screenViewerIframe.classList.remove('hidden');
-                dom.screenViewerStatus.textContent = 'Connected';
-                dom.screenViewerStatus.className = 'screen-viewer-status connected';
+                if (result.mode === 'session') {
+                    dom.screenViewerStatus.textContent = 'Connected';
+                    dom.screenViewerStatus.className = 'screen-viewer-status connected';
+                }
             };
 
             // Timeout after 20s if iframe doesn't load
