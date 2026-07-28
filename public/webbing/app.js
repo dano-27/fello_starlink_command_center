@@ -20,6 +20,7 @@
     initTabs();
     initBranches();
     initDevices();
+    initReports();
     initModal();
     loadBranches();
     loadStats();
@@ -75,6 +76,9 @@
         } else if (tab === 'map') {
           document.getElementById('view-map').classList.add('active');
           setTimeout(() => initMainMap(), 100);
+        } else if (tab === 'reports') {
+          document.getElementById('view-reports').classList.add('active');
+          loadReportBranches();
         }
       });
     });
@@ -690,5 +694,192 @@
       clearTimeout(timer);
       timer = setTimeout(() => fn.apply(this, args), delay);
     };
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════
+  //  REPORTS VIEW
+  // ═══════════════════════════════════════════════════════════════════════
+
+  let reportChartInstance = null;
+  let currentReportData = [];
+
+  function initReports() {
+    // Set default dates: first of current month to today
+    const now = new Date();
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+    
+    // pad month and day with 0 if needed
+    const startM = String(firstDay.getMonth() + 1).padStart(2, '0');
+    const startD = String(firstDay.getDate()).padStart(2, '0');
+    const endM = String(now.getMonth() + 1).padStart(2, '0');
+    const endD = String(now.getDate()).padStart(2, '0');
+    
+    document.getElementById('report-start-date').value = `${firstDay.getFullYear()}-${startM}-${startD}`;
+    document.getElementById('report-end-date').value = `${now.getFullYear()}-${endM}-${endD}`;
+    
+    document.getElementById('btn-generate-report').addEventListener('click', generateReport);
+    document.getElementById('btn-export-csv').addEventListener('click', exportReportCSV);
+  }
+
+  async function loadReportBranches() {
+    try {
+      const res = await fetch('/api/webbing/branches/list?pageSize=1000');
+      if (res.ok) {
+        const data = await res.json();
+        const select = document.getElementById('report-branch-select');
+        select.innerHTML = '<option value="">Select a branch...</option>' + 
+          data.branches.map(b => `<option value="${b.branchId}">${esc(b.branchName)} (#${b.branchId}) - ${b.total} devices</option>`).join('');
+      }
+    } catch (e) { console.error('Failed to load branches for reports', e); }
+  }
+  
+  // Format Date to MM/dd/yyyy for API
+  function formatApiDate(dateStr) {
+    if (!dateStr) return '';
+    const [y, m, d] = dateStr.split('-');
+    return `${m}/${d}/${y}`;
+  }
+
+  async function generateReport() {
+    const select = document.getElementById('report-branch-select');
+    const branchId = select.value;
+    const branchName = select.options[select.selectedIndex]?.text || '';
+    
+    if (!branchId) return alert('Please select a branch.');
+    
+    const startStr = document.getElementById('report-start-date').value;
+    const endStr = document.getElementById('report-end-date').value;
+    
+    if (!startStr || !endStr) return alert('Please select both start and end dates.');
+    
+    const startApi = formatApiDate(startStr);
+    const endApi = formatApiDate(endStr);
+    
+    const countMatch = branchName.match(/(\d+) devices/);
+    const deviceCount = countMatch ? countMatch[1] : '...';
+    
+    document.getElementById('report-results-container').classList.add('hidden');
+    document.getElementById('report-loading-container').classList.remove('hidden');
+    document.getElementById('report-loading-text').textContent = `Generating report for ~${deviceCount} devices. This may take a while...`;
+    
+    try {
+      const res = await fetch(`/api/webbing/branches/${branchId}/usage?start=${startApi}&end=${endApi}&interval=Unknown`);
+      if (!res.ok) throw new Error('Failed to generate report');
+      
+      const data = await res.json();
+      currentReportData = data.results;
+      
+      // Render Results
+      document.getElementById('report-loading-container').classList.add('hidden');
+      document.getElementById('report-results-container').classList.remove('hidden');
+      
+      const totalGB = (data.totals.totalUsage / 1024).toFixed(2);
+      document.getElementById('report-total-gb').textContent = `${totalGB} GB`;
+      document.getElementById('report-devices-active').textContent = `${data.totals.devicesWithUsage} / ${data.totals.totalDevices}`;
+      document.getElementById('report-date-range').textContent = `${startApi} - ${endApi}`;
+      
+      renderReportTable(data.results);
+      renderReportChart(data.results);
+      
+    } catch (e) {
+      document.getElementById('report-loading-container').classList.add('hidden');
+      alert(`Error: ${e.message}`);
+    }
+  }
+
+  function renderReportTable(results) {
+    const tbody = document.getElementById('report-tbody');
+    if (!results || results.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="8" class="empty-row">No usage data found.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = results.map(r => {
+      const mb = parseFloat(r.TotalUsage || 0);
+      const gb = mb / 1024;
+      const statusClass = r.StatusName === 'Active' ? 'active' : (r.StatusName === 'Suspended' ? 'suspended' : 'inactive');
+      
+      return `<tr>
+        <td><strong>${esc(r.SSID || '—')}</strong></td>
+        <td>${esc(r.Serial || '—')}</td>
+        <td class="mono">${esc(r.IMEI || '—')}</td>
+        <td class="plan-cell" title="${esc(r.ProductName || '')}">${truncate(r.ProductName || '—', 30)}</td>
+        <td><span class="status-badge ${statusClass}">${r.StatusName || '—'}</span></td>
+        <td style="text-align:right">${mb.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+        <td style="text-align:right"><strong>${gb.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</strong></td>
+        <td style="text-align:right">${r.TotalUsageDays || 0}</td>
+      </tr>`;
+    }).join('');
+  }
+
+  function renderReportChart(results) {
+    const top20 = results.slice(0, 20).filter(r => r.TotalUsage > 0);
+    
+    const ctx = document.getElementById('report-chart').getContext('2d');
+    if (reportChartInstance) reportChartInstance.destroy();
+    
+    if (top20.length === 0) {
+        return;
+    }
+    
+    reportChartInstance = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: top20.map(r => truncate(r.SSID || r.Serial || r.IMEI || 'Unknown', 15)),
+        datasets: [{
+          label: 'Data Used (GB)',
+          data: top20.map(r => (r.TotalUsage / 1024).toFixed(2)),
+          backgroundColor: 'rgba(59, 130, 246, 0.7)',
+          borderColor: 'rgba(59, 130, 246, 1)',
+          borderWidth: 1,
+          borderRadius: 4
+        }]
+      },
+      options: { 
+        responsive: true, 
+        maintainAspectRatio: false,
+        plugins: { 
+          legend: { labels: { color: '#e2e8f0' } },
+          title: { display: true, text: 'Top 20 Devices by Data Usage', color: '#e2e8f0' }
+        }, 
+        scales: { 
+          x: { ticks: { color: '#94a3b8' } }, 
+          y: { ticks: { color: '#94a3b8' }, title: { display: true, text: 'Gigabytes (GB)', color: '#94a3b8' } } 
+        } 
+      }
+    });
+  }
+
+  function exportReportCSV() {
+    if (!currentReportData || currentReportData.length === 0) return alert('No data to export.');
+    
+    const headers = ['SSID', 'Serial', 'IMEI', 'Plan', 'Status', 'Data Used (MB)', 'Data Used (GB)', 'Usage Days'];
+    const rows = currentReportData.map(r => {
+      const mb = parseFloat(r.TotalUsage || 0);
+      const gb = mb / 1024;
+      return [
+        `"${(r.SSID || '').replace(/"/g, '""')}"`,
+        `"${(r.Serial || '').replace(/"/g, '""')}"`,
+        `"${(r.IMEI || '').replace(/"/g, '""')}"`,
+        `"${(r.ProductName || '').replace(/"/g, '""')}"`,
+        `"${(r.StatusName || '').replace(/"/g, '""')}"`,
+        mb.toFixed(2),
+        gb.toFixed(4),
+        r.TotalUsageDays || 0
+      ].join(',');
+    });
+    
+    const csvContent = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    const startStr = document.getElementById('report-start-date').value;
+    const endStr = document.getElementById('report-end-date').value;
+    link.setAttribute('download', `Webbing_Usage_Report_${startStr}_to_${endStr}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   }
 })();

@@ -3875,6 +3875,98 @@ app.get('/api/webbing/plans/available', (req, res) => {
   res.json({ plans });
 });
 
+// ── Webbing Branch Usage Report ─────────────────────────────────────────
+app.get('/api/webbing/branches/:branchId/usage', async (req, res) => {
+  try {
+    const branchId = parseInt(req.params.branchId);
+    const { start, end, interval = 'Unknown', limit = 0 } = req.query;
+    
+    if (!start || !end) {
+      return res.status(400).json({ error: 'start and end dates are required (MM/dd/yyyy)' });
+    }
+
+    const devices = webbingDeviceCache.filter(d => d.BranchID === branchId);
+
+    if (devices.length === 0) {
+      return res.json({ totals: { totalUsage: 0, totalDevices: 0, devicesWithUsage: 0 }, results: [] });
+    }
+    
+    const limitNum = parseInt(limit, 10);
+    const devicesToProcess = limitNum > 0 ? devices.slice(0, limitNum) : devices;
+    
+    const client = getWebbingClient();
+    const results = [];
+    let totalUsageMB = 0;
+    let devicesWithUsage = 0;
+
+    for (const device of devicesToProcess) {
+      try {
+        const usageData = await client.getDeviceUsage(device.ServiceDeviceID, start, end, interval);
+        let records = [];
+        if (usageData && usageData.DeviceUsageRecord) {
+            records = Array.isArray(usageData.DeviceUsageRecord) ? usageData.DeviceUsageRecord : [usageData.DeviceUsageRecord];
+        } else if (usageData && usageData.DeviceUsageRecords && usageData.DeviceUsageRecords.DeviceUsageRecord) {
+            records = Array.isArray(usageData.DeviceUsageRecords.DeviceUsageRecord) ? usageData.DeviceUsageRecords.DeviceUsageRecord : [usageData.DeviceUsageRecords.DeviceUsageRecord];
+        }
+
+        let usageMB = 0;
+        let usageDays = 0;
+        
+        for (const r of records) {
+            usageMB += parseFloat(r.TotalUsage || 0);
+            usageDays += parseInt(r.TotalUsageDays || 0, 10);
+        }
+        
+        if (usageMB > 0) {
+            devicesWithUsage++;
+        }
+        
+        totalUsageMB += usageMB;
+
+        results.push({
+            SSID: device.SSID,
+            Serial: device.Serial,
+            IMEI: device.IMEI,
+            ProductName: device.ProductName,
+            TotalUsage: usageMB,
+            TotalUsageDays: usageDays,
+            ServiceDeviceID: device.ServiceDeviceID,
+            StatusName: device.StatusName
+        });
+      } catch (err) {
+        console.error(`Error fetching usage for device ${device.ServiceDeviceID}:`, err);
+        results.push({
+            SSID: device.SSID,
+            Serial: device.Serial,
+            IMEI: device.IMEI,
+            ProductName: device.ProductName,
+            TotalUsage: 0,
+            TotalUsageDays: 0,
+            ServiceDeviceID: device.ServiceDeviceID,
+            StatusName: device.StatusName
+        });
+      }
+      
+      // 200ms delay between calls
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+
+    results.sort((a, b) => b.TotalUsage - a.TotalUsage);
+
+    res.json({
+      totals: {
+        totalUsage: totalUsageMB,
+        totalDevices: devicesToProcess.length,
+        devicesWithUsage: devicesWithUsage
+      },
+      results: results
+    });
+  } catch (error) {
+    console.error('Error generating branch usage report:', error);
+    res.status(500).json({ error: 'Failed to generate report' });
+  }
+});
+
 // Hub landing page
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));

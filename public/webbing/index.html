@@ -22,6 +22,7 @@
           <button class="tab-btn active" data-tab="branches" id="tab-branches">Branches</button>
           <button class="tab-btn" data-tab="all-devices" id="tab-all-devices">All Devices</button>
           <button class="tab-btn" data-tab="map" id="tab-map">Map</button>
+          <button class="tab-btn" data-tab="reports" id="tab-reports">Reports</button>
         </div>
       </div>
       <div class="header-right">
@@ -191,6 +192,79 @@
     <!-- ═══ MAP VIEW ═══ -->
     <div class="tab-content" id="view-map">
       <div id="map-container" style="width:100%;height:calc(100vh - 200px);border-radius:12px;overflow:hidden;"></div>
+    </div>
+
+    <!-- ═══ REPORTS VIEW ═══ -->
+    <div class="tab-content" id="view-reports">
+      <div class="toolbar" style="gap: 16px; align-items: flex-end;">
+        <div style="flex: 1; min-width: 250px;">
+          <label style="display: block; font-size: 11px; color: #94a3b8; text-transform: uppercase; font-weight: 600; margin-bottom: 6px;">Select Branch</label>
+          <select class="filter-select" id="report-branch-select" style="width: 100%;">
+            <option value="">Loading branches...</option>
+          </select>
+        </div>
+        <div>
+          <label style="display: block; font-size: 11px; color: #94a3b8; text-transform: uppercase; font-weight: 600; margin-bottom: 6px;">Start Date</label>
+          <input type="date" class="search-input" id="report-start-date" style="min-width: auto; padding: 9px 14px;">
+        </div>
+        <div>
+          <label style="display: block; font-size: 11px; color: #94a3b8; text-transform: uppercase; font-weight: 600; margin-bottom: 6px;">End Date</label>
+          <input type="date" class="search-input" id="report-end-date" style="min-width: auto; padding: 9px 14px;">
+        </div>
+        <div>
+          <button class="btn-action btn-success" id="btn-generate-report" style="padding: 10px 20px; font-weight: 600;">Generate Report</button>
+        </div>
+      </div>
+
+      <!-- Loading / Progress -->
+      <div id="report-loading-container" class="hidden" style="background: rgba(59,130,246,0.1); border: 1px solid rgba(59,130,246,0.2); border-radius: 8px; padding: 24px; margin: 16px 0; text-align: center;">
+        <div class="loading-spinner" id="report-loading-text" style="font-size: 16px;">Generating report for X devices...</div>
+      </div>
+
+      <!-- Results Area -->
+      <div id="report-results-container" class="hidden">
+        <!-- Summary Bar -->
+        <div class="stats-bar stats-bar-branch" style="padding: 16px 0;">
+          <div class="stat-card stat-active">
+            <div class="stat-label">Total Data Used</div>
+            <div class="stat-value" id="report-total-gb">0 GB</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Devices With Usage</div>
+            <div class="stat-value" id="report-devices-active">0 / 0</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label">Date Range</div>
+            <div class="stat-value" id="report-date-range" style="font-size: 16px; margin-top: 10px;">—</div>
+          </div>
+          <div style="display: flex; align-items: center; justify-content: flex-end;">
+             <button class="btn-action" id="btn-export-csv" style="padding: 12px 24px;">Export CSV</button>
+          </div>
+        </div>
+        
+        <!-- Chart -->
+        <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06); border-radius: 10px; padding: 20px; margin-bottom: 20px; height: 350px;">
+           <canvas id="report-chart"></canvas>
+        </div>
+
+        <div class="table-container">
+          <table class="data-table" id="report-table">
+            <thead>
+              <tr>
+                <th>SSID</th>
+                <th>Serial</th>
+                <th>IMEI</th>
+                <th>Plan/Carrier</th>
+                <th>Status</th>
+                <th style="text-align: right;">Data Used (MB)</th>
+                <th style="text-align: right;">Data Used (GB)</th>
+                <th style="text-align: right;">Usage Days</th>
+              </tr>
+            </thead>
+            <tbody id="report-tbody"></tbody>
+          </table>
+        </div>
+      </div>
     </div>
 
     <!-- ═══ DEVICE DETAIL MODAL ═══ -->

@@ -318,13 +318,18 @@ class WebbingClient {
   /**
    * Get data usage for a device
    */
-  async getDeviceUsage(identifier, startDate, endDate, groupBy = 'Day') {
+  async getDeviceUsage(identifier, startDate, endDate, interval = 'Unknown') {
     return this.call('usage', 'GetDeviceUsage', {
       GetDeviceUsageRequest: {
         ServiceDeviceIdentifier: buildIdentifier(identifier),
-        StartDate: startDate,   // MM/dd/yyyy
-        EndDate: endDate,       // MM/dd/yyyy
-        GroupBy: groupBy,       // Day, Month, Country, Assignment, APN
+        AssignmentID: 0,
+        ProductID: 0,
+        StartDate: startDate,
+        EndDate: endDate,
+        DeviceTimeInterval: interval,  // 'Unknown' for total, 'ByDay', 'ByMonth'
+        GroupByCountry: false,
+        GroupByAssignment: false,
+        GroupByApn: false,
         PaginationRequest: { PageSize: 1000, PageNumber: 1 }
       }
     });
