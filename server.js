@@ -4385,10 +4385,16 @@ app.get('/api/lookup', async (req, res) => {
             if (!serial) continue;
             
             try {
-              const abmDevice = await abmLookupDevice(serial);
+              let abmDevice = await abmLookupDevice(serial);
               if (!abmDevice) {
                 console.log(`[Lookup] ABM: no record for serial ${serial}`);
                 continue;
+              }
+              
+              // Handle double-nested .data wrapper: abmLookupDevice returns .data, 
+              // but ABM response wraps device in another .data
+              if (abmDevice.data && abmDevice.data.attributes) {
+                abmDevice = abmDevice.data;
               }
               
               // Extract IMEI(s) from ABM response
@@ -4397,7 +4403,10 @@ app.get('/api/lookup', async (req, res) => {
               const imeiList = Array.isArray(imeis) ? imeis : [imeis];
               const cleanImeis = imeiList.map(i => String(i).replace(/\s/g, '')).filter(Boolean);
               
-              if (cleanImeis.length === 0) continue;
+              if (cleanImeis.length === 0) {
+                console.log(`[Lookup] ABM: no IMEI for serial ${serial}`);
+                continue;
+              }
               
               ipad.abmImei = cleanImeis[0];
               ipad.allImeis = cleanImeis;
@@ -4405,7 +4414,7 @@ app.get('/api/lookup', async (req, res) => {
               // Find matching Webbing SIM by IMEI
               const matchedSim = webbingDevices.find(sim => 
                 sim.imei && cleanImeis.some(abmImei => 
-                  sim.imei.includes(abmImei) || abmImei.includes(sim.imei)
+                  sim.imei === abmImei || sim.imei.includes(abmImei) || abmImei.includes(sim.imei)
                 )
               );
               
@@ -4425,10 +4434,15 @@ app.get('/api/lookup', async (req, res) => {
                 ipad.matchedSimSerial = matchedSim.serial;
                 matchedSim.matchedIpadName = ipad.name;
                 matchedSim.matchedIpadSerial = ipad.serial;
+              } else {
+                console.log(`[Lookup] ABM: IMEI ${cleanImeis[0]} for ${serial} — no SIM match in this branch`);
+                ipad.abmImei = cleanImeis[0]; // Still show the IMEI even if no match
               }
             } catch (lookupErr) {
               console.error(`[Lookup] ABM lookup error for ${serial}:`, lookupErr.message);
             }
+            // Small delay to avoid rate limiting
+            await new Promise(r => setTimeout(r, 100));
           }
           console.log(`[Lookup] ABM IMEI matching: ${matches.length} pairs out of ${simpleMdmDevices.length} iPads`);
         }
