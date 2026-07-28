@@ -3342,6 +3342,304 @@ app.post('/api/cobrowse/connect', async (req, res) => {
   }
 });
 
+// ══════════════════════════════════════════════════════════════════════
+//  WEBBING WWS API INTEGRATION
+// ══════════════════════════════════════════════════════════════════════
+
+const { WebbingClient, WebbingApiError, normalizeArray } = require('./webbing-client');
+
+// Initialize client from env vars
+let webbingClient = null;
+function getWebbingClient() {
+  if (!webbingClient) {
+    const username = process.env.WEBBING_USERNAME;
+    const password = process.env.WEBBING_PASSWORD;
+    const wsKey = process.env.WEBBING_WSKEY;
+    if (!username || !password || !wsKey) {
+      throw new Error('Webbing credentials not configured. Set WEBBING_USERNAME, WEBBING_PASSWORD, WEBBING_WSKEY environment variables.');
+    }
+    webbingClient = new WebbingClient({ username, password, wsKey });
+  }
+  return webbingClient;
+}
+
+// ── Device Inventory Cache ──────────────────────────────────────────────
+let webbingDeviceCache = [];
+let webbingCacheTime = null;
+let webbingSyncing = false;
+const WEBBING_SYNC_INTERVAL = 15 * 60 * 1000; // 15 minutes
+
+async function syncWebbingDevices(forceAll = false) {
+  if (webbingSyncing) return;
+  webbingSyncing = true;
+  try {
+    const client = getWebbingClient();
+    let options = {};
+
+    // Delta sync if we have a recent cache
+    if (!forceAll && webbingCacheTime && webbingDeviceCache.length > 0) {
+      const since = new Date(webbingCacheTime.getTime() - 60000).toISOString(); // 1 min overlap
+      options.fromUpdatedAt = since;
+      console.log(`[Webbing] Delta sync from ${since}...`);
+      const result = await client.getAllServiceDevices(options);
+      // Merge updates into cache
+      const updatedIds = new Set(result.devices.map(d => d.ServiceDeviceID));
+      webbingDeviceCache = webbingDeviceCache.filter(d => !updatedIds.has(d.ServiceDeviceID));
+      webbingDeviceCache.push(...result.devices);
+      console.log(`[Webbing] Delta sync: ${result.devices.length} updated, total ${webbingDeviceCache.length} devices`);
+    } else {
+      console.log(`[Webbing] Full inventory sync starting...`);
+      const result = await client.getAllServiceDevices(options);
+      webbingDeviceCache = result.devices;
+      console.log(`[Webbing] Full sync complete: ${result.total} devices`);
+    }
+    webbingCacheTime = new Date();
+  } catch (err) {
+    console.error(`[Webbing] Sync error:`, err.message);
+  } finally {
+    webbingSyncing = false;
+  }
+}
+
+// Start periodic sync
+setTimeout(() => {
+  try { syncWebbingDevices(true); } catch (e) { console.error('[Webbing] Initial sync failed:', e.message); }
+}, 5000); // 5 second delay on startup
+
+setInterval(() => {
+  try { syncWebbingDevices(false); } catch (e) { console.error('[Webbing] Periodic sync failed:', e.message); }
+}, WEBBING_SYNC_INTERVAL);
+
+// ── Webbing Config Check ────────────────────────────────────────────────
+app.get('/api/webbing/config', (req, res) => {
+  const configured = !!(process.env.WEBBING_USERNAME && process.env.WEBBING_PASSWORD && process.env.WEBBING_WSKEY);
+  res.json({ configured, deviceCount: webbingDeviceCache.length, lastSync: webbingCacheTime });
+});
+
+// ── Device Inventory (cached, with server-side search/filter/paginate) ──
+app.get('/api/webbing/devices', (req, res) => {
+  try {
+    const { page = 1, pageSize = 100, status, branch, search, deviceType } = req.query;
+    let devices = [...webbingDeviceCache];
+
+    // Filter by status
+    if (status && status !== '0') {
+      devices = devices.filter(d => d.StatusID == status);
+    }
+    // Filter by branch
+    if (branch && branch !== '0') {
+      devices = devices.filter(d => d.BranchID == branch);
+    }
+    // Filter by device type
+    if (deviceType && deviceType !== '0') {
+      devices = devices.filter(d => d.DeviceTypeID == deviceType);
+    }
+    // Search
+    if (search) {
+      const q = search.toLowerCase();
+      devices = devices.filter(d =>
+        (d.SSID && d.SSID.toLowerCase().includes(q)) ||
+        (d.Serial && d.Serial.toLowerCase().includes(q)) ||
+        (d.IMEI && d.IMEI.toLowerCase().includes(q)) ||
+        (d.MSISDN && d.MSISDN.toLowerCase().includes(q)) ||
+        (d.ProductName && d.ProductName.toLowerCase().includes(q)) ||
+        (d.BranchName && d.BranchName.toLowerCase().includes(q))
+      );
+    }
+
+    // Stats
+    const stats = {
+      total: webbingDeviceCache.length,
+      filtered: devices.length,
+      active: webbingDeviceCache.filter(d => d.StatusID === 3).length,
+      suspended: webbingDeviceCache.filter(d => d.StatusID === 4).length,
+      inactive: webbingDeviceCache.filter(d => d.StatusID === 2).length,
+      deactivated: webbingDeviceCache.filter(d => d.StatusID === 5).length
+    };
+
+    // Get unique branches for filter dropdown
+    const branches = [...new Set(webbingDeviceCache.map(d => JSON.stringify({ id: d.BranchID, name: d.BranchName })))].map(b => JSON.parse(b));
+
+    // Paginate
+    const p = parseInt(page);
+    const ps = parseInt(pageSize);
+    const start = (p - 1) * ps;
+    const paged = devices.slice(start, start + ps);
+
+    res.json({
+      devices: paged,
+      stats,
+      branches,
+      pagination: {
+        page: p,
+        pageSize: ps,
+        totalRecords: devices.length,
+        totalPages: Math.ceil(devices.length / ps)
+      },
+      lastSync: webbingCacheTime
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Force Sync ──────────────────────────────────────────────────────────
+app.post('/api/webbing/sync', async (req, res) => {
+  try {
+    await syncWebbingDevices(req.body?.full === true);
+    res.json({ ok: true, deviceCount: webbingDeviceCache.length, lastSync: webbingCacheTime });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Device Stats ────────────────────────────────────────────────────────
+app.get('/api/webbing/stats', (req, res) => {
+  const devices = webbingDeviceCache;
+  const planCounts = {};
+  const branchCounts = {};
+  devices.forEach(d => {
+    planCounts[d.ProductName || 'Unknown'] = (planCounts[d.ProductName || 'Unknown'] || 0) + 1;
+    branchCounts[d.BranchName || 'Unknown'] = (branchCounts[d.BranchName || 'Unknown'] || 0) + 1;
+  });
+
+  res.json({
+    total: devices.length,
+    active: devices.filter(d => d.StatusID === 3).length,
+    suspended: devices.filter(d => d.StatusID === 4).length,
+    inactive: devices.filter(d => d.StatusID === 2).length,
+    deactivated: devices.filter(d => d.StatusID === 5).length,
+    byPlan: planCounts,
+    byBranch: branchCounts,
+    lastSync: webbingCacheTime
+  });
+});
+
+// ── Live Telemetry ──────────────────────────────────────────────────────
+app.get('/api/webbing/devices/:id/live', async (req, res) => {
+  try {
+    const client = getWebbingClient();
+    const result = await client.getLiveData(parseInt(req.params.id));
+    res.json(result);
+  } catch (err) {
+    res.status(err instanceof WebbingApiError ? 400 : 500).json({ error: err.message });
+  }
+});
+
+// ── Device Location ─────────────────────────────────────────────────────
+app.get('/api/webbing/devices/:id/location', async (req, res) => {
+  try {
+    const client = getWebbingClient();
+    const result = await client.getLocation(parseInt(req.params.id));
+    res.json(result);
+  } catch (err) {
+    res.status(err instanceof WebbingApiError ? 400 : 500).json({ error: err.message });
+  }
+});
+
+// ── Device Usage ────────────────────────────────────────────────────────
+app.get('/api/webbing/devices/:id/usage', async (req, res) => {
+  try {
+    const client = getWebbingClient();
+    const { start, end, groupBy } = req.query;
+    // Default to last 30 days
+    const endDate = end || new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+    const startDate = start || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+    const result = await client.getDeviceUsage(parseInt(req.params.id), startDate, endDate, groupBy || 'Day');
+    res.json(result);
+  } catch (err) {
+    res.status(err instanceof WebbingApiError ? 400 : 500).json({ error: err.message });
+  }
+});
+
+// ── Activate Device ─────────────────────────────────────────────────────
+app.post('/api/webbing/devices/:id/activate', async (req, res) => {
+  try {
+    const client = getWebbingClient();
+    const result = await client.activateDevice(parseInt(req.params.id));
+    // Trigger a delta sync to update cache
+    setTimeout(() => syncWebbingDevices(false), 2000);
+    res.json({ success: true, result });
+  } catch (err) {
+    res.status(err instanceof WebbingApiError ? 400 : 500).json({ error: err.message });
+  }
+});
+
+// ── Suspend Device ──────────────────────────────────────────────────────
+app.post('/api/webbing/devices/:id/suspend', async (req, res) => {
+  try {
+    const client = getWebbingClient();
+    const result = await client.suspendDevice(parseInt(req.params.id));
+    setTimeout(() => syncWebbingDevices(false), 2000);
+    res.json({ success: true, result });
+  } catch (err) {
+    res.status(err instanceof WebbingApiError ? 400 : 500).json({ error: err.message });
+  }
+});
+
+// ── IMEI Lock ───────────────────────────────────────────────────────────
+app.get('/api/webbing/devices/:id/imei-lock', async (req, res) => {
+  try {
+    const client = getWebbingClient();
+    const device = webbingDeviceCache.find(d => d.ServiceDeviceID == req.params.id);
+    if (!device) return res.status(404).json({ error: 'Device not found in cache' });
+    // GetIMEILock needs ICCID — find from device data
+    const result = await client.getIMEILock(device.ICCID || device.Serial);
+    res.json(result);
+  } catch (err) {
+    res.status(err instanceof WebbingApiError ? 400 : 500).json({ error: err.message });
+  }
+});
+
+// ── Send SMS ────────────────────────────────────────────────────────────
+app.post('/api/webbing/devices/:id/sms', async (req, res) => {
+  try {
+    const client = getWebbingClient();
+    const { message } = req.body;
+    if (!message) return res.status(400).json({ error: 'Message is required' });
+    const result = await client.sendSMS(parseInt(req.params.id), message);
+    res.json({ success: true, result });
+  } catch (err) {
+    res.status(err instanceof WebbingApiError ? 400 : 500).json({ error: err.message });
+  }
+});
+
+// ── Branches ────────────────────────────────────────────────────────────
+app.get('/api/webbing/branches', async (req, res) => {
+  try {
+    const client = getWebbingClient();
+    const result = await client.searchBranches(req.query.search || '');
+    res.json(result);
+  } catch (err) {
+    res.status(err instanceof WebbingApiError ? 400 : 500).json({ error: err.message });
+  }
+});
+
+// ── Plans ───────────────────────────────────────────────────────────────
+app.get('/api/webbing/plans', async (req, res) => {
+  try {
+    const client = getWebbingClient();
+    const result = await client.getProducts();
+    res.json(result);
+  } catch (err) {
+    res.status(err instanceof WebbingApiError ? 400 : 500).json({ error: err.message });
+  }
+});
+
+// ── Usage Overview ──────────────────────────────────────────────────────
+app.get('/api/webbing/usage/overview', async (req, res) => {
+  try {
+    const client = getWebbingClient();
+    const { start, end } = req.query;
+    const endDate = end || new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+    const startDate = start || new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+    const countryUsage = await client.getCountryUsage(startDate, endDate);
+    res.json({ countryUsage });
+  } catch (err) {
+    res.status(err instanceof WebbingApiError ? 400 : 500).json({ error: err.message });
+  }
+});
+
 // Hub landing page
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));

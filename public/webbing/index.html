@@ -1,111 +1,255 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Webbing IoT — Fello Command Center</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <style>
-    :root {
-      --blue: #3166ae;
-      --black: #232428;
-      --charcol: #3e3e40;
-      --gray: #fafafa;
-      --border: #cfccca;
-      --dark-gray-shade: #636363;
-      --sky: #e1edfd;
-      --light-blue: #f4f6fa;
-    }
-    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: 'Montserrat', sans-serif;
-      background: var(--gray);
-      color: var(--black);
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-    }
-    .back-to-hub {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 10px 20px;
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--blue);
-      text-decoration: none;
-      border-radius: 40px;
-      background: var(--sky);
-      margin: 12px 16px;
-      transition: all 0.2s ease;
-    }
-    .back-to-hub:hover { background: var(--blue); color: white; }
-    .coming-soon {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      text-align: center;
-      padding: 48px 24px;
-    }
-    .coming-soon-icon {
-      font-size: 72px;
-      margin-bottom: 24px;
-      opacity: 0.8;
-    }
-    .coming-soon h1 {
-      font-size: 28px;
-      font-weight: 700;
-      margin-bottom: 8px;
-      color: var(--black);
-    }
-    .coming-soon p {
-      font-size: 15px;
-      color: var(--dark-gray-shade);
-      max-width: 420px;
-      line-height: 1.6;
-      margin-bottom: 24px;
-    }
-    .coming-soon .info-box {
-      background: white;
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      padding: 24px 32px;
-      max-width: 460px;
-      text-align: left;
-    }
-    .info-box h3 {
-      font-size: 14px;
-      font-weight: 600;
-      margin-bottom: 12px;
-      color: var(--blue);
-    }
-    .info-box ol {
-      font-size: 13px;
-      color: var(--charcol);
-      line-height: 1.8;
-      padding-left: 20px;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Webbing IoT Dashboard — Fello IT Admin</title>
+    <meta name="description" content="Webbing IoT Dashboard for cellular SIM management.">
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <link rel="stylesheet" href="style.css">
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-  <a href="/" class="back-to-hub">← Back to Command Center</a>
-  <div class="coming-soon">
-    <div class="coming-soon-icon">📶</div>
-    <h1>Webbing IoT</h1>
-    <p>Cellular SIM management dashboard is coming soon. Webbing's API requires enterprise credentials to access.</p>
-    <div class="info-box">
-      <h3>To enable this dashboard:</h3>
-      <ol>
-        <li>Log into <strong>mywebbing.webbing.com</strong></li>
-        <li>Navigate to Developer / API settings</li>
-        <li>Generate an API key or Bearer token</li>
-        <li>Share the API docs URL and key format</li>
-      </ol>
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- Dashboard Layout -->
+    <div class="dashboard" id="dashboard">
+        <!-- Top Bar -->
+        <header class="topbar glass-panel">
+            <div class="topbar-left">
+                <a href="/" class="back-link">← Back to Command Center</a>
+            </div>
+            <div class="topbar-center">
+                <div class="brand">
+                    <span class="brand-icon">📶</span>
+                    <span>Webbing IoT Dashboard</span>
+                </div>
+                <nav class="tabs" id="main-tabs">
+                    <button class="tab active" data-tab="inventory" id="tab-inventory">Inventory</button>
+                    <button class="tab" data-tab="usage" id="tab-usage">Usage</button>
+                    <button class="tab" data-tab="map" id="tab-map">Map</button>
+                </nav>
+            </div>
+            <div class="topbar-right">
+                <button class="btn btn-outline btn-sm" id="btn-refresh" title="Refresh Data">
+                    🔄 Refresh
+                </button>
+            </div>
+        </header>
+
+        <!-- Main Content Area -->
+        <main class="content-area">
+            
+            <!-- SECTION: Inventory -->
+            <section id="view-inventory" class="view-section active">
+                <!-- Stats Row -->
+                <div class="stats-grid">
+                    <div class="stat-card glass-panel">
+                        <div class="stat-label">Total Devices</div>
+                        <div class="stat-value" id="stat-total-devices">—</div>
+                    </div>
+                    <div class="stat-card glass-panel">
+                        <div class="stat-label">Active</div>
+                        <div class="stat-value text-success" id="stat-active-devices">—</div>
+                    </div>
+                    <div class="stat-card glass-panel">
+                        <div class="stat-label">Suspended</div>
+                        <div class="stat-value text-warning" id="stat-suspended-devices">—</div>
+                    </div>
+                    <div class="stat-card glass-panel">
+                        <div class="stat-label">Total Data (30d)</div>
+                        <div class="stat-value" id="stat-total-data">—</div>
+                    </div>
+                </div>
+
+                <!-- Toolbar -->
+                <div class="toolbar glass-panel">
+                    <div class="search-box">
+                        <input type="text" id="search-input" placeholder="Search SSID, Serial, IMEI...">
+                    </div>
+                    <div class="filters">
+                        <select id="filter-status" class="filter-select">
+                            <option value="">All Statuses</option>
+                            <option value="active">Active</option>
+                            <option value="suspended">Suspended</option>
+                            <option value="inactive">Inactive</option>
+                            <option value="deactivated">Deactivated</option>
+                        </select>
+                        <select id="filter-branch" class="filter-select">
+                            <option value="">All Branches</option>
+                        </select>
+                        <select id="filter-type" class="filter-select">
+                            <option value="">All Device Types</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Table -->
+                <div class="table-container glass-panel">
+                    <table class="data-table" id="inventory-table">
+                        <thead>
+                            <tr>
+                                <th>SSID</th>
+                                <th>Serial</th>
+                                <th>IMEI</th>
+                                <th>Status</th>
+                                <th>Plan</th>
+                                <th>Branch</th>
+                                <th>Last Updated</th>
+                            </tr>
+                        </thead>
+                        <tbody id="inventory-tbody">
+                            <!-- Rows injected by JS -->
+                        </tbody>
+                    </table>
+                </div>
+                
+                <!-- Pagination -->
+                <div class="pagination" id="pagination-controls">
+                    <button class="btn btn-outline btn-sm" id="btn-prev-page" disabled>Previous</button>
+                    <span id="page-indicator">Page 1</span>
+                    <button class="btn btn-outline btn-sm" id="btn-next-page">Next</button>
+                </div>
+            </section>
+
+            <!-- SECTION: Usage Overview -->
+            <section id="view-usage" class="view-section hidden">
+                <div class="usage-grid">
+                    <div class="chart-card glass-panel full-width">
+                        <h3>Total Data Consumption (Last 30 Days)</h3>
+                        <div class="chart-container">
+                            <canvas id="usage-chart-main"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-card glass-panel half-width">
+                        <h3>Top 10 Data Consumers</h3>
+                        <div class="table-container small-table">
+                            <table class="data-table" id="top-consumers-table">
+                                <thead>
+                                    <tr>
+                                        <th>SSID</th>
+                                        <th>Usage (GB)</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="top-consumers-tbody"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                    <div class="chart-card glass-panel half-width">
+                        <h3>Usage by Country</h3>
+                        <div class="chart-container">
+                            <canvas id="usage-chart-country"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- SECTION: Map -->
+            <section id="view-map" class="view-section hidden">
+                <div class="map-card glass-panel">
+                    <div id="main-map"></div>
+                </div>
+            </section>
+        </main>
     </div>
-  </div>
+
+    <!-- Device Detail Modal -->
+    <div id="device-modal" class="modal-overlay hidden">
+        <div class="modal-dialog glass-panel">
+            <div class="modal-header">
+                <div class="modal-title-group">
+                    <h2 id="modal-title">Device Details</h2>
+                    <span class="badge" id="modal-status-badge">Active</span>
+                </div>
+                <button class="modal-close" id="btn-modal-close">&times;</button>
+            </div>
+            
+            <div class="modal-tabs">
+                <button class="modal-tab active" data-mtab="info">Info</button>
+                <button class="modal-tab" data-mtab="usage">Usage</button>
+                <button class="modal-tab" data-mtab="live">Live Telemetry</button>
+                <button class="modal-tab" data-mtab="location">Location</button>
+                <button class="modal-tab" data-mtab="controls">Controls</button>
+            </div>
+
+            <div class="modal-body">
+                <!-- Info Tab -->
+                <div id="mtab-info" class="mtab-content active">
+                    <div class="info-grid">
+                        <div class="info-item"><span class="label">SSID:</span> <span id="detail-ssid"></span></div>
+                        <div class="info-item"><span class="label">IMEI:</span> <span id="detail-imei"></span></div>
+                        <div class="info-item"><span class="label">Serial:</span> <span id="detail-serial"></span></div>
+                        <div class="info-item"><span class="label">Plan:</span> <span id="detail-plan"></span></div>
+                        <div class="info-item"><span class="label">Branch:</span> <span id="detail-branch"></span></div>
+                        <div class="info-item"><span class="label">APN:</span> <span id="detail-apn"></span></div>
+                        <div class="info-item"><span class="label">IP:</span> <span id="detail-ip"></span></div>
+                        <div class="info-item"><span class="label">MSISDN:</span> <span id="detail-msisdn"></span></div>
+                        <div class="info-item"><span class="label">Last Updated:</span> <span id="detail-updated"></span></div>
+                    </div>
+                </div>
+
+                <!-- Usage Tab -->
+                <div id="mtab-usage" class="mtab-content hidden">
+                    <div class="chart-container">
+                        <canvas id="device-usage-chart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Live Telemetry Tab -->
+                <div id="mtab-live" class="mtab-content hidden">
+                    <div class="live-card">
+                        <div class="live-header">
+                            <h3>Real-time Status</h3>
+                            <button class="btn btn-outline btn-sm" id="btn-refresh-live">🔄 Refresh</button>
+                        </div>
+                        <div class="info-grid" id="live-telemetry-grid">
+                            <div class="info-item"><span class="label">Active Status:</span> <span id="live-active"></span></div>
+                            <div class="info-item"><span class="label">Carrier (VPLMN):</span> <span id="live-carrier"></span></div>
+                            <div class="info-item"><span class="label">MCC/MNC:</span> <span id="live-mccmnc"></span></div>
+                            <div class="info-item"><span class="label">APN:</span> <span id="live-apn"></span></div>
+                            <div class="info-item"><span class="label">IP Address:</span> <span id="live-ip"></span></div>
+                            <div class="info-item"><span class="label">Last Active:</span> <span id="live-last-active"></span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Location Tab -->
+                <div id="mtab-location" class="mtab-content hidden">
+                    <div id="device-map" class="device-map-container"></div>
+                </div>
+
+                <!-- Controls Tab -->
+                <div id="mtab-controls" class="mtab-content hidden">
+                    <div class="controls-grid">
+                        <div class="control-card">
+                            <h3>Connection State</h3>
+                            <p>Current: <strong id="control-current-state">Active</strong></p>
+                            <button class="btn btn-warning" id="btn-toggle-suspend">Suspend Device</button>
+                        </div>
+                        <div class="control-card">
+                            <h3>Security</h3>
+                            <p>IMEI Lock Status: <strong id="control-imei-lock">Checking...</strong></p>
+                        </div>
+                        <div class="control-card full-width">
+                            <h3>Send SMS</h3>
+                            <div class="sms-form">
+                                <input type="text" id="sms-message" placeholder="Enter message text..." class="input-full">
+                                <button class="btn btn-primary" id="btn-send-sms">Send SMS</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
 </body>
 </html>
