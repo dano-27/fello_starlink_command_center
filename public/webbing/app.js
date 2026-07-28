@@ -200,9 +200,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function loadFilterOptions() {
         try {
-            const res = await fetch('/api/webbing/branches');
+            // Branches come from the devices endpoint response (cached)
+            const res = await fetch('/api/webbing/devices?page=1&pageSize=1');
             if (res.ok) {
-                const branches = await res.json();
+                const data = await res.json();
+                const branches = data.branches || [];
                 const branchSelect = document.getElementById('filter-branch');
                 branchSelect.innerHTML = '<option value="">All Branches</option>';
                 branches.forEach(b => {
