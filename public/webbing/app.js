@@ -23,6 +23,7 @@
     initModal();
     loadBranches();
     loadStats();
+    loadPlans();
 
     document.getElementById('btn-refresh').addEventListener('click', async () => {
       document.getElementById('sync-info').textContent = 'Syncing...';
@@ -31,6 +32,30 @@
       loadStats();
     });
   });
+
+  // ── Plans ─────────────────────────────────────────────────────────────
+  let availablePlans = [];
+  async function loadPlans() {
+    try {
+      const res = await fetch('/api/webbing/plans/available');
+      if (res.ok) {
+        const data = await res.json();
+        availablePlans = data.plans || [];
+        populatePlanDropdowns();
+      }
+    } catch (e) {
+      console.error('Failed to load plans', e);
+    }
+  }
+
+  function populatePlanDropdowns() {
+    const opts = '<option value="">Select Plan...</option>' + 
+                 availablePlans.map(p => `<option value="${p.productId}">${p.name}</option>`).join('');
+    const bulkSelect = document.getElementById('bulk-plan-select');
+    if (bulkSelect) bulkSelect.innerHTML = opts;
+    const deviceSelect = document.getElementById('device-plan-select');
+    if (deviceSelect) deviceSelect.innerHTML = opts;
+  }
 
   // ── Tabs ───────────────────────────────────────────────────────────────
   function initTabs() {
@@ -194,6 +219,71 @@
     document.getElementById('branch-devices-next').onclick = () => {
       branchDetailPage++; loadBranchDevices();
     };
+
+    // Bulk Actions
+    document.getElementById('btn-bulk-change-plan').onclick = () => handleBulkAction('change-plan');
+    document.getElementById('btn-bulk-suspend').onclick = () => handleBulkAction('suspend');
+    document.getElementById('btn-bulk-resume').onclick = () => handleBulkAction('activate');
+  }
+
+  async function handleBulkAction(action) {
+    if (!currentBranch) return;
+    
+    let url = `/api/webbing/branches/${currentBranch.branchId}/${action}`;
+    let body = {};
+    let confirmMsg = '';
+
+    if (action === 'change-plan') {
+      const productId = document.getElementById('bulk-plan-select').value;
+      if (!productId) return alert('Please select a plan first.');
+      const planName = document.getElementById('bulk-plan-select').options[document.getElementById('bulk-plan-select').selectedIndex].text;
+      confirmMsg = `Are you sure you want to change ALL devices in this branch to:\n${planName}?`;
+      body = { productId: parseInt(productId) };
+    } else if (action === 'suspend') {
+      confirmMsg = 'Are you sure you want to suspend ALL active devices in this branch?';
+    } else if (action === 'activate') {
+      confirmMsg = 'Are you sure you want to resume ALL suspended devices in this branch?';
+    }
+
+    if (!confirm(confirmMsg)) return;
+
+    const progressContainer = document.getElementById('bulk-progress-container');
+    const progressBar = document.getElementById('bulk-progress-bar');
+    const progressText = document.getElementById('bulk-progress-text');
+    const progressCount = document.getElementById('bulk-progress-count');
+    
+    progressContainer.classList.remove('hidden');
+    progressText.textContent = `Performing ${action}...`;
+    progressBar.style.width = '50%'; // Fake progress for now, real progress needs a stream, but we just wait for the response
+    progressCount.textContent = '...';
+
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: Object.keys(body).length ? JSON.stringify(body) : null
+      });
+      const data = await res.json();
+      
+      progressBar.style.width = '100%';
+      progressText.textContent = 'Done!';
+      
+      if (data.success) {
+        const successes = data.results.filter(r => r.success).length;
+        progressCount.textContent = `${successes} / ${data.results.length} succeeded`;
+        setTimeout(() => {
+          progressContainer.classList.add('hidden');
+          progressBar.style.width = '0%';
+          loadBranchDevices();
+        }, 3000);
+      } else {
+        alert(`Error: ${data.error || 'Unknown error'}`);
+        progressContainer.classList.add('hidden');
+      }
+    } catch (e) {
+      alert(`Error: ${e.message}`);
+      progressContainer.classList.add('hidden');
+    }
   }
 
   async function loadBranchDevices() {
@@ -368,6 +458,33 @@
     });
 
     document.getElementById('btn-send-sms').addEventListener('click', sendSMS);
+    document.getElementById('btn-device-change-plan').addEventListener('click', changeDevicePlan);
+  }
+
+  async function changeDevicePlan() {
+    if (!currentDevice) return;
+    const select = document.getElementById('device-plan-select');
+    const productId = select.value;
+    if (!productId) return alert('Please select a plan first.');
+    const planName = select.options[select.selectedIndex].text;
+    if (!confirm(`Are you sure you want to change the plan for this device to:\n${planName}?`)) return;
+
+    try {
+      const res = await fetch(`/api/webbing/devices/${currentDevice.ServiceDeviceID}/change-plan`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productId: parseInt(productId) })
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert('Plan changed successfully.');
+        closeModal();
+        if (currentBranch) loadBranchDevices();
+        else loadAllDevices();
+      } else {
+        alert(`Error: ${data.error || 'Unknown error'}`);
+      }
+    } catch (e) { alert(`Error: ${e.message}`); }
   }
 
   function openDeviceModal(device) {

@@ -3775,6 +3775,106 @@ app.get('/api/webbing/usage/overview', async (req, res) => {
   }
 });
 
+// ── Change Plan for single device ───────────────────────────────────────
+app.post('/api/webbing/devices/:id/change-plan', async (req, res) => {
+  try {
+    const productId = req.body.productId;
+    if (!productId) return res.status(400).json({ error: 'Missing productId' });
+    const client = getWebbingClient();
+    const result = await client.changePlan(parseInt(req.params.id), productId);
+    setTimeout(() => syncWebbingDevices(false), 2000);
+    res.json({ success: true, result });
+  } catch (err) {
+    res.status(err instanceof WebbingApiError ? 400 : 500).json({ error: err.message });
+  }
+});
+
+// ── Bulk change plan for branch ─────────────────────────────────────────
+app.post('/api/webbing/branches/:branchId/change-plan', async (req, res) => {
+  try {
+    const branchId = parseInt(req.params.branchId);
+    const productId = req.body.productId;
+    if (!productId) return res.status(400).json({ error: 'Missing productId' });
+    
+    const devices = webbingDeviceCache.filter(d => d.BranchID === branchId);
+    const client = getWebbingClient();
+    const results = [];
+    
+    for (const d of devices) {
+      try {
+        const result = await client.changePlan(d.ServiceDeviceID, productId);
+        results.push({ id: d.ServiceDeviceID, success: true });
+      } catch (e) {
+        results.push({ id: d.ServiceDeviceID, success: false, error: e.message });
+      }
+      await new Promise(r => setTimeout(r, 200));
+    }
+    setTimeout(() => syncWebbingDevices(false), 2000);
+    res.json({ success: true, results });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Bulk suspend branch devices ─────────────────────────────────────────
+app.post('/api/webbing/branches/:branchId/suspend', async (req, res) => {
+  try {
+    const branchId = parseInt(req.params.branchId);
+    const devices = webbingDeviceCache.filter(d => d.BranchID === branchId && d.StatusID === 3);
+    const client = getWebbingClient();
+    const results = [];
+    
+    for (const d of devices) {
+      try {
+        await client.suspendDevice(d.ServiceDeviceID);
+        results.push({ id: d.ServiceDeviceID, success: true });
+      } catch (e) {
+        results.push({ id: d.ServiceDeviceID, success: false, error: e.message });
+      }
+      await new Promise(r => setTimeout(r, 200));
+    }
+    setTimeout(() => syncWebbingDevices(false), 2000);
+    res.json({ success: true, results });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Bulk activate branch devices ────────────────────────────────────────
+app.post('/api/webbing/branches/:branchId/activate', async (req, res) => {
+  try {
+    const branchId = parseInt(req.params.branchId);
+    const devices = webbingDeviceCache.filter(d => d.BranchID === branchId && d.StatusID === 4);
+    const client = getWebbingClient();
+    const results = [];
+    
+    for (const d of devices) {
+      try {
+        await client.activateDevice(d.ServiceDeviceID);
+        results.push({ id: d.ServiceDeviceID, success: true });
+      } catch (e) {
+        results.push({ id: d.ServiceDeviceID, success: false, error: e.message });
+      }
+      await new Promise(r => setTimeout(r, 200));
+    }
+    setTimeout(() => syncWebbingDevices(false), 2000);
+    res.json({ success: true, results });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Get available plans ─────────────────────────────────────────────────
+app.get('/api/webbing/plans/available', (req, res) => {
+  const plans = [
+    { productId: 11127, name: 'Fello Pay as You Go (US/VZ, Canada/TELUS, and Mexico)' },
+    { productId: 11105, name: 'Fello Pay as You Go (US, Canada, and Mexico)' },
+    { productId: 11125, name: 'Fello Pay as You Go (US/AT&T, Canada/BELL, and Mexico)' },
+    { productId: 11128, name: 'Fello Pay as You Go (US/TMO, Canada/ROGERS, and Mexico)' }
+  ];
+  res.json({ plans });
+});
+
 // Hub landing page
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));

@@ -364,6 +364,18 @@ class WebbingClient {
   }
 
   /**
+   * Change carrier plan for a device
+   */
+  async changePlan(identifier, productId) {
+    return this.call('devices', 'ChangeServiceDeviceProduct', {
+      ChangeServiceDeviceProductRequest: {
+        ServiceDeviceIdentifier: buildIdentifier(identifier),
+        ProductID: productId
+      }
+    });
+  }
+
+  /**
    * Get IMEI lock info
    */
   async getIMEILock(iccid) {
