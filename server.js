@@ -26,8 +26,8 @@ const upload = multer({
 
 // ── ABM (Apple Business Manager) API ─────────────────────────────────
 const ABM_CONFIG = {
-  clientId: process.env.ABM_CLIENT_ID || 'BUSINESSAPI.29f7a116-5e25-4bf9-a7a4-96a62621fd1d',
-  keyId: process.env.ABM_KEY_ID || 'b81b2e1d-068c-4112-8c73-c2a7ebe43ca0',
+  clientId: process.env.ABM_CLIENT_ID || 'BUSINESSAPI.0965ba6c-d47a-4594-acb7-74c60e8adfe0',
+  keyId: process.env.ABM_KEY_ID || '424264f6-f8be-4b2c-bf5b-53d4051db236',
   tokenUrl: 'https://account.apple.com/auth/oauth2/v2/token',
   apiBase: 'https://api-business.apple.com/v1',
   simpleMdmServerId: '399E3FA11E9C47E1AEB621C9522C604C',
@@ -36,7 +36,7 @@ const ABM_CONFIG = {
 // Try loading private key from env or file
 let abmPrivateKey = null;
 try {
-  const pemEnv = process.env.ABM_PRIVATE_KEY;
+  const pemEnv = process.env.ABM_DEVICE_API_KEY || process.env.ABM_PRIVATE_KEY;
   if (pemEnv) {
     abmPrivateKey = crypto.createPrivateKey(pemEnv.replace(/\\n/g, '\n'));
   } else {
@@ -4092,111 +4092,17 @@ app.get('/api/webbing/branches/:branchId/match', async (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════════════════
-//  APPLE BUSINESS MANAGER (ABM) API — IMEI BRIDGE
+//  ABM IMEI BRIDGE — uses getAbmToken() from top of file
 // ══════════════════════════════════════════════════════════════════════════
 
-function getAbmCredentials() {
-  const clientId = process.env.ABM_CLIENT_ID;
-  const keyId = process.env.ABM_KEY_ID;
-  let privateKey = process.env.ABM_DEVICE_API_KEY;
-  if (!clientId || !keyId || !privateKey) return null;
-  
-  // Fix PEM format — Railway may strip newlines
-  privateKey = privateKey.replace(/\\n/g, '\n');
-  if (!privateKey.includes('\n')) {
-    // Single line PEM — reconstruct with proper line breaks
-    privateKey = privateKey
-      .replace('-----BEGIN EC PRIVATE KEY-----', '-----BEGIN EC PRIVATE KEY-----\n')
-      .replace('-----END EC PRIVATE KEY-----', '\n-----END EC PRIVATE KEY-----')
-      .replace(/(.{64})/g, '$1\n')
-      .replace(/\n\n/g, '\n');
-  }
-  
-  return { clientId, keyId, privateKey };
-}
-
-// Generate ES256-signed JWT for ABM OAuth
-function generateAbmJwt(credentials) {
-  const now = Math.floor(Date.now() / 1000);
-  
-  const header = {
-    alg: 'ES256',
-    kid: credentials.keyId,
-    typ: 'JWT'
-  };
-  
-  const payload = {
-    iss: credentials.clientId,
-    sub: credentials.clientId,
-    aud: 'https://account.apple.com/auth/oauth2/v2/token',
-    iat: now,
-    exp: now + 180 // 3 minutes
-  };
-  
-  const b64url = (obj) => Buffer.from(JSON.stringify(obj)).toString('base64url');
-  const signingInput = `${b64url(header)}.${b64url(payload)}`;
-  
-  // Sign with ES256 — use ieee-p1363 format to get raw r||s directly (no DER parsing needed)
-  const signature = crypto.sign(
-    'SHA256',
-    Buffer.from(signingInput),
-    { key: credentials.privateKey, dsaEncoding: 'ieee-p1363' }
-  );
-  
-  const rawSig = signature.toString('base64url');
-  return `${signingInput}.${rawSig}`;
-}
-
-// Get ABM OAuth access token
-let abmTokenCache = { token: null, expiresAt: 0 };
-
-async function getAbmAccessToken() {
-  const creds = getAbmCredentials();
-  if (!creds) throw new Error('ABM credentials not configured');
-  
-  // Return cached token if still valid
-  if (abmTokenCache.token && Date.now() < abmTokenCache.expiresAt) {
-    return abmTokenCache.token;
-  }
-  
-  const jwt = generateAbmJwt(creds);
-  
-  const resp = await fetch('https://account.apple.com/auth/oauth2/v2/token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      grant_type: 'client_credentials',
-      client_id: creds.clientId,
-      client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
-      client_assertion: jwt,
-      scope: 'device.read'
-    }).toString()
-  });
-  
-  if (!resp.ok) {
-    const errorText = await resp.text();
-    console.error('[ABM] Token error:', resp.status, errorText);
-    throw new Error(`ABM token request failed: ${resp.status} ${errorText}`);
-  }
-  
-  const data = await resp.json();
-  abmTokenCache = {
-    token: data.access_token,
-    expiresAt: Date.now() + ((data.expires_in || 3600) - 60) * 1000
-  };
-  
-  console.log('[ABM] Access token acquired, expires in', data.expires_in, 'seconds');
-  return data.access_token;
-}
-
-// Fetch devices from ABM orgDevices endpoint
-async function getAbmDevices(limit = 1000) {
-  const token = await getAbmAccessToken();
+// Fetch all devices from ABM orgDevices endpoint
+async function getAbmDeviceList(limit = 1000) {
+  const token = await getAbmToken();
   const devices = [];
   let cursor = null;
   
   while (true) {
-    let url = `https://api-business.apple.com/v1/orgDevices?limit=${Math.min(limit, 1000)}`;
+    let url = `${ABM_CONFIG.apiBase}/orgDevices?limit=${Math.min(limit, 1000)}`;
     if (cursor) url += `&cursor=${cursor}`;
     
     const resp = await fetch(url, {
@@ -4213,7 +4119,6 @@ async function getAbmDevices(limit = 1000) {
     const items = data.devices || data.data || [];
     devices.push(...items);
     
-    // Check for pagination
     cursor = data.cursor || data.next;
     if (!cursor || devices.length >= limit) break;
   }
@@ -4224,7 +4129,7 @@ async function getAbmDevices(limit = 1000) {
 
 // Build serial→IMEI map from ABM devices
 async function buildAbmImeiMap() {
-  const devices = await getAbmDevices();
+  const devices = await getAbmDeviceList();
   const map = new Map();
   
   for (const d of devices) {
@@ -4243,83 +4148,37 @@ async function buildAbmImeiMap() {
   return map;
 }
 
-// ── Debug: Test ABM API connection (step-by-step) ─────────────────────
+// ── Debug: Test ABM API connection ────────────────────────────────────
 app.get('/api/debug/abm-devices', async (req, res) => {
-  const steps = [];
   try {
-    // Step 1: Check credentials
-    const creds = getAbmCredentials();
-    if (!creds) return res.json({ error: 'ABM credentials not configured', steps });
-    steps.push({ step: 'credentials', status: 'ok', clientId: creds.clientId, keyId: creds.keyId, keyLength: creds.privateKey.length, keyStartsWith: creds.privateKey.substring(0, 30) });
-    
-    // Step 2: Generate JWT
-    let jwt;
-    try {
-      jwt = generateAbmJwt(creds);
-      steps.push({ step: 'jwt', status: 'ok', jwtLength: jwt.length, jwtPreview: jwt.substring(0, 50) + '...' });
-    } catch (jwtErr) {
-      steps.push({ step: 'jwt', status: 'error', error: jwtErr.message, stack: jwtErr.stack?.split('\n').slice(0, 3) });
-      return res.json({ error: 'JWT generation failed', steps });
+    if (!abmPrivateKey) {
+      return res.json({ error: 'ABM private key not loaded. Check ABM_DEVICE_API_KEY or ABM_PRIVATE_KEY env var.' });
     }
     
-    // Step 3: Get access token
-    let token;
-    try {
-      // Reset cache to force fresh token
-      abmTokenCache = { token: null, expiresAt: 0 };
-      
-      const tokenResp = await fetch('https://account.apple.com/auth/oauth2/v2/token', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          grant_type: 'client_credentials',
-          client_id: creds.clientId,
-          client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
-          client_assertion: jwt,
-          scope: 'device.read'
-        }).toString()
-      });
-      
-      const tokenText = await tokenResp.text();
-      if (!tokenResp.ok) {
-        steps.push({ step: 'token', status: 'error', httpStatus: tokenResp.status, body: tokenText });
-        return res.json({ error: 'Token request failed', steps });
-      }
-      
-      const tokenData = JSON.parse(tokenText);
-      token = tokenData.access_token;
-      steps.push({ step: 'token', status: 'ok', expiresIn: tokenData.expires_in, tokenPreview: token.substring(0, 20) + '...' });
-    } catch (tokenErr) {
-      steps.push({ step: 'token', status: 'error', error: tokenErr.message });
-      return res.json({ error: 'Token request failed', steps });
-    }
-    
-    // Step 4: Fetch devices
+    const token = await getAbmToken();
     const limit = parseInt(req.query.limit) || 3;
-    const url = `https://api-business.apple.com/v1/orgDevices?limit=${limit}`;
+    
+    const url = `${ABM_CONFIG.apiBase}/orgDevices?limit=${limit}`;
     const resp = await fetch(url, {
       headers: { 'Authorization': `Bearer ${token}` }
     });
     
-    const respText = await resp.text();
     if (!resp.ok) {
-      steps.push({ step: 'devices', status: 'error', httpStatus: resp.status, body: respText.substring(0, 500) });
-      return res.json({ error: 'Device fetch failed', steps });
+      const err = await resp.text();
+      return res.json({ error: `ABM API error: ${resp.status}`, details: err });
     }
     
-    const data = JSON.parse(respText);
+    const data = await resp.json();
     const items = data.devices || data.data || [];
-    steps.push({ step: 'devices', status: 'ok', count: items.length });
     
     res.json({
       status: 'connected',
-      steps,
+      count: items.length,
       sampleFields: items.length > 0 ? Object.keys(items[0]) : [],
       devices: items
     });
   } catch (err) {
-    steps.push({ step: 'unexpected', error: err.message, stack: err.stack?.split('\n').slice(0, 3) });
-    res.status(500).json({ error: err.message, steps });
+    res.status(500).json({ error: err.message, stack: err.stack?.split('\n').slice(0, 3) });
   }
 });
 
