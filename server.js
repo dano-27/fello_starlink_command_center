@@ -4015,69 +4015,54 @@ app.get('/api/webbing/branches/:branchId/match', async (req, res) => {
       await new Promise(r => setTimeout(r, 150));
     }
     
-    // Fetch SimpleMDM device_groups (paginate through all)
+    // Fetch ALL SimpleMDM devices and match by IMEI directly
+    // (SimpleMDM groups are broad categories, not per-branch)
     const mdmKey = getSimpleMdmKey();
     const auth = 'Basic ' + Buffer.from(mdmKey + ':').toString('base64');
     
-    let allGroups = [];
+    // Build IMEI set from Webbing devices for targeted lookup
+    const webbingImeis = new Set(webbingMatches.map(w => w.imei).filter(Boolean));
+    console.log(`[Match] Webbing devices with IMEI: ${webbingImeis.size}`);
+    
+    // Fetch all SimpleMDM devices (paginated)
+    const simpleMdmDevices = new Map();
     let hasMore = true;
     let startingAfter = '';
+    let totalFetched = 0;
     while (hasMore) {
-      const url = `https://a.simplemdm.com/api/v1/device_groups?limit=100${startingAfter ? `&starting_after=${startingAfter}` : ''}`;
-      const groupsResp = await fetch(url, { headers: { 'Authorization': auth } });
-      if (!groupsResp.ok) {
-        console.error(`[Match] SimpleMDM device_groups fetch failed: ${groupsResp.status}`);
+      const url = `https://a.simplemdm.com/api/v1/devices?limit=100${startingAfter ? `&starting_after=${startingAfter}` : ''}`;
+      const devResp = await fetch(url, { headers: { 'Authorization': auth } });
+      if (!devResp.ok) {
+        console.error(`[Match] SimpleMDM devices fetch failed: ${devResp.status}`);
         break;
       }
-      const groupsData = await groupsResp.json();
-      const items = groupsData.data || [];
-      allGroups = allGroups.concat(items);
-      hasMore = groupsData.has_more === true;
-      startingAfter = items.length > 0 ? items[items.length - 1].id : '';
-      if (!startingAfter) break;
-    }
-    
-    console.log(`[Match] Searched ${allGroups.length} SimpleMDM device_groups for "${branchName}"`);
-    const groupNames = allGroups.map(g => g.attributes.name);
-    console.log(`[Match] All device_group names: ${JSON.stringify(groupNames)}`);
-    const group = allGroups.find(g => g.attributes.name.toLowerCase() === branchName.toLowerCase());
-    console.log(`[Match] Found group: ${group ? group.attributes.name + ' (ID: ' + group.id + ')' : 'NOT FOUND'}`);
-    
-    const simpleMdmDevices = new Map();
-    
-    if (group) {
-      // Get devices directly from the device group
-      const devRel = group.relationships?.devices?.data || [];
-      const allDeviceIds = devRel.filter(d => d.type === 'device').map(d => d.id);
-      console.log(`[Match] Device group has ${allDeviceIds.length} devices`);
+      const devData = await devResp.json();
+      const items = devData.data || [];
+      totalFetched += items.length;
       
-      // Fetch each device's details
-      for (const devId of allDeviceIds) {
-        try {
-          const devResp = await fetch(`https://a.simplemdm.com/api/v1/devices/${devId}`, {
-            headers: { 'Authorization': auth }
+      for (const d of items) {
+        const attr = d.attributes || {};
+        const imei = attr.imei ? String(attr.imei).trim() : null;
+        if (imei && webbingImeis.has(imei)) {
+          simpleMdmDevices.set(imei, {
+            id: d.id,
+            name: attr.name,
+            serial: attr.serial_number,
+            imei: imei,
+            model: attr.model_name,
+            osVersion: attr.os_version
           });
-          if (devResp.ok) {
-            const devData = await devResp.json();
-            const attr = devData.data.attributes;
-            const imei = attr.imei ? String(attr.imei).trim() : null;
-            if (imei) {
-              simpleMdmDevices.set(imei, {
-                id: devData.data.id,
-                name: attr.name,
-                serial: attr.serial_number,
-                imei: imei,
-                model: attr.model_name,
-                osVersion: attr.os_version
-              });
-            }
-          }
-        } catch (err) {
-          console.error(`[Match] Failed to fetch SimpleMDM device ${devId}:`, err.message);
         }
       }
+      
+      hasMore = devData.has_more === true;
+      startingAfter = items.length > 0 ? items[items.length - 1].id : '';
+      if (!startingAfter) break;
+      
+      // Early exit if we've matched all Webbing IMEIs
+      if (simpleMdmDevices.size >= webbingImeis.size) break;
     }
-    console.log(`[Match] SimpleMDM devices with IMEI: ${simpleMdmDevices.size}`);
+    console.log(`[Match] Scanned ${totalFetched} SimpleMDM devices, matched ${simpleMdmDevices.size} by IMEI`);
     
     const matches = [];
     const unmatchedWebbing = [];
@@ -4108,11 +4093,9 @@ app.get('/api/webbing/branches/:branchId/match', async (req, res) => {
         total: matches.length + unmatchedWebbing.length + unmatchedMdm.length
       },
       debug: {
-        groupsSearched: allGroups.length,
-        allGroupNames: groupNames,
-        groupFound: group ? group.attributes.name : null,
-        groupId: group ? group.id : null,
-        mdmDevicesWithImei: simpleMdmDevices.size
+        mdmDevicesScanned: totalFetched,
+        mdmDevicesMatched: simpleMdmDevices.size,
+        webbingDevicesWithImei: webbingImeis.size
       }
     });
     
