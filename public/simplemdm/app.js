@@ -1244,19 +1244,46 @@
         }
 
         try {
-            // Load Cobrowse dashboard directly — the dashboard's Connect button
-            // works through the SDK websocket (API sessions need app-side auto-accept)
-            const tokenResp = await fetch('/api/cobrowse/token', { method: 'POST' });
-            if (!tokenResp.ok) throw new Error('Failed to get auth token');
-            const { token } = await tokenResp.json();
+            // Try auto-connect via API (app now has auto-accept)
+            dom.screenViewerStatus.textContent = 'Connecting to ' + name + '...';
+            let iframeUrl;
+            let autoConnected = false;
 
-            const cobrowseUrl = `https://cobrowse.io/dashboard/devices?token=${encodeURIComponent(token)}&filter_app=Fello+Remote&navigation=none`;
+            try {
+                const connectResp = await fetch('/api/cobrowse/connect', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ serial, deviceName: name })
+                });
+                if (connectResp.ok) {
+                    const result = await connectResp.json();
+                    if (result.mode === 'session' && result.sessionUrl) {
+                        iframeUrl = result.sessionUrl;
+                        autoConnected = true;
+                        dom.screenViewerStatus.textContent = 'Connected to ' + (result.deviceName || name);
+                    }
+                }
+            } catch (e) {
+                console.warn('[ScreenViewer] Auto-connect failed, falling back to dashboard:', e.message);
+            }
 
-            dom.screenViewerIframe.src = cobrowseUrl;
-            dom.screenViewerStatus.textContent = 'Select a device to connect';
+            // Fallback: Cobrowse dashboard
+            if (!iframeUrl) {
+                const tokenResp = await fetch('/api/cobrowse/token', { method: 'POST' });
+                if (!tokenResp.ok) throw new Error('Failed to get auth token');
+                const { token } = await tokenResp.json();
+                iframeUrl = `https://cobrowse.io/dashboard/devices?token=${encodeURIComponent(token)}&filter_app=Fello+Remote&navigation=none`;
+                dom.screenViewerStatus.textContent = 'Select a device to connect';
+            }
+
+            dom.screenViewerIframe.src = iframeUrl;
             dom.screenViewerIframe.onload = () => {
                 dom.screenViewerLoading.classList.add('hidden');
                 dom.screenViewerIframe.classList.remove('hidden');
+                if (autoConnected) {
+                    dom.screenViewerStatus.textContent = 'Connected';
+                    dom.screenViewerStatus.className = 'screen-viewer-status connected';
+                }
             };
 
             setTimeout(() => {
