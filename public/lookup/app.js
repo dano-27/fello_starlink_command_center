@@ -400,7 +400,7 @@
     const sorted = [...records].sort((a, b) => new Date(a.Date) - new Date(b.Date));
     const labels = sorted.map(r => {
       const d = new Date(r.Date);
-      return \`\${d.getMonth()+1}/\${d.getDate()}\`;
+      return `${d.getMonth()+1}/${d.getDate()}`;
     });
     const data = sorted.map(r => r.TotalMB || 0);
 
