@@ -1244,7 +1244,7 @@
         }
 
         try {
-            // Call backend to find device and create session
+            // Try auto-connect via backend
             dom.screenViewerStatus.textContent = 'Connecting to ' + name + '...';
             const connectResp = await fetch('/api/cobrowse/connect', {
                 method: 'POST',
@@ -1252,37 +1252,33 @@
                 body: JSON.stringify({ serial, deviceName: name })
             });
 
-            if (!connectResp.ok) throw new Error('Failed to connect to Cobrowse API');
-            const result = await connectResp.json();
+            let iframeUrl;
+            let autoConnected = false;
 
-            if (result.error) {
-                showScreenViewerError(result.error);
-                return;
+            if (connectResp.ok) {
+                const result = await connectResp.json();
+                if (result.mode === 'session' && result.sessionUrl) {
+                    // Direct session — auto-connect
+                    iframeUrl = result.sessionUrl;
+                    autoConnected = true;
+                    dom.screenViewerStatus.textContent = 'Connected to ' + (result.deviceName || name);
+                }
             }
 
-            let iframeUrl;
-            if (result.mode === 'session' && result.sessionUrl) {
-                // Direct session — auto-connect to the device's screen
-                iframeUrl = result.sessionUrl;
-                dom.screenViewerStatus.textContent = 'Connected to ' + (result.deviceName || name);
-            } else if (result.mode === 'iframe') {
-                // Fallback — show device list filtered
+            // Fallback: load Cobrowse dashboard with device list
+            if (!iframeUrl) {
                 const tokenResp = await fetch('/api/cobrowse/token', { method: 'POST' });
                 const { token } = await tokenResp.json();
                 iframeUrl = `https://cobrowse.io/dashboard/devices?token=${encodeURIComponent(token)}&filter_app=Fello+Remote&navigation=none`;
-                dom.screenViewerStatus.textContent = 'Select device to connect';
-            } else {
-                // Last resort — full device dashboard
-                const tokenResp = await fetch('/api/cobrowse/token', { method: 'POST' });
-                const { token } = await tokenResp.json();
-                iframeUrl = `https://cobrowse.io/dashboard/devices?token=${encodeURIComponent(token)}&filter_app=Fello+Remote&navigation=none`;
+                dom.screenViewerStatus.textContent = 'Select a device to connect';
+                dom.screenViewerStatus.className = 'screen-viewer-status';
             }
 
             dom.screenViewerIframe.src = iframeUrl;
             dom.screenViewerIframe.onload = () => {
                 dom.screenViewerLoading.classList.add('hidden');
                 dom.screenViewerIframe.classList.remove('hidden');
-                if (result.mode === 'session') {
+                if (autoConnected) {
                     dom.screenViewerStatus.textContent = 'Connected';
                     dom.screenViewerStatus.className = 'screen-viewer-status connected';
                 }
@@ -1291,11 +1287,23 @@
             // Timeout after 20s if iframe doesn't load
             setTimeout(() => {
                 if (!dom.screenViewerIframe.classList.contains('hidden')) return;
-                showScreenViewerError('Connection timed out. The device may not be online or the Cobrowse SDK may not be running.');
+                showScreenViewerError('Connection timed out. Try refreshing or check that the iPad has internet.');
             }, 20000);
 
         } catch (err) {
-            showScreenViewerError(err.message || 'Failed to connect to Cobrowse.io');
+            // Even on error, try to load the dashboard
+            try {
+                const tokenResp = await fetch('/api/cobrowse/token', { method: 'POST' });
+                const { token } = await tokenResp.json();
+                dom.screenViewerIframe.src = `https://cobrowse.io/dashboard/devices?token=${encodeURIComponent(token)}&filter_app=Fello+Remote&navigation=none`;
+                dom.screenViewerIframe.onload = () => {
+                    dom.screenViewerLoading.classList.add('hidden');
+                    dom.screenViewerIframe.classList.remove('hidden');
+                    dom.screenViewerStatus.textContent = 'Select a device to connect';
+                };
+            } catch (e) {
+                showScreenViewerError(err.message || 'Failed to connect to Cobrowse.io');
+            }
         }
     }
 
