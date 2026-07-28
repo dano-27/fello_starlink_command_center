@@ -4091,7 +4091,196 @@ app.get('/api/webbing/branches/:branchId/match', async (req, res) => {
   }
 });
 
-// ── Debug: Inspect DEP device fields from ABM ─────────────────────────
+// ══════════════════════════════════════════════════════════════════════════
+//  APPLE BUSINESS MANAGER (ABM) API — IMEI BRIDGE
+// ══════════════════════════════════════════════════════════════════════════
+
+function getAbmCredentials() {
+  const clientId = process.env.ABM_CLIENT_ID;
+  const keyId = process.env.ABM_KEY_ID;
+  const privateKey = process.env.ABM_PRIVATE_KEY;
+  if (!clientId || !keyId || !privateKey) return null;
+  return { clientId, keyId, privateKey };
+}
+
+// Generate ES256-signed JWT for ABM OAuth
+function generateAbmJwt(credentials) {
+  const now = Math.floor(Date.now() / 1000);
+  
+  const header = {
+    alg: 'ES256',
+    kid: credentials.keyId,
+    typ: 'JWT'
+  };
+  
+  const payload = {
+    iss: credentials.clientId,
+    sub: credentials.clientId,
+    aud: 'https://account.apple.com/auth/oauth2/v2/token',
+    iat: now,
+    exp: now + 180 // 3 minutes
+  };
+  
+  const b64url = (obj) => Buffer.from(JSON.stringify(obj)).toString('base64url');
+  const signingInput = `${b64url(header)}.${b64url(payload)}`;
+  
+  const sign = crypto.createSign('SHA256');
+  sign.update(signingInput);
+  sign.end();
+  
+  // Sign with the EC private key
+  const derSig = sign.sign(credentials.privateKey);
+  
+  // Convert DER signature to raw r||s format for ES256
+  // DER: 30 <len> 02 <rlen> <r> 02 <slen> <s>
+  let offset = 2;
+  const rLen = derSig[offset + 1];
+  const rStart = offset + 2;
+  let r = derSig.subarray(rStart, rStart + rLen);
+  offset = rStart + rLen;
+  const sLen = derSig[offset + 1];
+  const sStart = offset + 2;
+  let s = derSig.subarray(sStart, sStart + sLen);
+  
+  // Pad or trim to 32 bytes each
+  if (r.length > 32) r = r.subarray(r.length - 32);
+  if (s.length > 32) s = s.subarray(s.length - 32);
+  if (r.length < 32) r = Buffer.concat([Buffer.alloc(32 - r.length), r]);
+  if (s.length < 32) s = Buffer.concat([Buffer.alloc(32 - s.length), s]);
+  
+  const rawSig = Buffer.concat([r, s]).toString('base64url');
+  
+  return `${signingInput}.${rawSig}`;
+}
+
+// Get ABM OAuth access token
+let abmTokenCache = { token: null, expiresAt: 0 };
+
+async function getAbmAccessToken() {
+  const creds = getAbmCredentials();
+  if (!creds) throw new Error('ABM credentials not configured');
+  
+  // Return cached token if still valid
+  if (abmTokenCache.token && Date.now() < abmTokenCache.expiresAt) {
+    return abmTokenCache.token;
+  }
+  
+  const jwt = generateAbmJwt(creds);
+  
+  const resp = await fetch('https://account.apple.com/auth/oauth2/v2/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'client_credentials',
+      client_id: creds.clientId,
+      client_assertion_type: 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer',
+      client_assertion: jwt,
+      scope: 'device.read'
+    }).toString()
+  });
+  
+  if (!resp.ok) {
+    const errorText = await resp.text();
+    console.error('[ABM] Token error:', resp.status, errorText);
+    throw new Error(`ABM token request failed: ${resp.status} ${errorText}`);
+  }
+  
+  const data = await resp.json();
+  abmTokenCache = {
+    token: data.access_token,
+    expiresAt: Date.now() + ((data.expires_in || 3600) - 60) * 1000
+  };
+  
+  console.log('[ABM] Access token acquired, expires in', data.expires_in, 'seconds');
+  return data.access_token;
+}
+
+// Fetch devices from ABM orgDevices endpoint
+async function getAbmDevices(limit = 1000) {
+  const token = await getAbmAccessToken();
+  const devices = [];
+  let cursor = null;
+  
+  while (true) {
+    let url = `https://api-business.apple.com/v1/orgDevices?limit=${Math.min(limit, 1000)}`;
+    if (cursor) url += `&cursor=${cursor}`;
+    
+    const resp = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    
+    if (!resp.ok) {
+      const err = await resp.text();
+      console.error('[ABM] orgDevices error:', resp.status, err);
+      throw new Error(`ABM orgDevices failed: ${resp.status}`);
+    }
+    
+    const data = await resp.json();
+    const items = data.devices || data.data || [];
+    devices.push(...items);
+    
+    // Check for pagination
+    cursor = data.cursor || data.next;
+    if (!cursor || devices.length >= limit) break;
+  }
+  
+  console.log(`[ABM] Fetched ${devices.length} devices from orgDevices`);
+  return devices;
+}
+
+// Build serial→IMEI map from ABM devices
+async function buildAbmImeiMap() {
+  const devices = await getAbmDevices();
+  const map = new Map();
+  
+  for (const d of devices) {
+    const serial = (d.serialNumber || d.serial_number || '').toUpperCase();
+    const imei = d.imei || d.IMEI || null;
+    if (serial && imei) {
+      map.set(serial, {
+        imei: String(imei).replace(/\s/g, ''),
+        eid: d.eid || d.EID || null,
+        model: d.model || d.deviceModel || null
+      });
+    }
+  }
+  
+  console.log(`[ABM] Built IMEI map: ${map.size} devices with IMEI out of ${devices.length} total`);
+  return map;
+}
+
+// ── Debug: Test ABM API connection ────────────────────────────────────
+app.get('/api/debug/abm-devices', async (req, res) => {
+  try {
+    const creds = getAbmCredentials();
+    if (!creds) return res.json({ error: 'ABM credentials not configured. Set ABM_CLIENT_ID, ABM_KEY_ID, ABM_PRIVATE_KEY' });
+    
+    const token = await getAbmAccessToken();
+    const limit = parseInt(req.query.limit) || 5;
+    
+    const url = `https://api-business.apple.com/v1/orgDevices?limit=${limit}`;
+    const resp = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    });
+    
+    if (!resp.ok) {
+      const err = await resp.text();
+      return res.status(resp.status).json({ error: `ABM API error: ${resp.status}`, details: err });
+    }
+    
+    const data = await resp.json();
+    res.json({
+      status: 'connected',
+      count: (data.devices || data.data || []).length,
+      sampleFields: (data.devices || data.data || []).length > 0 ? Object.keys((data.devices || data.data)[0]) : [],
+      raw: data
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 app.get('/api/debug/dep-devices', async (req, res) => {
   try {
     const mdmKey = getSimpleMdmKey();
