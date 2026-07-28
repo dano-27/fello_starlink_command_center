@@ -4098,8 +4098,20 @@ app.get('/api/webbing/branches/:branchId/match', async (req, res) => {
 function getAbmCredentials() {
   const clientId = process.env.ABM_CLIENT_ID;
   const keyId = process.env.ABM_KEY_ID;
-  const privateKey = process.env.ABM_DEVICE_API_KEY;
+  let privateKey = process.env.ABM_DEVICE_API_KEY;
   if (!clientId || !keyId || !privateKey) return null;
+  
+  // Fix PEM format — Railway may strip newlines
+  privateKey = privateKey.replace(/\\n/g, '\n');
+  if (!privateKey.includes('\n')) {
+    // Single line PEM — reconstruct with proper line breaks
+    privateKey = privateKey
+      .replace('-----BEGIN EC PRIVATE KEY-----', '-----BEGIN EC PRIVATE KEY-----\n')
+      .replace('-----END EC PRIVATE KEY-----', '\n-----END EC PRIVATE KEY-----')
+      .replace(/(.{64})/g, '$1\n')
+      .replace(/\n\n/g, '\n');
+  }
+  
   return { clientId, keyId, privateKey };
 }
 
