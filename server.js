@@ -3233,10 +3233,12 @@ app.post('/api/cobrowse/connect', async (req, res) => {
   const token = generateCobrowseJWT();
 
   try {
-    // List all online devices from Cobrowse API
-    const https = require('https');
+    // List ONLY online devices from Cobrowse API
     const listUrl = new URL('https://cobrowse.io/api/1/devices');
     listUrl.searchParams.set('filter_app', 'Fello Remote');
+    listUrl.searchParams.set('filter_online', '1');
+
+    console.log(`[Cobrowse] Searching for device: serial=${serial}, name=${deviceName}`);
 
     const devicesResp = await fetch(listUrl.toString(), {
       headers: { Authorization: `Bearer ${token}` }
@@ -3248,33 +3250,47 @@ app.post('/api/cobrowse/connect', async (req, res) => {
     }
 
     const devices = await devicesResp.json();
+    console.log(`[Cobrowse] Found ${devices.length} online device(s):`, devices.map(d => ({
+      id: d.id,
+      name: d.custom_data?.device_name,
+      serial: d.custom_data?.serial_number,
+      online: d.online
+    })));
 
     if (!devices || devices.length === 0) {
-      return res.json({ error: 'No Fello Remote devices found online.', devices: [] });
+      return res.json({ error: 'No Fello Remote devices are currently online. Make sure the app is open on the iPad.', devices: [] });
     }
 
-    // If only one device, auto-select it
+    // Match device — try serial first, then name, then first online device
     let targetDevice = null;
-    if (devices.length === 1) {
-      targetDevice = devices[0];
-    } else {
-      // Try to match by serial_number custom data
+
+    // Match by serial_number (identifierForVendor UUID)
+    if (serial) {
       targetDevice = devices.find(d =>
         d.custom_data && d.custom_data.serial_number === serial
       );
-      // Or match by device name
-      if (!targetDevice && deviceName) {
-        targetDevice = devices.find(d =>
-          d.custom_data && d.custom_data.device_name === deviceName
-        );
-      }
-      // Fallback: first device
-      if (!targetDevice) {
-        targetDevice = devices[0];
-      }
+      if (targetDevice) console.log(`[Cobrowse] Matched by serial: ${serial}`);
+    }
+
+    // Match by device name
+    if (!targetDevice && deviceName) {
+      targetDevice = devices.find(d =>
+        d.custom_data && (
+          d.custom_data.device_name === deviceName ||
+          d.custom_data.device_name?.toLowerCase() === deviceName?.toLowerCase()
+        )
+      );
+      if (targetDevice) console.log(`[Cobrowse] Matched by name: ${deviceName}`);
+    }
+
+    // Fallback: first online device
+    if (!targetDevice) {
+      targetDevice = devices[0];
+      console.log(`[Cobrowse] No exact match — using first online device: ${targetDevice.custom_data?.device_name || targetDevice.id}`);
     }
 
     // Create a session for this device
+    console.log(`[Cobrowse] Creating session for device ${targetDevice.id}...`);
     const sessionResp = await fetch('https://cobrowse.io/api/1/sessions', {
       method: 'POST',
       headers: {
@@ -3285,7 +3301,8 @@ app.post('/api/cobrowse/connect', async (req, res) => {
     });
 
     if (!sessionResp.ok) {
-      // If session creation fails, fall back to iframe with device filter
+      const errText = await sessionResp.text();
+      console.warn(`[Cobrowse] Session creation failed: ${sessionResp.status} ${errText}`);
       return res.json({
         mode: 'iframe',
         token,
@@ -3295,6 +3312,7 @@ app.post('/api/cobrowse/connect', async (req, res) => {
     }
 
     const session = await sessionResp.json();
+    console.log(`[Cobrowse] Session created: ${session.id}, state: ${session.state}`);
     res.json({
       mode: 'session',
       token,
@@ -3309,6 +3327,7 @@ app.post('/api/cobrowse/connect', async (req, res) => {
       }))
     });
   } catch (err) {
+    console.error(`[Cobrowse] Connect error:`, err.message);
     res.status(500).json({ error: err.message });
   }
 });
