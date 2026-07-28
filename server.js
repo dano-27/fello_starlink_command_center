@@ -3257,13 +3257,18 @@ app.post('/api/cobrowse/connect', async (req, res) => {
       last_active: d.last_active
     })), null, 2));
 
-    // Filter to Fello Remote + online devices
+    // Filter to Fello Remote devices
     const felloDevices = allDevices.filter(d => d.custom_data?.app === 'Fello Remote');
-    const devices = felloDevices.filter(d => d.online);
-    console.log(`[Cobrowse] ${felloDevices.length} Fello Remote device(s), ${devices.length} online`);
+    const onlineDevices = felloDevices.filter(d => d.online);
+    // Also consider recently active devices (within last 15 min)
+    const recentCutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+    const recentDevices = felloDevices.filter(d => d.last_active && d.last_active > recentCutoff);
+    // Prefer online, then recently active, then all fello devices
+    const devices = onlineDevices.length > 0 ? onlineDevices : (recentDevices.length > 0 ? recentDevices : felloDevices);
+    console.log(`[Cobrowse] ${felloDevices.length} Fello Remote, ${onlineDevices.length} online, ${recentDevices.length} recently active`);
 
     if (!devices || devices.length === 0) {
-      return res.json({ error: 'No Fello Remote devices are currently online. Make sure the app is open on the iPad.', devices: [] });
+      return res.json({ error: 'No Fello Remote devices found. Make sure the app is installed and has been opened at least once.', devices: [] });
     }
 
     // Match device — try serial first, then name, then first online device
