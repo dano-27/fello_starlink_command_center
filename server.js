@@ -4015,22 +4015,36 @@ app.get('/api/webbing/branches/:branchId/match', async (req, res) => {
       await new Promise(r => setTimeout(r, 150));
     }
     
-    // Fetch SimpleMDM assignment groups
+    // Fetch SimpleMDM assignment groups (paginate through all)
     const mdmKey = getSimpleMdmKey();
     const auth = 'Basic ' + Buffer.from(mdmKey + ':').toString('base64');
     
-    const groupsResp = await fetch('https://a.simplemdm.com/api/v1/assignment_groups?limit=100', {
-      headers: { 'Authorization': auth }
-    });
+    let allGroups = [];
+    let hasMore = true;
+    let startingAfter = '';
+    while (hasMore) {
+      const url = `https://a.simplemdm.com/api/v1/assignment_groups?limit=100${startingAfter ? `&starting_after=${startingAfter}` : ''}`;
+      const groupsResp = await fetch(url, { headers: { 'Authorization': auth } });
+      if (!groupsResp.ok) {
+        console.error(`[Match] SimpleMDM groups fetch failed: ${groupsResp.status}`);
+        break;
+      }
+      const groupsData = await groupsResp.json();
+      const items = groupsData.data || [];
+      allGroups = allGroups.concat(items);
+      hasMore = groupsData.has_more === true;
+      startingAfter = items.length > 0 ? items[items.length - 1].id : '';
+      if (!startingAfter) break;
+    }
     
-    if (!groupsResp.ok) throw new Error('Failed to fetch SimpleMDM assignment groups');
-    
-    const groupsData = await groupsResp.json();
-    const group = groupsData.data.find(g => g.attributes.name.toLowerCase() === branchName.toLowerCase());
+    console.log(`[Match] Searched ${allGroups.length} SimpleMDM groups for "${branchName}"`);
+    const group = allGroups.find(g => g.attributes.name.toLowerCase() === branchName.toLowerCase());
+    console.log(`[Match] Found group: ${group ? group.attributes.name + ' (ID: ' + group.id + ')' : 'NOT FOUND'}`);
     
     const simpleMdmDevices = new Map();
     
     if (group && group.relationships && group.relationships.devices && group.relationships.devices.data) {
+      console.log(`[Match] Group has ${group.relationships.devices.data.length} device refs`);
       for (const dev of group.relationships.devices.data) {
         if (dev.type === 'device') {
           try {
@@ -4040,12 +4054,13 @@ app.get('/api/webbing/branches/:branchId/match', async (req, res) => {
             if (devResp.ok) {
               const devData = await devResp.json();
               const attr = devData.data.attributes;
-              if (attr.imei) {
-                simpleMdmDevices.set(attr.imei, {
+              const imei = attr.imei ? String(attr.imei).trim() : null;
+              if (imei) {
+                simpleMdmDevices.set(imei, {
                   id: devData.data.id,
                   name: attr.name,
                   serial: attr.serial_number,
-                  imei: attr.imei,
+                  imei: imei,
                   model: attr.model_name,
                   osVersion: attr.os_version
                 });
@@ -4057,6 +4072,7 @@ app.get('/api/webbing/branches/:branchId/match', async (req, res) => {
         }
       }
     }
+    console.log(`[Match] SimpleMDM devices with IMEI: ${simpleMdmDevices.size}`);
     
     const matches = [];
     const unmatchedWebbing = [];
