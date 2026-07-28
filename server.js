@@ -4378,7 +4378,14 @@ app.get('/api/lookup', async (req, res) => {
               simpleMdmDevices.push({
                 id: d.id, name, serial: attr.serial_number,
                 model: attr.model_name, osVersion: attr.os_version,
-                batteryLevel: attr.battery_level, lastSeenAt: attr.last_seen_at
+                batteryLevel: attr.battery_level, lastSeenAt: attr.last_seen_at,
+                phoneNumber: attr.phone_number || null,
+                wifiMac: attr.wifi_mac || null,
+                imei: attr.imei || null,
+                iccid: attr.iccid || null,
+                capacity: attr.device_capacity || null,
+                enrolledAt: attr.enrolled_at || null,
+                deviceGroupId: attr.device_group_id || null
               });
             }
           }

@@ -9,6 +9,51 @@
   let currentChart = null;
   let currentMap = null;
 
+  // ── Column Definitions ──────────────────────────────────────
+  // All possible columns with source, key, label, and default visibility
+  const ALL_COLUMNS = [
+    // Link status
+    { key: 'linked',       label: '🔗',            source: 'meta',    default: true,  group: 'Status' },
+    // iPad (SimpleMDM)
+    { key: 'name',         label: 'iPad Name',     source: 'ipad',    default: true,  group: 'iPad' },
+    { key: 'ipadSerial',   label: 'iPad Serial',   source: 'ipad',    default: true,  group: 'iPad' },
+    { key: 'model',        label: 'Model',         source: 'ipad',    default: true,  group: 'iPad' },
+    { key: 'os',           label: 'OS Version',    source: 'ipad',    default: true,  group: 'iPad' },
+    { key: 'battery',      label: 'Battery',       source: 'ipad',    default: true,  group: 'iPad' },
+    { key: 'capacity',     label: 'Storage',       source: 'ipad',    default: false, group: 'iPad' },
+    { key: 'lastSeenAt',   label: 'Last Seen',     source: 'ipad',    default: false, group: 'iPad' },
+    { key: 'enrolledAt',   label: 'Enrolled',      source: 'ipad',    default: false, group: 'iPad' },
+    { key: 'phoneNumber',  label: 'Phone #',       source: 'ipad',    default: false, group: 'iPad' },
+    { key: 'wifiMac',      label: 'WiFi MAC',      source: 'ipad',    default: false, group: 'iPad' },
+    { key: 'mdmImei',      label: 'MDM IMEI',      source: 'ipad',    default: false, group: 'iPad' },
+    // Bridge
+    { key: 'imei',         label: 'IMEI',          source: 'bridge',  default: true,  group: 'Bridge' },
+    { key: 'eid',          label: 'EID/eSIM',      source: 'bridge',  default: false, group: 'Bridge' },
+    // SIM (Webbing)
+    { key: 'simSerial',    label: 'SIM Serial',    source: 'sim',     default: true,  group: 'SIM' },
+    { key: 'iccid',        label: 'ICCID',         source: 'sim',     default: true,  group: 'SIM' },
+    { key: 'carrier',      label: 'Carrier',       source: 'sim',     default: true,  group: 'SIM' },
+    { key: 'simStatus',    label: 'SIM Status',    source: 'sim',     default: true,  group: 'SIM' },
+    { key: 'plan',         label: 'Plan',          source: 'sim',     default: false, group: 'SIM' },
+    { key: 'ip',           label: 'IP Address',    source: 'sim',     default: false, group: 'SIM' },
+    { key: 'simModel',     label: 'SIM Device',    source: 'sim',     default: false, group: 'SIM' },
+    { key: 'vendor',       label: 'Vendor',        source: 'sim',     default: false, group: 'SIM' },
+  ];
+
+  // Load saved column prefs from localStorage
+  const STORAGE_KEY = 'fello_lookup_columns';
+  function getVisibleColumns() {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return ALL_COLUMNS.filter(c => c.default).map(c => c.key);
+  }
+  function saveVisibleColumns(keys) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(keys));
+  }
+  let visibleColumns = getVisibleColumns();
+
   // ── Event Listeners ──────────────────────────────────────────
   searchBtn.addEventListener('click', handleSearch);
   searchInput.addEventListener('keydown', (e) => {
@@ -151,107 +196,240 @@
       </div>
     `;
 
-    // Build unified rows: matched pairs + unmatched iPads + unmatched SIMs
+    // Build unified rows with ALL available fields
     const matched = data.matches || [];
     const unmatchedIpads = mdm.filter(d => !d.matchedSimSerial);
     const unmatchedSims = web.filter(w => !w.matchedIpadName);
     
-    const rows = [];
+    // Store rows globally so column picker can re-render
+    window._fleetRows = [];
+    window._fleetData = data;
+    
     // Matched pairs first
     for (const m of matched) {
       const ipad = mdm.find(d => d.serial === m.ipadSerial) || {};
       const sim = web.find(w => (w.serial || w.ssid) === m.simSerial) || {};
-      rows.push({
+      window._fleetRows.push({
+        linked: true,
+        // iPad fields
         name: m.ipadName,
         ipadSerial: m.ipadSerial,
         model: ipad.model || ipad.model_name || '',
         os: ipad.osVersion || ipad.os_version || '',
         battery: ipad.batteryLevel || ipad.battery_level || null,
+        capacity: ipad.capacity || '',
+        lastSeenAt: ipad.lastSeenAt ? new Date(ipad.lastSeenAt).toLocaleString() : '',
+        enrolledAt: ipad.enrolledAt ? new Date(ipad.enrolledAt).toLocaleDateString() : '',
+        phoneNumber: ipad.phoneNumber || '',
+        wifiMac: ipad.wifiMac || '',
+        mdmImei: ipad.imei || '',
+        // Bridge fields
         imei: m.ipadImei,
+        eid: ipad.allImeis?.length > 1 ? ipad.allImeis.slice(1).join(', ') : '',
+        // SIM fields
         simSerial: m.simSerial,
         iccid: m.simIccid,
         carrier: m.simCarrier,
         simStatus: sim.statusId || sim.status || m.simStatus,
-        ip: m.simIp,
-        linked: true
+        plan: sim.plan || '',
+        ip: m.simIp || sim.ip || '',
+        simModel: sim.model || '',
+        vendor: sim.vendor || ''
       });
     }
     // Unmatched iPads
     for (const d of unmatchedIpads) {
-      rows.push({
+      window._fleetRows.push({
+        linked: false,
         name: d.name || d.device_name || '',
         ipadSerial: d.serial || d.serial_number || '',
         model: d.model || d.model_name || '',
         os: d.osVersion || d.os_version || '',
         battery: d.batteryLevel || d.battery_level || null,
+        capacity: d.capacity || '',
+        lastSeenAt: d.lastSeenAt ? new Date(d.lastSeenAt).toLocaleString() : '',
+        enrolledAt: d.enrolledAt ? new Date(d.enrolledAt).toLocaleDateString() : '',
+        phoneNumber: d.phoneNumber || '',
+        wifiMac: d.wifiMac || '',
+        mdmImei: d.imei || '',
         imei: d.abmImei || '',
-        simSerial: '', iccid: '', carrier: '', simStatus: null, ip: '',
-        linked: false
+        eid: '',
+        simSerial: '', iccid: '', carrier: '', simStatus: null,
+        plan: '', ip: '', simModel: '', vendor: ''
       });
     }
     // Unmatched SIMs
     for (const w of unmatchedSims) {
-      rows.push({
-        name: '',
-        ipadSerial: '',
-        model: '', os: '', battery: null,
+      window._fleetRows.push({
+        linked: false,
+        name: '', ipadSerial: '', model: '', os: '', battery: null,
+        capacity: '', lastSeenAt: '', enrolledAt: '',
+        phoneNumber: '', wifiMac: '', mdmImei: '',
         imei: w.imei || '',
+        eid: '',
         simSerial: w.ssid || w.serial || '',
         iccid: w.iccid || '',
         carrier: w.carrier || w.network || '',
         simStatus: w.statusId || w.status,
+        plan: w.plan || '',
         ip: w.ip || w.ipAddress || '',
-        linked: false
+        simModel: w.model || '',
+        vendor: w.vendor || ''
       });
     }
 
+    // Column picker dropdown
+    const groups = {};
+    ALL_COLUMNS.forEach(c => {
+      if (!groups[c.group]) groups[c.group] = [];
+      groups[c.group].push(c);
+    });
+
+    let pickerHtml = `
+      <div class="column-picker-wrapper">
+        <button class="btn btn-outline column-picker-toggle" id="col-picker-btn" title="Choose columns">
+          ⚙️ Columns <span class="col-count">(${visibleColumns.length}/${ALL_COLUMNS.length})</span>
+        </button>
+        <div class="column-picker-dropdown" id="col-picker-dropdown" style="display:none;">
+          <div class="col-picker-header">
+            <span>Show / Hide Columns</span>
+            <button class="col-picker-reset" id="col-reset-btn">Reset</button>
+          </div>
+          ${Object.entries(groups).map(([group, cols]) => `
+            <div class="col-picker-group">
+              <div class="col-picker-group-label">${esc(group)}</div>
+              ${cols.map(c => `
+                <label class="col-picker-item">
+                  <input type="checkbox" value="${c.key}" ${visibleColumns.includes(c.key) ? 'checked' : ''}>
+                  <span>${esc(c.label)}</span>
+                </label>
+              `).join('')}
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `;
+
+    // Render the table
+    const visCols = ALL_COLUMNS.filter(c => visibleColumns.includes(c.key));
     html += `
       <div class="section" id="sec-unified">
         <div class="section-header" onclick="this.parentElement.classList.toggle('collapsed')">
           <div class="section-title"><span class="section-icon">📋</span> Fleet Overview — iPad + SIM Pairs</div>
           <div class="chevron">▼</div>
         </div>
-        <div class="section-content table-responsive">
-          <table>
-            <thead>
-              <tr>
-                <th style="border-right: 2px solid var(--border);">🔗</th>
-                <th>iPad Name</th>
-                <th>iPad Serial</th>
-                <th>Model</th>
-                <th>OS</th>
-                <th style="border-right: 2px solid var(--border);">Battery</th>
-                <th>IMEI</th>
-                <th>SIM Serial</th>
-                <th>ICCID</th>
-                <th>Carrier</th>
-                <th>SIM Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${rows.length === 0 ? '<tr><td colspan="11">No devices found.</td></tr>' : ''}
-              ${rows.map(r => `
-                <tr style="${!r.linked ? 'opacity: 0.6;' : ''}">
-                  <td style="border-right: 2px solid var(--border); text-align: center;">${r.linked ? '<span style="color: var(--green);">✓</span>' : '<span style="color: var(--amber);">✗</span>'}</td>
-                  <td>${esc(r.name) || '<span style="color:var(--text-muted)">—</span>'}</td>
-                  <td class="mono">${esc(r.ipadSerial) || '<span style="color:var(--text-muted)">—</span>'}</td>
-                  <td>${esc(r.model) || '—'}</td>
-                  <td>${esc(r.os) || '—'}</td>
-                  <td style="border-right: 2px solid var(--border);">${r.battery ? r.battery + '%' : '—'}</td>
-                  <td class="mono" style="font-size: 0.75rem;">${esc(r.imei) || '<span style="color:var(--text-muted)">—</span>'}</td>
-                  <td class="mono">${esc(r.simSerial) || '<span style="color:var(--text-muted)">—</span>'}</td>
-                  <td class="mono" style="font-size: 0.75rem;">${esc(r.iccid) || '<span style="color:var(--text-muted)">—</span>'}</td>
-                  <td>${esc(r.carrier) || '—'}</td>
-                  <td>${r.simStatus ? getStatusBadge(r.simStatus) : '—'}</td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
+        <div class="section-content">
+          <div class="table-toolbar">
+            ${pickerHtml}
+            <span class="table-info">${window._fleetRows.length} rows · ${matched.length} matched</span>
+          </div>
+          <div class="table-responsive" id="fleet-table-wrap">
+            ${buildFleetTable(window._fleetRows, visCols)}
+          </div>
         </div>
       </div>
     `;
 
     resultsContainer.innerHTML = html;
+    
+    // Wire up column picker
+    initColumnPicker();
+  }
+
+  function buildFleetTable(rows, visCols) {
+    const ipadBorderCol = (() => {
+      const ipadCols = visCols.filter(c => c.source === 'ipad' || c.source === 'meta');
+      return ipadCols.length > 0 ? ipadCols[ipadCols.length - 1].key : null;
+    })();
+    
+    return `
+      <table>
+        <thead>
+          <tr>
+            ${visCols.map(c => `
+              <th style="${c.key === ipadBorderCol ? 'border-right: 2px solid var(--border);' : ''}">${esc(c.label)}</th>
+            `).join('')}
+          </tr>
+        </thead>
+        <tbody>
+          ${rows.length === 0 ? `<tr><td colspan="${visCols.length}">No devices found.</td></tr>` : ''}
+          ${rows.map(r => `
+            <tr style="${!r.linked ? 'opacity: 0.6;' : ''}">
+              ${visCols.map(c => {
+                const style = c.key === ipadBorderCol ? 'border-right: 2px solid var(--border);' : '';
+                return `<td style="${style}" class="${isMonoCol(c.key) ? 'mono' : ''}">${formatCell(c.key, r[c.key], r)}</td>`;
+              }).join('')}
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    `;
+  }
+
+  function isMonoCol(key) {
+    return ['ipadSerial', 'imei', 'eid', 'simSerial', 'iccid', 'ip', 'wifiMac', 'mdmImei', 'phoneNumber'].includes(key);
+  }
+
+  function formatCell(key, val, row) {
+    const empty = '<span style="color:var(--text-muted)">—</span>';
+    switch(key) {
+      case 'linked':
+        return row.linked
+          ? '<span style="color: var(--green); font-weight: bold;">✓</span>'
+          : '<span style="color: var(--amber);">✗</span>';
+      case 'battery':
+        return val ? val + (String(val).includes('%') ? '' : '%') : '—';
+      case 'simStatus':
+        return val ? getStatusBadge(val) : '—';
+      case 'imei':
+      case 'iccid':
+      case 'eid':
+        return val ? `<span style="font-size:0.75rem">${esc(String(val))}</span>` : empty;
+      default:
+        return val ? esc(String(val)) : empty;
+    }
+  }
+
+  function initColumnPicker() {
+    const btn = document.getElementById('col-picker-btn');
+    const dropdown = document.getElementById('col-picker-dropdown');
+    const resetBtn = document.getElementById('col-reset-btn');
+    if (!btn || !dropdown) return;
+
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!dropdown.contains(e.target) && e.target !== btn) {
+        dropdown.style.display = 'none';
+      }
+    });
+
+    dropdown.querySelectorAll('input[type=checkbox]').forEach(cb => {
+      cb.addEventListener('change', () => {
+        visibleColumns = Array.from(dropdown.querySelectorAll('input:checked')).map(i => i.value);
+        saveVisibleColumns(visibleColumns);
+        const visCols = ALL_COLUMNS.filter(c => visibleColumns.includes(c.key));
+        document.getElementById('fleet-table-wrap').innerHTML = buildFleetTable(window._fleetRows, visCols);
+        btn.querySelector('.col-count').textContent = `(${visibleColumns.length}/${ALL_COLUMNS.length})`;
+      });
+    });
+
+    if (resetBtn) {
+      resetBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        visibleColumns = ALL_COLUMNS.filter(c => c.default).map(c => c.key);
+        saveVisibleColumns(visibleColumns);
+        dropdown.querySelectorAll('input[type=checkbox]').forEach(cb => {
+          cb.checked = visibleColumns.includes(cb.value);
+        });
+        const visCols = ALL_COLUMNS.filter(c => visibleColumns.includes(c.key));
+        document.getElementById('fleet-table-wrap').innerHTML = buildFleetTable(window._fleetRows, visCols);
+        btn.querySelector('.col-count').textContent = `(${visibleColumns.length}/${ALL_COLUMNS.length})`;
+      });
+    }
   }
 
   // Group Actions (Global for inline handlers)
