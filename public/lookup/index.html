@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lookup Hub — Fello Command Center</title>
+  <meta name="description" content="Centralized search for Fello Command Center. Search by Group Number or Device Serial.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  
+  <header class="header">
+    <div>
+      <a href="/" class="back-link">← Back to Command Center</a>
+    </div>
+    <h1 class="header-title">🔍 Lookup Hub</h1>
+    <div class="header-subtitle">Search by Group Number or Device Serial</div>
+  </header>
+
+  <main>
+    <div class="search-container">
+      <div class="search-box">
+        <span class="search-icon">🔍</span>
+        <input type="text" id="search-input" class="search-input" placeholder="e.g. FE13916 or WW13725786" autocomplete="off" autofocus>
+        <div class="spinner" id="search-spinner"></div>
+        <button id="search-btn" class="search-btn">Search</button>
+      </div>
+    </div>
+
+    <div id="results-container" class="results-container">
+      <!-- Dynamic Content Will Be Injected Here -->
+    </div>
+  </main>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

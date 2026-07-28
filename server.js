@@ -4091,6 +4091,262 @@ app.get('/api/webbing/branches/:branchId/match', async (req, res) => {
   }
 });
 
+// ══════════════════════════════════════════════════════════════════════════
+//  UNIFIED LOOKUP HUB
+// ══════════════════════════════════════════════════════════════════════════
+
+app.get('/api/lookup', async (req, res) => {
+  const query = (req.query.q || '').trim();
+  if (!query) return res.status(400).json({ error: 'Missing search query (q)' });
+  
+  console.log(`[Lookup] Search: "${query}"`);
+  
+  // Detect search type: group/branch vs device serial
+  // Branch names typically start with FE, SQ, EB, CB, MO, or are alphanumeric order numbers
+  const isGroupSearch = /^(FE|SQ|EB|CB|MO|Z5)/i.test(query) || 
+                        (query.length >= 4 && /^\d+$/.test(query)); // pure numeric order ID
+  
+  try {
+    if (isGroupSearch) {
+      // ── GROUP/BRANCH SEARCH ──────────────────────────────────
+      console.log(`[Lookup] Performing GROUP search for "${query}"`);
+      
+      // Step 1: Find the branch in Webbing cache
+      const branchName = query.toUpperCase();
+      let branchDevices = webbingDeviceCache.filter(d => 
+        d.BranchName && d.BranchName.toUpperCase() === branchName
+      );
+      let branchId = branchDevices.length > 0 ? branchDevices[0].BranchID : null;
+      
+      // If not found by exact name, try searching Webbing API
+      if (branchDevices.length === 0) {
+        try {
+          const client = getWebbingClient();
+          const searchResult = await client.searchBranches(query);
+          const branches = searchResult.Branches || searchResult.branches || [];
+          if (Array.isArray(branches) && branches.length > 0) {
+            const branch = branches.find(b => 
+              (b.BranchName || b.Name || '').toUpperCase().includes(branchName)
+            ) || branches[0];
+            branchId = branch.BranchID || branch.ID;
+            // Fetch devices for this branch
+            const devResult = await client.getBranchDevices(branchId);
+            branchDevices = devResult.devices || devResult.ServiceDevices || [];
+          }
+        } catch (e) {
+          console.error('[Lookup] Branch search error:', e.message);
+        }
+      }
+      
+      if (branchDevices.length === 0) {
+        return res.json({ type: 'group', branchName: query, found: false, 
+          webbingDevices: [], simpleMdmDevices: [], stats: { webbingCount: 0, mdmCount: 0, countMatch: true } });
+      }
+      
+      // Step 2: Fetch live data for each device (with rate limiting)
+      const webbingDevices = [];
+      const client = getWebbingClient();
+      for (const d of branchDevices) {
+        try {
+          const liveResult = await client.getLiveData(d.ServiceDeviceID);
+          webbingDevices.push({
+            serviceDeviceId: d.ServiceDeviceID,
+            serial: d.Serial,
+            ssid: d.SSID,
+            imei: liveResult.IMEI ? String(liveResult.IMEI) : null,
+            iccid: liveResult.ICCID ? String(liveResult.ICCID) : null,
+            status: d.StatusName,
+            statusId: d.StatusID,
+            plan: d.ProductName,
+            carrier: liveResult.VPLMN || liveResult.CarrierName || null,
+            ip: liveResult.IP || null,
+            model: liveResult.Model || null,
+            vendor: liveResult.Vendor || null
+          });
+        } catch (err) {
+          webbingDevices.push({
+            serviceDeviceId: d.ServiceDeviceID,
+            serial: d.Serial,
+            ssid: d.SSID,
+            imei: null, iccid: null,
+            status: d.StatusName,
+            statusId: d.StatusID,
+            plan: d.ProductName,
+            carrier: null, ip: null, model: null, vendor: null
+          });
+        }
+        await new Promise(r => setTimeout(r, 100));
+      }
+      
+      // Step 3: Scan SimpleMDM for matching iPads by name prefix
+      const simpleMdmDevices = [];
+      try {
+        const mdmKey = getSimpleMdmKey();
+        const auth = 'Basic ' + Buffer.from(mdmKey + ':').toString('base64');
+        const branchPrefix = branchName.toLowerCase();
+        let hasMore = true;
+        let startingAfter = '';
+        
+        while (hasMore) {
+          const url = `https://a.simplemdm.com/api/v1/devices?limit=100${startingAfter ? `&starting_after=${startingAfter}` : ''}`;
+          const devResp = await fetch(url, { headers: { 'Authorization': auth } });
+          if (!devResp.ok) break;
+          const devData = await devResp.json();
+          const items = devData.data || [];
+          
+          for (const d of items) {
+            const attr = d.attributes || {};
+            const name = (attr.name || '').trim();
+            if (name.toLowerCase().startsWith(branchPrefix)) {
+              simpleMdmDevices.push({
+                id: d.id, name, serial: attr.serial_number,
+                model: attr.model_name, osVersion: attr.os_version,
+                batteryLevel: attr.battery_level, lastSeenAt: attr.last_seen_at
+              });
+            }
+          }
+          hasMore = devData.has_more === true;
+          startingAfter = items.length > 0 ? items[items.length - 1].id : '';
+          if (!startingAfter) break;
+        }
+        
+        simpleMdmDevices.sort((a, b) => {
+          const numA = parseInt((a.name.match(/\((\d+)\)/) || [])[1]) || 0;
+          const numB = parseInt((b.name.match(/\((\d+)\)/) || [])[1]) || 0;
+          return numA - numB;
+        });
+      } catch (e) {
+        console.error('[Lookup] SimpleMDM scan error:', e.message);
+      }
+      
+      // NOTE: Branch usage is skipped in lookup (requires per-device API calls, too slow)
+      // Users can access the full usage report from the Webbing IoT dashboard
+      
+      const activeCount = webbingDevices.filter(d => d.statusId === 3).length;
+      const suspendedCount = webbingDevices.filter(d => d.statusId === 4).length;
+      
+      return res.json({
+        type: 'group',
+        found: true,
+        branchName: branchName,
+        branchId: branchId,
+        webbingDevices,
+        simpleMdmDevices,
+        usage: null,
+        stats: {
+          webbingCount: webbingDevices.length,
+          mdmCount: simpleMdmDevices.length,
+          countMatch: webbingDevices.length === simpleMdmDevices.length,
+          activeCount,
+          suspendedCount
+        }
+      });
+      
+    } else {
+      // ── DEVICE SERIAL SEARCH ──────────────────────────────────
+      console.log(`[Lookup] Performing DEVICE search for "${query}"`);
+      
+      // Search in Webbing cache by serial
+      const device = webbingDeviceCache.find(d => 
+        (d.Serial || '').toLowerCase() === query.toLowerCase() ||
+        (d.SSID || '').toLowerCase() === query.toLowerCase() ||
+        String(d.ServiceDeviceID) === query
+      );
+      
+      if (!device) {
+        // Try searching SimpleMDM by serial number
+        let mdmDevice = null;
+        try {
+          const mdmKey = getSimpleMdmKey();
+          const auth = 'Basic ' + Buffer.from(mdmKey + ':').toString('base64');
+          const searchResp = await fetch(`https://a.simplemdm.com/api/v1/devices?search=${encodeURIComponent(query)}`, {
+            headers: { 'Authorization': auth }
+          });
+          if (searchResp.ok) {
+            const searchData = await searchResp.json();
+            const items = searchData.data || [];
+            if (items.length > 0) {
+              const attr = items[0].attributes || {};
+              mdmDevice = {
+                id: items[0].id, name: attr.name, serial: attr.serial_number,
+                model: attr.model_name, osVersion: attr.os_version,
+                batteryLevel: attr.battery_level, lastSeenAt: attr.last_seen_at
+              };
+            }
+          }
+        } catch (e) {
+          console.error('[Lookup] SimpleMDM search error:', e.message);
+        }
+        
+        if (mdmDevice) {
+          return res.json({ type: 'mdm_device', found: true, device: mdmDevice });
+        }
+        return res.json({ type: 'device', found: false, query });
+      }
+      
+      // Fetch live data
+      let liveData = null;
+      try {
+        const client = getWebbingClient();
+        liveData = await client.getLiveData(device.ServiceDeviceID);
+      } catch (e) {
+        console.log('[Lookup] Live data error:', e.message);
+      }
+      
+      // Fetch usage (last 30 days)
+      let usage = null;
+      try {
+        const client = getWebbingClient();
+        const endDate = new Date().toLocaleDateString('en-US');
+        const startDate = new Date(Date.now() - 30*24*60*60*1000).toLocaleDateString('en-US');
+        const usageResult = await client.getDeviceUsage(device.ServiceDeviceID, startDate, endDate, 'Day');
+        const records = usageResult?.UsageRecords || usageResult?.records || [];
+        const totalMB = records.reduce((sum, r) => sum + (parseFloat(r.TotalMB || r.totalMB || 0)), 0);
+        usage = { totalMB: Math.round(totalMB * 100) / 100, records, period: `${startDate} - ${endDate}` };
+      } catch (e) {
+        console.log('[Lookup] Usage error:', e.message);
+      }
+      
+      // Fetch location
+      let location = null;
+      try {
+        const client = getWebbingClient();
+        const locResult = await client.getLocation(device.ServiceDeviceID);
+        location = locResult?.LocationInfo || locResult;
+      } catch (e) {
+        console.log('[Lookup] Location error:', e.message);
+      }
+      
+      return res.json({
+        type: 'device',
+        found: true,
+        device: {
+          serviceDeviceId: device.ServiceDeviceID,
+          serial: device.Serial,
+          ssid: device.SSID,
+          msisdn: device.MSISDN,
+          statusName: device.StatusName,
+          statusId: device.StatusID,
+          productName: device.ProductName,
+          branchName: device.BranchName,
+          branchId: device.BranchID,
+          orderId: device.OrderID,
+          deviceTypeName: device.DeviceTypeName,
+          apnName: device.ApnName,
+          updatedAt: device.UpdatedAtUtc,
+          statusChanged: device.StatusDateChange
+        },
+        liveData,
+        usage,
+        location
+      });
+    }
+  } catch (error) {
+    console.error('[Lookup] Error:', error);
+    res.status(500).json({ error: 'Lookup failed: ' + error.message });
+  }
+});
+
 // Hub landing page
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
