@@ -4015,9 +4015,7 @@ app.get('/api/webbing/branches/:branchId/match', async (req, res) => {
       await new Promise(r => setTimeout(r, 150));
     }
     
-    // Match SimpleMDM iPads by device name prefix
-    // Device names follow pattern: "FE13916 (1)", "FE13916 (2)", etc.
-    // eSIM IMEI is NOT in attributes.imei (it's in Service Subscription, not exposed by API)
+    // Step 2: Find SimpleMDM iPads by device name prefix
     const mdmKey = getSimpleMdmKey();
     const auth = 'Basic ' + Buffer.from(mdmKey + ':').toString('base64');
     
@@ -4041,7 +4039,6 @@ app.get('/api/webbing/branches/:branchId/match', async (req, res) => {
       for (const d of items) {
         const attr = d.attributes || {};
         const name = (attr.name || '').trim();
-        // Match device names starting with branch name (case-insensitive)
         if (name.toLowerCase().startsWith(branchPrefix)) {
           simpleMdmDevices.push({
             id: d.id,
@@ -4050,7 +4047,10 @@ app.get('/api/webbing/branches/:branchId/match', async (req, res) => {
             model: attr.model_name,
             osVersion: attr.os_version,
             batteryLevel: attr.battery_level,
-            lastSeenAt: attr.last_seen_at
+            lastSeenAt: attr.last_seen_at,
+            // List endpoint may have ICCID/IMEI directly
+            iccid: attr.iccid || null,
+            imei: attr.imei || null
           });
         }
       }
@@ -4060,25 +4060,98 @@ app.get('/api/webbing/branches/:branchId/match', async (req, res) => {
       if (!startingAfter) break;
     }
     
-    // Sort MDM devices by the number in parentheses: "FE13916 (1)" → 1
-    simpleMdmDevices.sort((a, b) => {
-      const numA = parseInt((a.name.match(/\((\d+)\)/) || [])[1]) || 0;
-      const numB = parseInt((b.name.match(/\((\d+)\)/) || [])[1]) || 0;
+    console.log(`[Match] Scanned ${totalFetched} SimpleMDM devices, found ${simpleMdmDevices.length} matching "${branchName}"`);
+    
+    // Step 3: Fetch full details for each matched device to get ICCID from individual endpoint
+    let debugAttributes = null;
+    for (const mdmDev of simpleMdmDevices) {
+      try {
+        const detailResp = await fetch(`https://a.simplemdm.com/api/v1/devices/${mdmDev.id}`, {
+          headers: { 'Authorization': auth }
+        });
+        if (detailResp.ok) {
+          const detailData = await detailResp.json();
+          const attr = detailData.data?.attributes || {};
+          
+          // Log first device's full attributes for debugging
+          if (!debugAttributes) {
+            debugAttributes = Object.keys(attr);
+            console.log(`[Match] Sample device attributes: ${JSON.stringify(debugAttributes)}`);
+            // Also log any ICCID/IMEI-like values
+            for (const [k, v] of Object.entries(attr)) {
+              if (v && typeof v === 'string' && (k.toLowerCase().includes('icc') || k.toLowerCase().includes('imei') || k.toLowerCase().includes('subscriber'))) {
+                console.log(`[Match]   ${k} = ${v}`);
+              }
+            }
+          }
+          
+          // Try to get ICCID — check multiple possible fields
+          const iccid = attr.iccid || attr.ICCID || attr.service_subscription_iccid || null;
+          const imei = attr.imei || attr.IMEI || attr.service_subscription_imei || null;
+          
+          if (iccid) mdmDev.iccid = String(iccid).replace(/\s/g, '');
+          if (imei) mdmDev.imei = String(imei).replace(/\s/g, '');
+          
+          // Update other fields from detailed response
+          mdmDev.batteryLevel = attr.battery_level;
+          mdmDev.lastSeenAt = attr.last_seen_at;
+        }
+      } catch (err) {
+        console.error(`[Match] Failed to fetch device detail ${mdmDev.id}:`, err.message);
+      }
+    }
+    
+    // Step 4: Match Webbing SIMs to SimpleMDM iPads by ICCID
+    const mdmByIccid = new Map();
+    for (const mdmDev of simpleMdmDevices) {
+      if (mdmDev.iccid) {
+        mdmByIccid.set(mdmDev.iccid, mdmDev);
+      }
+    }
+    console.log(`[Match] SimpleMDM devices with ICCID: ${mdmByIccid.size} / ${simpleMdmDevices.length}`);
+    
+    const matches = [];
+    const unmatchedWebbing = [];
+    const matchedMdmIds = new Set();
+    
+    for (const w of webbingMatches) {
+      const wIccid = w.iccid ? String(w.iccid).replace(/\s/g, '') : null;
+      if (wIccid && mdmByIccid.has(wIccid)) {
+        const mdmDev = mdmByIccid.get(wIccid);
+        matches.push({ webbing: w, simpleMdm: mdmDev });
+        matchedMdmIds.add(mdmDev.id);
+      } else {
+        unmatchedWebbing.push(w);
+      }
+    }
+    
+    const unmatchedMdm = simpleMdmDevices.filter(d => !matchedMdmIds.has(d.id));
+    
+    // Sort all arrays
+    matches.sort((a, b) => {
+      const numA = parseInt((a.simpleMdm.name.match(/\((\d+)\)/) || [])[1]) || 0;
+      const numB = parseInt((b.simpleMdm.name.match(/\((\d+)\)/) || [])[1]) || 0;
       return numA - numB;
     });
     
-    console.log(`[Match] Scanned ${totalFetched} SimpleMDM devices, found ${simpleMdmDevices.length} matching "${branchName}"`);
+    console.log(`[Match] Results: ${matches.length} matched, ${unmatchedWebbing.length} unmatched SIMs, ${unmatchedMdm.length} unmatched iPads`);
     
-    // Since we can't do 1:1 IMEI matching (eSIM IMEI not in API),
-    // return both lists side by side for the user to view together
     res.json({
       branchName: branchName,
-      webbingDevices: webbingMatches,
-      simpleMdmDevices: simpleMdmDevices,
+      matches: matches,
+      unmatchedWebbing: unmatchedWebbing,
+      unmatchedMdm: unmatchedMdm,
       stats: {
-        webbingCount: webbingMatches.length,
-        mdmCount: simpleMdmDevices.length,
+        matched: matches.length,
+        unmatchedWebbing: unmatchedWebbing.length,
+        unmatchedMdm: unmatchedMdm.length,
+        total: webbingMatches.length,
+        mdmTotal: simpleMdmDevices.length,
         totalScanned: totalFetched
+      },
+      debug: {
+        sampleAttributes: debugAttributes,
+        mdmWithIccid: mdmByIccid.size
       }
     });
     
