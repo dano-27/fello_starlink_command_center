@@ -200,6 +200,28 @@ app.get('/', (req, res) => res.redirect('/lookup/'));
 
 app.use(express.static(path.join(__dirname, 'public')));
 
+// ── CoverageMap API Proxy (for Site Checker) ────────────────────────
+const COVERAGEMAP_KEY = process.env.COVERAGEMAP_KEY || '075561175ee04c3192b153251a8ad541';
+app.get('/api/coveragemap', async (req, res) => {
+  const { latitude, longitude } = req.query;
+  if (!latitude || !longitude) {
+    return res.status(400).json({ error: 'Missing latitude or longitude' });
+  }
+  try {
+    const apiUrl = `https://enterprise.coveragemap.com/api/v1/signal-strength/lookup?latitude=${latitude}&longitude=${longitude}`;
+    const response = await fetch(apiUrl, {
+      headers: {
+        'Authorization': `Bearer ${COVERAGEMAP_KEY}`,
+        'Accept': 'application/json',
+      },
+    });
+    const data = await response.json();
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── In-memory token cache ────────────────────────────────────────────
 const tokenCache = new Map(); // key: clientId, value: { accessToken, expiresAt }
 
