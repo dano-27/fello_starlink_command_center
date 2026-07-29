@@ -193,8 +193,8 @@
       <div class="actions-bar">
         <button class="btn btn-warning" onclick="window.bulkAction('${esc(branchId)}', 'suspend')">⏸ Bulk Suspend SIMs</button>
         <button class="btn btn-success" onclick="window.bulkAction('${esc(branchId)}', 'activate')">▶ Bulk Activate SIMs</button>
-        <button class="btn btn-outline" style="border-color:var(--amber);color:var(--amber);" onclick="window.bulkMdmAction('lock')">🔒 Lock All iPads</button>
-        <button class="btn btn-outline" style="border-color:var(--green);color:var(--green);" onclick="window.bulkMdmAction('clear_passcode')">🔓 Unlock All iPads</button>
+        <button class="btn btn-outline" style="border-color:var(--red);color:var(--red);" onclick="window.bulkLostMode('enable')">🔴 Enable Lost Mode All</button>
+        <button class="btn btn-outline" style="border-color:var(--green);color:var(--green);" onclick="window.bulkLostMode('disable')">🟢 Disable Lost Mode All</button>
       </div>
     `;
 
@@ -458,23 +458,37 @@
     }
   };
 
-  window.bulkMdmAction = async function(action) {
+  window.bulkLostMode = async function(mode) {
     const rows = window._fleetRows || [];
     const ipads = rows.filter(r => r.mdmId);
     if (ipads.length === 0) { alert('No iPads found.'); return; }
     
-    const label = action === 'lock' ? 'LOCK' : 'UNLOCK';
-    if (!confirm(`${label} all ${ipads.length} iPads in this order?\n\nThis will send a ${label.toLowerCase()} command to every device.`)) return;
+    const label = mode === 'enable' ? 'ENABLE LOST MODE' : 'DISABLE LOST MODE';
+    let msg = '';
+    if (mode === 'enable') {
+      msg = prompt('Lost Mode message for all devices:', 'This iPad has been reported lost. Please contact the administrator.');
+      if (!msg) return;
+    }
+    if (!confirm(`${label} on all ${ipads.length} iPads?`)) return;
     
     let success = 0, failed = 0;
     for (const ipad of ipads) {
       try {
-        const res = await fetch(`/api/simplemdm/devices/${ipad.mdmId}/${action}`, { method: 'POST' });
-        if (res.ok) { success++; } else { failed++; }
+        if (mode === 'enable') {
+          const res = await fetch(`/api/simplemdm/devices/${ipad.mdmId}/lost_mode`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message: msg })
+          });
+          if (res.ok) { success++; } else { failed++; }
+        } else {
+          const res = await fetch(`/api/simplemdm/devices/${ipad.mdmId}/lost_mode`, { method: 'DELETE' });
+          if (res.ok) { success++; } else { failed++; }
+        }
       } catch { failed++; }
     }
     
-    showToast(`${label}: ${success} succeeded, ${failed} failed`, failed > 0 ? 'error' : 'success');
+    showToast(`${label}: ${success}/${ipads.length} succeeded`, failed > 0 ? 'error' : 'success');
   };
 
   // ── Device Results ───────────────────────────────────────────
