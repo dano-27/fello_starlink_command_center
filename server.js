@@ -3697,7 +3697,7 @@ app.get('/api/webbing/branches/:branchId/devices', (req, res) => {
 app.get('/api/webbing/devices/:id/live', async (req, res) => {
   try {
     const client = getWebbingClient();
-    const result = await client.getLiveData(parseInt(req.params.id));
+    const result = await client.getLiveData(req.params.id);
     res.json(result);
   } catch (err) {
     res.status(err instanceof WebbingApiError ? 400 : 500).json({ error: err.message });
