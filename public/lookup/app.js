@@ -193,6 +193,8 @@
       <div class="actions-bar">
         <button class="btn btn-warning" onclick="window.bulkAction('${esc(branchId)}', 'suspend')">⏸ Bulk Suspend SIMs</button>
         <button class="btn btn-success" onclick="window.bulkAction('${esc(branchId)}', 'activate')">▶ Bulk Activate SIMs</button>
+        <button class="btn btn-outline" style="border-color:var(--amber);color:var(--amber);" onclick="window.bulkMdmAction('lock')">🔒 Lock All iPads</button>
+        <button class="btn btn-outline" style="border-color:var(--green);color:var(--green);" onclick="window.bulkMdmAction('clear_passcode')">🔓 Unlock All iPads</button>
       </div>
     `;
 
@@ -454,6 +456,25 @@
     } catch (err) {
       alert('Error: ' + err.message);
     }
+  };
+
+  window.bulkMdmAction = async function(action) {
+    const rows = window._fleetRows || [];
+    const ipads = rows.filter(r => r.mdmId);
+    if (ipads.length === 0) { alert('No iPads found.'); return; }
+    
+    const label = action === 'lock' ? 'LOCK' : 'UNLOCK';
+    if (!confirm(`${label} all ${ipads.length} iPads in this order?\n\nThis will send a ${label.toLowerCase()} command to every device.`)) return;
+    
+    let success = 0, failed = 0;
+    for (const ipad of ipads) {
+      try {
+        const res = await fetch(`/api/simplemdm/devices/${ipad.mdmId}/${action}`, { method: 'POST' });
+        if (res.ok) { success++; } else { failed++; }
+      } catch { failed++; }
+    }
+    
+    showToast(`${label}: ${success} succeeded, ${failed} failed`, failed > 0 ? 'error' : 'success');
   };
 
   // ── Device Results ───────────────────────────────────────────
