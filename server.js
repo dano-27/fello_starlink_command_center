@@ -3786,7 +3786,10 @@ app.post('/api/webbing/devices/:id/sms', async (req, res) => {
 app.get('/api/webbing/branches', async (req, res) => {
   try {
     const client = getWebbingClient();
-    const result = await client.searchBranches(req.query.search || '');
+    const freeText = req.query.search || req.query.q || '';
+    const page = parseInt(req.query.page) || 1;
+    const pageSize = parseInt(req.query.pageSize) || 100;
+    const result = await client.searchBranches(freeText, page, pageSize);
     res.json(result);
   } catch (err) {
     res.status(err instanceof WebbingApiError ? 400 : 500).json({ error: err.message });
