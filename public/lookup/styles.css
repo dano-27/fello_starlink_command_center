@@ -1101,6 +1101,17 @@ td.mono {
   color: var(--blue);
 }
 
+.usage-sortable {
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.15s;
+  white-space: nowrap;
+}
+
+.usage-sortable:hover {
+  color: var(--blue);
+}
+
 @media (max-width: 768px) {
   .search-container { margin: 20px auto; }
   .stats-bar { grid-template-columns: 1fr 1fr; }

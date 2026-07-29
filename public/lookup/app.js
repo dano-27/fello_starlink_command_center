@@ -525,6 +525,124 @@
     showToast(`${label}: ${success}/${ipads.length} succeeded`, failed > 0 ? 'error' : 'success');
   };
 
+  // ── Usage Table Renderer with Sorting ──────────────────────
+  let _usageSortCol = 'TotalUsage';
+  let _usageSortDir = 'desc';
+
+  function renderUsageTable(results, totals, startDate, endDate, sortCol, sortDir) {
+    if (sortCol) _usageSortCol = sortCol;
+    if (sortDir) _usageSortDir = sortDir;
+
+    const totalGB = (totals.totalUsage / 1024).toFixed(3);
+    const fleetRows = window._fleetRows || [];
+
+    // Enrich results with iPad info for sorting
+    const enriched = results.map(r => {
+      const matchedRow = fleetRows.find(fr => fr.simSerial === r.Serial || fr.simSerial === r.SSID);
+      return {
+        ...r,
+        _ipadName: matchedRow ? matchedRow.name : '—',
+        _ipadSerial: matchedRow ? matchedRow.ipadSerial : ''
+      };
+    });
+
+    // Sort
+    const col = _usageSortCol;
+    const dir = _usageSortDir === 'asc' ? 1 : -1;
+    enriched.sort((a, b) => {
+      let va, vb;
+      if (col === 'Device') { va = a._ipadName; vb = b._ipadName; }
+      else if (col === 'Serial') { va = a.Serial || ''; vb = b.Serial || ''; }
+      else if (col === 'IMEI') { va = a.IMEI || ''; vb = b.IMEI || ''; }
+      else if (col === 'Plan') { va = a.ProductName || ''; vb = b.ProductName || ''; }
+      else if (col === 'Status') { va = a.StatusName || ''; vb = b.StatusName || ''; }
+      else if (col === 'TotalUsage') { va = a.TotalUsage; vb = b.TotalUsage; }
+      else if (col === 'TotalUsageDays') { va = a.TotalUsageDays || 0; vb = b.TotalUsageDays || 0; }
+      else { va = a.TotalUsage; vb = b.TotalUsage; }
+      if (typeof va === 'string') return va.localeCompare(vb) * dir;
+      return (va - vb) * dir;
+    });
+
+    const arrow = (c) => _usageSortCol === c ? (_usageSortDir === 'asc' ? ' ▲' : ' ▼') : '';
+    const th = (label, colKey) => `<th class="usage-sortable" onclick="window.sortUsageTable('${colKey}')">${label}${arrow(colKey)}</th>`;
+
+    let tableHtml = `
+      <div class="usage-summary">
+        <div class="usage-summary-card">
+          <div class="usage-summary-label">Total Data Usage</div>
+          <div class="usage-summary-value">${totalGB} GB</div>
+        </div>
+        <div class="usage-summary-card">
+          <div class="usage-summary-label">Total Lines</div>
+          <div class="usage-summary-value">${totals.totalDevices || 0}</div>
+        </div>
+        <div class="usage-summary-card">
+          <div class="usage-summary-label">Lines With Usage</div>
+          <div class="usage-summary-value">${totals.devicesWithUsage || 0}</div>
+        </div>
+        <div class="usage-summary-card">
+          <div class="usage-summary-label">Period</div>
+          <div class="usage-summary-value">${startDate} → ${endDate}</div>
+        </div>
+      </div>
+      <table class="usage-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            ${th('Device', 'Device')}
+            ${th('SIM Serial', 'Serial')}
+            ${th('IMEI', 'IMEI')}
+            ${th('Plan', 'Plan')}
+            ${th('Status', 'Status')}
+            ${th('Usage (MB)', 'TotalUsage')}
+            ${th('Usage (GB)', 'TotalUsage')}
+            ${th('Active Days', 'TotalUsageDays')}
+          </tr>
+        </thead>
+        <tbody>`;
+
+    enriched.forEach((r, i) => {
+      const usageGB = (r.TotalUsage / 1024).toFixed(3);
+      const usageMB = r.TotalUsage.toFixed(2);
+      const statusClass = r.StatusName === 'Active' ? 'status-active' : 'status-suspended';
+      const deviceLabel = r._ipadName !== '—'
+        ? `${r._ipadName}` + (r._ipadSerial ? `<br><span class="mono" style="font-size:0.7rem;color:var(--text-muted);">${esc(r._ipadSerial)}</span>` : '')
+        : '—';
+      tableHtml += `
+          <tr>
+            <td>${i + 1}</td>
+            <td>${deviceLabel}</td>
+            <td class="mono">${esc(r.Serial || '—')}</td>
+            <td class="mono">${esc(r.IMEI || '—')}</td>
+            <td>${esc(r.ProductName || '—')}</td>
+            <td><span class="badge ${statusClass}">${esc(r.StatusName || '—')}</span></td>
+            <td class="mono">${usageMB}</td>
+            <td class="mono" style="font-weight:600;">${usageGB}</td>
+            <td>${r.TotalUsageDays || 0}</td>
+          </tr>`;
+    });
+
+    tableHtml += `
+          <tr class="usage-total-row">
+            <td colspan="5"><strong>TOTAL</strong></td>
+            <td class="mono"><strong>${(totals.totalUsage || 0).toFixed(2)}</strong></td>
+            <td class="mono" style="font-weight:700;">${totalGB}</td>
+            <td></td>
+          </tr>
+        </tbody>
+      </table>
+      <button class="btn btn-outline" style="margin-top:12px;border-color:var(--blue);color:var(--blue);" onclick="window.exportUsageCSV()">📥 Export CSV</button>`;
+
+    document.getElementById('usage-results').innerHTML = tableHtml;
+  }
+
+  window.sortUsageTable = function(colKey) {
+    const d = window._usageResults;
+    if (!d) return;
+    const newDir = (_usageSortCol === colKey && _usageSortDir === 'desc') ? 'asc' : 'desc';
+    renderUsageTable(d.results, d.totals, d.start, d.end, colKey, newDir);
+  };
+
   // ── Data Usage Calculator ───────────────────────────────────
   window.calculateUsage = async function() {
     const branchId = window._currentBranchId;
@@ -554,78 +672,7 @@
       const results = data.results || [];
       const totals = data.totals || {};
       const totalGB = (totals.totalUsage / 1024).toFixed(3);
-      
-      let tableHtml = `
-        <div class="usage-summary">
-          <div class="usage-summary-card">
-            <div class="usage-summary-label">Total Data Usage</div>
-            <div class="usage-summary-value">${totalGB} GB</div>
-          </div>
-          <div class="usage-summary-card">
-            <div class="usage-summary-label">Total Lines</div>
-            <div class="usage-summary-value">${totals.totalDevices || 0}</div>
-          </div>
-          <div class="usage-summary-card">
-            <div class="usage-summary-label">Lines With Usage</div>
-            <div class="usage-summary-value">${totals.devicesWithUsage || 0}</div>
-          </div>
-          <div class="usage-summary-card">
-            <div class="usage-summary-label">Period</div>
-            <div class="usage-summary-value">${startEl.value} → ${endEl.value}</div>
-          </div>
-        </div>
-        <table class="usage-table">
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Device</th>
-              <th>SIM Serial</th>
-              <th>IMEI</th>
-              <th>Plan</th>
-              <th>Status</th>
-              <th>Usage (MB)</th>
-              <th>Usage (GB)</th>
-              <th>Active Days</th>
-            </tr>
-          </thead>
-          <tbody>`;
-      
-      const fleetRows = window._fleetRows || [];
-      results.forEach((r, i) => {
-        const usageGB = (r.TotalUsage / 1024).toFixed(3);
-        const usageMB = r.TotalUsage.toFixed(2);
-        const statusClass = r.StatusName === 'Active' ? 'status-active' : 'status-suspended';
-        // Cross-reference fleet data for iPad name
-        const matchedRow = fleetRows.find(fr => fr.simSerial === r.Serial || fr.simSerial === r.SSID);
-        const ipadName = matchedRow ? matchedRow.name : '—';
-        const ipadSerial = matchedRow ? matchedRow.ipadSerial : '';
-        const deviceLabel = ipadName !== '—' ? `${ipadName}` + (ipadSerial ? `<br><span class="mono" style="font-size:0.7rem;color:var(--text-muted);">${esc(ipadSerial)}</span>` : '') : '—';
-        tableHtml += `
-            <tr>
-              <td>${i + 1}</td>
-              <td>${deviceLabel}</td>
-              <td class="mono">${esc(r.Serial || '—')}</td>
-              <td class="mono">${esc(r.IMEI || '—')}</td>
-              <td>${esc(r.ProductName || '—')}</td>
-              <td><span class="badge ${statusClass}">${esc(r.StatusName || '—')}</span></td>
-              <td class="mono">${usageMB}</td>
-              <td class="mono" style="font-weight:600;">${usageGB}</td>
-              <td>${r.TotalUsageDays || 0}</td>
-            </tr>`;
-      });
-      
-      tableHtml += `
-            <tr class="usage-total-row">
-              <td colspan="5"><strong>TOTAL</strong></td>
-              <td class="mono"><strong>${(totals.totalUsage || 0).toFixed(2)}</strong></td>
-              <td class="mono" style="font-weight:700;">${totalGB}</td>
-              <td></td>
-            </tr>
-          </tbody>
-        </table>
-        <button class="btn btn-outline" style="margin-top:12px;border-color:var(--blue);color:var(--blue);" onclick="window.exportUsageCSV()">📥 Export CSV</button>`;
-      
-      resultsDiv.innerHTML = tableHtml;
+      renderUsageTable(results, totals, startEl.value, endEl.value);
       window._usageResults = { results, totals, start: startEl.value, end: endEl.value };
       
     } catch (err) {
