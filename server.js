@@ -3793,6 +3793,27 @@ app.post('/api/webbing/devices/:id/sms', async (req, res) => {
   }
 });
 
+// ── Accounts (debug) ────────────────────────────────────────────────────
+app.get('/api/webbing/branches/:branchId/accounts', async (req, res) => {
+  try {
+    const client = getWebbingClient();
+    const result = await client.searchAccounts(parseInt(req.params.branchId));
+    res.json(result);
+  } catch (err) {
+    res.status(err instanceof WebbingApiError ? 400 : 500).json({ error: err.message });
+  }
+});
+
+app.get('/api/webbing/accounts/:accountId/assignments', async (req, res) => {
+  try {
+    const client = getWebbingClient();
+    const result = await client.searchAssignments(parseInt(req.params.accountId));
+    res.json(result);
+  } catch (err) {
+    res.status(err instanceof WebbingApiError ? 400 : 500).json({ error: err.message });
+  }
+});
+
 // ── Branches ────────────────────────────────────────────────────────────
 app.get('/api/webbing/branches', async (req, res) => {
   try {
