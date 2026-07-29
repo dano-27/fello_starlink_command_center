@@ -4340,13 +4340,107 @@ app.get('/api/lookup', async (req, res) => {
   
   console.log(`[Lookup] Search: "${query}"`);
   
-  // Detect search type: group/branch vs device serial
-  // Branch names typically start with FE, SQ, EB, CB, MO, or are alphanumeric order numbers
-  const isGroupSearch = /^(FE|SQ|EB|CB|MO|Z5)/i.test(query) || 
-                        (query.length >= 4 && /^\d+$/.test(query)); // pure numeric order ID
+  // Detect search type: ICCID (19-20 digits) | IMEI (15 digits) | group/branch | device serial
+  const isICCID = /^\d{19,20}$/.test(query);
+  const isIMEI = /^\d{15}$/.test(query);
+  const isGroupSearch = !isICCID && !isIMEI && (
+    /^(FE|SQ|EB|CB|MO|Z5|SH|LE|AR|OR|RS|MEAL|CAMO|CASQ)/i.test(query) || 
+    (query.length >= 4 && /^\d+$/.test(query))
+  );
   
   try {
-    if (isGroupSearch) {
+    if (isICCID || isIMEI) {
+      // ── ICCID / IMEI SEARCH ──────────────────────────────────
+      const searchType = isICCID ? 'ICCID' : 'IMEI';
+      console.log(`[Lookup] Performing ${searchType} search for "${query}"`);
+      
+      // Step 1: Search in Webbing cache
+      const device = webbingDeviceCache.find(d => {
+        if (isICCID) return (d.ICCID || '') === query;
+        return (d.IMEI || '') === query || String(d.IMEI) === query;
+      });
+      
+      // Step 2: Fetch live data (works even if device not in cache)
+      let liveData = null;
+      try {
+        const client = getWebbingClient();
+        liveData = await client.getLiveData(query);
+      } catch (e) {
+        console.log(`[Lookup] GetSDLiveData error for ${searchType} ${query}: ${e.message}`);
+      }
+      
+      if (!device && !liveData) {
+        return res.json({ type: searchType.toLowerCase(), found: false, query });
+      }
+      
+      // Step 3: Fetch usage (last 30 days) if we have a ServiceDeviceID
+      const serviceDeviceId = device?.ServiceDeviceID || null;
+      let usage = null;
+      if (serviceDeviceId) {
+        try {
+          const client = getWebbingClient();
+          const endDate = new Date().toLocaleDateString('en-US');
+          const startDate = new Date(Date.now() - 30*24*60*60*1000).toLocaleDateString('en-US');
+          const usageResult = await client.getDeviceUsage(serviceDeviceId, startDate, endDate, 'Day');
+          const records = usageResult?.UsageRecords || usageResult?.records || [];
+          const totalMB = records.reduce((sum, r) => sum + (parseFloat(r.TotalMB || r.totalMB || 0)), 0);
+          usage = { totalMB: Math.round(totalMB * 100) / 100, records, period: `${startDate} - ${endDate}` };
+        } catch (e) {
+          console.log('[Lookup] Usage error:', e.message);
+        }
+      }
+      
+      // Step 4: Fetch location if we have ServiceDeviceID
+      let location = null;
+      if (serviceDeviceId) {
+        try {
+          const client = getWebbingClient();
+          const locResult = await client.getLocation(serviceDeviceId);
+          location = locResult?.LocationInfo || locResult;
+        } catch (e) {
+          console.log('[Lookup] Location error:', e.message);
+        }
+      }
+      
+      return res.json({
+        type: searchType.toLowerCase(),
+        found: true,
+        device: {
+          serviceDeviceId,
+          serial: device?.Serial || null,
+          ssid: device?.SSID || null,
+          iccid: liveData?.ICCID ? String(liveData.ICCID) : (device?.ICCID || query),
+          imei: liveData?.IMEI ? String(liveData.IMEI) : (device?.IMEI || null),
+          msisdn: device?.MSISDN || null,
+          statusName: device?.StatusName || (liveData?.IsActive ? 'Active' : 'In Use'),
+          statusId: device?.StatusID || null,
+          productName: device?.ProductName || null,
+          branchName: device?.BranchName || null,
+          branchId: device?.BranchID || null,
+          orderId: device?.OrderID || null,
+          deviceTypeName: device?.DeviceTypeName || null,
+          apnName: device?.ApnName || null,
+          updatedAt: device?.UpdatedAtUtc || null,
+          statusChanged: device?.StatusDateChange || null
+        },
+        liveData: liveData ? {
+          countryName: liveData.CountryName,
+          countryCode: liveData.CountryCode,
+          carrier: liveData.VPLMN,
+          mccmnc: liveData.MCCMNC,
+          apn: liveData.APN,
+          ip: liveData.IP,
+          vendor: liveData.Vendor,
+          model: liveData.Model,
+          isActive: liveData.IsActive,
+          lastActive: liveData.LastActive,
+          pdpTimestamp: liveData.PDP
+        } : null,
+        usage,
+        location
+      });
+      
+    } else if (isGroupSearch) {
       // ── GROUP/BRANCH SEARCH ──────────────────────────────────
       console.log(`[Lookup] Performing GROUP search for "${query}"`);
       
@@ -4603,10 +4697,11 @@ app.get('/api/lookup', async (req, res) => {
       // ── DEVICE SERIAL SEARCH ──────────────────────────────────
       console.log(`[Lookup] Performing DEVICE search for "${query}"`);
       
-      // Search in Webbing cache by serial
+      // Search in Webbing cache by serial, SSID, ICCID, or ServiceDeviceID
       const device = webbingDeviceCache.find(d => 
         (d.Serial || '').toLowerCase() === query.toLowerCase() ||
         (d.SSID || '').toLowerCase() === query.toLowerCase() ||
+        (d.ICCID || '') === query ||
         String(d.ServiceDeviceID) === query
       );
       
