@@ -93,9 +93,40 @@
       const data = await response.json();
       
       if (!data.found && data.found !== undefined) {
-        renderError(`No results found for "${esc(query)}". Try a different Group Number or Serial.`);
+        renderError(`No results found for "${esc(query)}". Try a Group Number, Serial, or ICCID.`);
       } else if (data.type === 'group') {
         renderGroupResults(data, query);
+      } else if (data.type === 'iccid' || data.type === 'imei') {
+        // Normalize ICCID/IMEI response to match device renderer format
+        const live = data.liveData || {};
+        const normalized = {
+          ...data,
+          liveData: {
+            imei: data.device?.imei || live.imei,
+            iccid: data.device?.iccid || live.iccid,
+            vendor: live.vendor,
+            model: live.model,
+            carrier: live.carrier,
+            vplmn: live.carrier,
+            country: live.countryName,
+            apn: live.apn,
+            ip: live.ip,
+            ipAddress: live.ip,
+            activeSession: live.isActive,
+            imsi: live.mccmnc ? String(live.mccmnc) : null,
+            lastActive: live.lastActive
+          },
+          device: {
+            ...data.device,
+            plan: data.device?.productName,
+            planName: data.device?.productName,
+            branch: data.device?.branchName,
+            deviceType: data.device?.deviceTypeName,
+            statusDate: data.device?.statusChanged,
+            status: data.device?.statusId
+          }
+        };
+        renderDeviceResults(normalized);
       } else if (data.type === 'device') {
         renderDeviceResults(data);
       } else if (data.type === 'mdm_device') {
