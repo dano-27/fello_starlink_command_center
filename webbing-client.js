@@ -240,19 +240,29 @@ class WebbingClient {
   async getServiceDevices(options = {}) {
     const {
       branchId = 0, accountId = 0, assignmentId = 0,
-      statusId, deviceTypeId, onlyActive = false,
+      statusId, deviceTypeId, sdTypeId, onlyActive = false,
+      iccid, imei, serial, ssid, eid,
       fromUpdatedAt, toUpdatedAt,
       page = 1, pageSize = 100
     } = options;
 
+    const identifier = {};
+    if (iccid) identifier.ICCID = iccid;
+    if (imei) identifier.IMEI = imei;
+    if (serial) identifier.Serial = serial;
+    if (ssid) identifier.SSID = ssid;
+    if (eid) identifier.EID = eid;
+
     const request = {
       GetServiceDevicesRequest: {
+        ...(Object.keys(identifier).length > 0 ? { DeviceIdentifier: identifier } : {}),
         OnlyActivePlansDevices: onlyActive,
         BranchID: branchId,
         AccountID: accountId,
         AssignmentID: assignmentId,
         ...(statusId ? { SDStatusID: statusId } : {}),
         ...(deviceTypeId ? { DeviceTypeID: deviceTypeId } : {}),
+        ...(sdTypeId ? { SDTypeID: sdTypeId } : {}),
         ...(fromUpdatedAt ? { FromUpdatedAtUtc: fromUpdatedAt } : {}),
         ...(toUpdatedAt ? { ToUpdatedAtUtc: toUpdatedAt } : {}),
         PaginationRequest: {

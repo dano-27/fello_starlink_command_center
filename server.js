@@ -4393,54 +4393,34 @@ app.get('/api/lookup', async (req, res) => {
             console.error(`[Lookup] Device fetch error: ${e.message}`);
           }
           
-          // Fallback: if GetServiceDevices returns 0, try via Accounts → Assignments
+          // Fallback: if GetServiceDevices returns 0, try with different SDTypeIDs
           if (branchDevices.length === 0) {
-            console.log(`[Lookup] GetServiceDevices returned 0, trying Accounts/Assignments fallback...`);
-            try {
-              const acctResult = await client.searchAccounts(branchId);
-              const acctContainer = acctResult.Accounts || {};
-              let accounts = acctContainer.AccountRecord || [];
-              if (!Array.isArray(accounts)) accounts = accounts ? [accounts] : [];
-              console.log(`[Lookup] Found ${accounts.length} accounts for branch ${branchId}`);
-              
-              const deviceIds = [];
-              for (const acct of accounts) {
-                const acctId = acct.ID;
-                const assignResult = await client.searchAssignments(acctId);
-                const assignContainer = assignResult.Assignments || {};
-                let assignments = assignContainer.AssignmentRecord || [];
-                if (!Array.isArray(assignments)) assignments = assignments ? [assignments] : [];
-                console.log(`[Lookup] Account ${acctId}: ${assignments.length} assignments`);
-                for (const a of assignments) {
-                  if (a.ServiceDeviceID) deviceIds.push(a.ServiceDeviceID);
+            console.log(`[Lookup] GetServiceDevices(branchId=${branchId}) returned 0, trying SDTypeID scan...`);
+            for (let sdType = 1; sdType <= 10; sdType++) {
+              try {
+                const devResult = await client.getServiceDevices({ branchId, sdTypeId: sdType, pageSize: 500 });
+                let devRecords = devResult.ServiceDevices?.ServiceDeviceRecord || devResult.ServiceDevices || [];
+                if (!Array.isArray(devRecords)) devRecords = devRecords ? [devRecords] : [];
+                if (devRecords.length > 0) {
+                  branchDevices = devRecords;
+                  console.log(`[Lookup] Found ${devRecords.length} devices with SDTypeID=${sdType}`);
+                  break;
                 }
+              } catch (e) {
+                // Skip this type
               }
-              
-              console.log(`[Lookup] Found ${deviceIds.length} device IDs via assignments`);
-              
-              // Build device records from live data
-              for (const sdId of deviceIds) {
-                try {
-                  const liveResult = await client.getLiveData(sdId);
-                  branchDevices.push({
-                    ServiceDeviceID: sdId,
-                    Serial: null,
-                    SSID: null,
-                    StatusName: liveResult.IsActive ? 'Active' : 'In Use',
-                    StatusID: liveResult.IsActive ? 3 : 2,
-                    ProductName: null,
-                    BranchID: branchId,
-                    BranchName: branchName,
-                    _liveData: liveResult
-                  });
-                } catch (e) {
-                  console.error(`[Lookup] Live data error for ${sdId}: ${e.message}`);
-                }
-                await new Promise(r => setTimeout(r, 100));
-              }
-              console.log(`[Lookup] Built ${branchDevices.length} device records via assignments`);
-            } catch (e) {
-              console.error(`[Lookup] Assignment fallback error: ${e.message}`);
+            }
+            
+            // If still no devices, show branch as found but empty
+            if (branchDevices.length === 0) {
+              console.log(`[Lookup] Branch ${branchName} exists (ID=${branchId}) but has 0 devices in SOAP API`);
+              // Return found=true with branchId so the user knows the branch exists
+              return res.json({ 
+                type: 'group', branchName: branchName, branchId, found: true,
+                webbingDevices: [], simpleMdmDevices: [], 
+                note: 'Branch exists in Webbing but devices are not accessible via the SOAP API. Check the Webbing dashboard directly.',
+                stats: { webbingCount: 0, mdmCount: 0, countMatch: true } 
+              });
             }
           }
         } else {
