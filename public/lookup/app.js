@@ -176,16 +176,20 @@
     const web = data.webbingDevices || [];
     const stats = data.stats || {};
     const usage = data.usage || {};
-    const matchIcon = stats.countMatch ? '✅' : '⚠️';
     const branchId = data.branchName || query;
     const numericBranchId = data.branchId || null;
     window._currentBranchId = numericBranchId;
+
+    const nonMdmDevices = web.filter(w => !w.matchedIpadName).length;
+    const mdmMatched = stats.matchedCount || 0;
+    // Counts "match" if SIM lines = MDM devices + identified non-MDM devices
+    const effectiveMatch = mdmMatched + nonMdmDevices >= (stats.webbingCount || web.length);
 
     let html = `
       <!-- Overview Bar -->
       <div class="stats-bar">
         <div class="stat-card stat-purple">
-          <div class="stat-label">iPads Found</div>
+          <div class="stat-label">MDM Devices</div>
           <div class="stat-value">${esc(stats.mdmCount || mdm.length)}</div>
         </div>
         <div class="stat-card stat-blue">
@@ -194,11 +198,11 @@
         </div>
         <div class="stat-card stat-green">
           <div class="stat-label">🔗 Matched</div>
-          <div class="stat-value">${esc(stats.matchedCount || 0)} / ${esc(Math.max(stats.mdmCount, stats.webbingCount) || 0)}</div>
+          <div class="stat-value">${esc(mdmMatched)} / ${esc(Math.max(stats.mdmCount, stats.webbingCount) || 0)}</div>
         </div>
         <div class="stat-card stat-amber">
-          <div class="stat-label">Counts Match</div>
-          <div class="stat-value">${matchIcon} ${stats.countMatch ? 'Yes' : 'No'}</div>
+          <div class="stat-label">Non-MDM Devices</div>
+          <div class="stat-value">${nonMdmDevices > 0 ? '📶 ' + nonMdmDevices : '0'}</div>
         </div>
       </div>
 
@@ -300,14 +304,44 @@
         plan: '', ip: '', simModel: '', vendor: ''
       });
     }
-    // Unmatched SIMs
+    // Unmatched SIMs — detect device type from vendor/model
     for (const w of unmatchedSims) {
+      const vendor = (w.vendor || '').toLowerCase();
+      const model = (w.model || '').toLowerCase();
+      const combined = `${vendor} ${model}`;
+
+      let deviceType = 'sim';
+      let deviceIcon = '📡';
+      let deviceName = 'SIM-Only Device';
+
+      if (combined.includes('mifi') || combined.includes('hotspot') || combined.includes('jetpack') ||
+          combined.includes('nighthawk') || combined.includes('inseego') || combined.includes('franklin') ||
+          combined.includes('usb620') || combined.includes('usb730') || combined.includes('usb800')) {
+        deviceType = 'hotspot';
+        deviceIcon = '📶';
+        deviceName = 'Mobile Hotspot';
+      } else if (combined.includes('cradlepoint') || combined.includes('router') || combined.includes('ibr') ||
+                 combined.includes('e3000') || combined.includes('netgear') || combined.includes('mofi')) {
+        deviceType = 'router';
+        deviceIcon = '🌐';
+        deviceName = 'Mobile Router';
+      } else if (combined.includes('starlink')) {
+        deviceType = 'starlink';
+        deviceIcon = '🛰️';
+        deviceName = 'Starlink';
+      }
+
+      // Build a descriptive name from model
+      const modelDisplay = w.model ? w.model.split(',')[0].trim() : '';
+      const fullName = `${deviceIcon} ${deviceName}` + (modelDisplay ? ` — ${modelDisplay}` : '');
+
       window._fleetRows.push({
         linked: false,
         mdmId: null,
         simDeviceId: w.serviceDeviceId || null,
         simStatusRaw: w.status || '',
-        name: '', ipadSerial: '', model: '', os: '', battery: null,
+        deviceType: deviceType,
+        name: fullName, ipadSerial: '', model: modelDisplay, os: '', battery: null,
         capacity: '', lastSeenAt: '', enrolledAt: '',
         phoneNumber: '', wifiMac: '', mdmImei: '',
         imei: w.imei || '',
@@ -360,7 +394,7 @@
     html += `
       <div class="section" id="sec-unified">
         <div class="section-header" onclick="this.parentElement.classList.toggle('collapsed')">
-          <div class="section-title"><span class="section-icon">📋</span> Fleet Overview — iPad + SIM Pairs</div>
+          <div class="section-title"><span class="section-icon">📋</span> Fleet Overview — Device + SIM Pairs</div>
           <div class="chevron">▼</div>
         </div>
         <div class="section-content">
@@ -419,9 +453,12 @@
     const empty = '<span style="color:var(--text-muted)">—</span>';
     switch(key) {
       case 'linked':
-        return row.linked
-          ? '<span style="color: var(--green); font-weight: bold;">✓</span>'
-          : '<span style="color: var(--amber);">✗</span>';
+        if (row.linked) return '<span style="color: var(--green); font-weight: bold;">✓</span>';
+        if (row.deviceType === 'hotspot') return '<span title="Mobile Hotspot">📶</span>';
+        if (row.deviceType === 'router') return '<span title="Mobile Router">🌐</span>';
+        if (row.deviceType === 'starlink') return '<span title="Starlink">🛰️</span>';
+        if (row.deviceType === 'sim') return '<span title="SIM-Only Device">📡</span>';
+        return '<span style="color: var(--amber);">✗</span>';
       case 'battery':
         return val ? val + (String(val).includes('%') ? '' : '%') : '—';
       case 'simStatus':
