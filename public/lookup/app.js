@@ -547,7 +547,7 @@
     resultsDiv.innerHTML = '<div class="usage-loading">Fetching usage data for all lines... This may take a moment.</div>';
     
     try {
-      const res = await fetch(`/api/webbing/branches/${branchId}/usage?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}&interval=Day`);
+      const res = await fetch(`/api/webbing/branches/${branchId}/usage?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}&interval=Unknown`);
       if (!res.ok) throw new Error('Failed to fetch usage data');
       const data = await res.json();
       
