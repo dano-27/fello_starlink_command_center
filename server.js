@@ -201,7 +201,7 @@ app.get('/', (req, res) => res.redirect('/lookup/'));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ── CoverageMap API Proxy (for Site Checker) ────────────────────────
-const COVERAGEMAP_KEY = process.env.COVERAGEMAP_KEY || '075561175ee04c3192b153251a8ad541';
+const COVERAGEMAP_KEY = process.env.COVERAGEMAP_KEY || 'e3f45af8095f4148998998511ad55754';
 app.get('/api/coveragemap', async (req, res) => {
   const { latitude, longitude } = req.query;
   if (!latitude || !longitude) {
