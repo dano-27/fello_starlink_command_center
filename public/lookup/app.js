@@ -578,8 +578,8 @@
           <thead>
             <tr>
               <th>#</th>
-              <th>Serial</th>
-              <th>SSID</th>
+              <th>Device</th>
+              <th>SIM Serial</th>
               <th>IMEI</th>
               <th>Plan</th>
               <th>Status</th>
@@ -590,15 +590,21 @@
           </thead>
           <tbody>`;
       
+      const fleetRows = window._fleetRows || [];
       results.forEach((r, i) => {
         const usageGB = (r.TotalUsage / 1024).toFixed(3);
         const usageMB = r.TotalUsage.toFixed(2);
         const statusClass = r.StatusName === 'Active' ? 'status-active' : 'status-suspended';
+        // Cross-reference fleet data for iPad name
+        const matchedRow = fleetRows.find(fr => fr.simSerial === r.Serial || fr.simSerial === r.SSID);
+        const ipadName = matchedRow ? matchedRow.name : '—';
+        const ipadSerial = matchedRow ? matchedRow.ipadSerial : '';
+        const deviceLabel = ipadName !== '—' ? `${ipadName}` + (ipadSerial ? `<br><span class="mono" style="font-size:0.7rem;color:var(--text-muted);">${esc(ipadSerial)}</span>` : '') : '—';
         tableHtml += `
             <tr>
               <td>${i + 1}</td>
+              <td>${deviceLabel}</td>
               <td class="mono">${esc(r.Serial || '—')}</td>
-              <td>${esc(r.SSID || '—')}</td>
               <td class="mono">${esc(r.IMEI || '—')}</td>
               <td>${esc(r.ProductName || '—')}</td>
               <td><span class="badge ${statusClass}">${esc(r.StatusName || '—')}</span></td>
@@ -610,7 +616,7 @@
       
       tableHtml += `
             <tr class="usage-total-row">
-              <td colspan="6"><strong>TOTAL</strong></td>
+              <td colspan="5"><strong>TOTAL</strong></td>
               <td class="mono"><strong>${(totals.totalUsage || 0).toFixed(2)}</strong></td>
               <td class="mono" style="font-weight:700;">${totalGB}</td>
               <td></td>
@@ -633,11 +639,15 @@
   window.exportUsageCSV = function() {
     const d = window._usageResults;
     if (!d) return;
-    let csv = 'Serial,SSID,IMEI,Plan,Status,Usage (MB),Usage (GB),Active Days\n';
+    let csv = 'iPad Name,iPad Serial,SIM Serial,IMEI,Plan,Status,Usage (MB),Usage (GB),Active Days\n';
+    const fleetRows = window._fleetRows || [];
     d.results.forEach(r => {
-      csv += `${r.Serial},${r.SSID},${r.IMEI},${r.ProductName},${r.StatusName},${r.TotalUsage.toFixed(2)},${(r.TotalUsage / 1024).toFixed(3)},${r.TotalUsageDays}\n`;
+      const matchedRow = fleetRows.find(fr => fr.simSerial === r.Serial || fr.simSerial === r.SSID);
+      const ipadName = matchedRow ? matchedRow.name : '';
+      const ipadSerial = matchedRow ? matchedRow.ipadSerial : '';
+      csv += `${ipadName},${ipadSerial},${r.Serial},${r.IMEI},${r.ProductName},${r.StatusName},${r.TotalUsage.toFixed(2)},${(r.TotalUsage / 1024).toFixed(3)},${r.TotalUsageDays}\n`;
     });
-    csv += `TOTAL,,,,,${d.totals.totalUsage.toFixed(2)},${(d.totals.totalUsage / 1024).toFixed(3)},\n`;
+    csv += `TOTAL,,,,,,${d.totals.totalUsage.toFixed(2)},${(d.totals.totalUsage / 1024).toFixed(3)},\n`;
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
