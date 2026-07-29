@@ -419,10 +419,10 @@ class WebbingClient {
   /**
    * Search branches
    */
-  async searchBranches(freeText = '', page = 1, pageSize = 100) {
+  async searchBranches(searchText = '', page = 1, pageSize = 100) {
     return this.call('accounts', 'SearchBranches', {
       SearchBranchesRequest: {
-        FreeText: freeText,
+        SearchText: searchText,
         PaginationRequest: { PageSize: pageSize, PageNumber: page }
       }
     });

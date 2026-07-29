@@ -4342,50 +4342,27 @@ app.get('/api/lookup', async (req, res) => {
         
         console.log(`[Lookup] Branch "${branchName}" not in cache, searching Webbing API...`);
         
-        // Paginate through all branch pages to find it
+        // Primary: Search by name using SearchText (exact match)
         try {
-          let page = 1;
-          const pageSize = 100;
-          let totalPages = 1;
+          const searchResult = await client.searchBranches(query, 1, 100);
+          const branchesContainer = searchResult.Branches || {};
+          let branchRecords = branchesContainer.BranchRecord || [];
+          if (!Array.isArray(branchRecords)) branchRecords = branchRecords ? [branchRecords] : [];
           
-          do {
-            const searchResult = await client.searchBranches('', page, pageSize);
-            totalPages = searchResult.PaginationResponse?.TotalPages || 1;
-            const branchesContainer = searchResult.Branches || {};
-            let branchRecords = branchesContainer.BranchRecord || [];
-            if (!Array.isArray(branchRecords)) branchRecords = branchRecords ? [branchRecords] : [];
-            
-            if (branchRecords.length === 0) {
-              console.log(`[Lookup] Page ${page}: empty, stopping`);
-              break;
-            }
-            
-            foundBranch = branchRecords.find(b => 
-              (b.BranchName || b.Name || '').toUpperCase() === branchName
-            );
-            
-            if (foundBranch) {
-              console.log(`[Lookup] Found "${branchName}" on page ${page}/${totalPages}`);
-              break;
-            }
-            
-            page++;
-            if (page > totalPages) break;
-            await new Promise(r => setTimeout(r, 100));
-          } while (true);
+          console.log(`[Lookup] SearchBranches returned ${branchRecords.length} results for "${query}"`);
           
-          if (!foundBranch) {
-            console.log(`[Lookup] Branch "${branchName}" not found after scanning ${Math.min(page, totalPages)}/${totalPages} pages`);
-          }
+          foundBranch = branchRecords.find(b => 
+            (b.BranchName || b.Name || '').toUpperCase() === branchName
+          ) || (branchRecords.length === 1 ? branchRecords[0] : null);
         } catch (e) {
-          console.error(`[Lookup] Branch pagination error on: ${e.message}`);
+          console.error(`[Lookup] Branch search error: ${e.message}`);
         }
         
-        // If found via SearchBranches, fetch devices by branchId
+        // If found, fetch devices by branchId
         if (foundBranch) {
           try {
             branchId = foundBranch.BranchID || foundBranch.ID;
-            console.log(`[Lookup] Fetching devices for branch ID ${branchId}...`);
+            console.log(`[Lookup] Found branch "${branchName}" (ID: ${branchId}), fetching devices...`);
             const devResult = await client.getServiceDevices({ branchId, pageSize: 500 });
             let devRecords = devResult.ServiceDevices?.ServiceDeviceRecord || devResult.ServiceDevices || [];
             if (!Array.isArray(devRecords)) devRecords = devRecords ? [devRecords] : [];
@@ -4394,49 +4371,8 @@ app.get('/api/lookup', async (req, res) => {
           } catch (e) {
             console.error(`[Lookup] Device fetch error: ${e.message}`);
           }
-        }
-        
-        // Fallback 2: SearchBranches pagination is broken — scan GetServiceDevices for matching BranchName
-        if (!foundBranch && branchDevices.length === 0) {
-          console.log(`[Lookup] Trying GetServiceDevices scan for BranchName "${branchName}"...`);
-          try {
-            let scanPage = 1;
-            const scanPageSize = 1000;
-            let scannedTotal = 0;
-            
-            while (true) {
-              const devResult = await client.getServiceDevices({ page: scanPage, pageSize: scanPageSize });
-              let devRecords = devResult.ServiceDevices?.ServiceDeviceRecord || devResult.ServiceDevices || [];
-              if (!Array.isArray(devRecords)) devRecords = devRecords ? [devRecords] : [];
-              
-              if (devRecords.length === 0) break;
-              
-              const matching = devRecords.filter(d => 
-                (d.BranchName || '').toUpperCase() === branchName
-              );
-              
-              if (matching.length > 0) {
-                branchDevices = matching;
-                branchId = matching[0].BranchID;
-                console.log(`[Lookup] Found ${matching.length} devices via device scan (BranchID: ${branchId}) on page ${scanPage}`);
-                break;
-              }
-              
-              scannedTotal += devRecords.length;
-              const totalRecords = devResult.PaginationResponse?.TotalRecords || 0;
-              console.log(`[Lookup] Device scan page ${scanPage}: scanned ${scannedTotal}/${totalRecords}`);
-              
-              if (scannedTotal >= totalRecords) break;
-              scanPage++;
-              await new Promise(r => setTimeout(r, 100));
-            }
-            
-            if (branchDevices.length === 0) {
-              console.log(`[Lookup] Branch "${branchName}" not found in device scan either`);
-            }
-          } catch (e) {
-            console.error(`[Lookup] Device scan error: ${e.message}`);
-          }
+        } else {
+          console.log(`[Lookup] Branch "${branchName}" not found via SearchBranches`);
         }
       }
       
