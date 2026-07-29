@@ -194,6 +194,10 @@ const app = express();
 const PORT = process.env.PORT || 3456;
 
 app.use(express.json({ limit: '50mb' }));
+
+// Root redirects to Command Center (before static so it overrides old index.html)
+app.get('/', (req, res) => res.redirect('/lookup/'));
+
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ── In-memory token cache ────────────────────────────────────────────

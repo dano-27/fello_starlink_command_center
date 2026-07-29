@@ -42,35 +42,103 @@ a {
 
 /* ── Header ─────────────────────────────────────────────────── */
 .header {
-  padding: 24px 32px;
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-card);
+}
+
+.header-top {
   display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.back-link {
-  color: var(--text-muted);
-  font-size: 14px;
-  font-weight: 500;
-  display: inline-flex;
   align-items: center;
-  transition: color 0.2s ease;
+  justify-content: space-between;
 }
 
-.back-link:hover {
-  color: var(--text-main);
+.header-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brand-logo {
+  font-size: 1.6rem;
+  background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 .header-title {
-  font-size: 28px;
+  font-size: 1.2rem;
   font-weight: 700;
   color: var(--text-main);
-  letter-spacing: -0.5px;
+  letter-spacing: -0.3px;
 }
 
 .header-subtitle {
-  font-size: 14px;
+  font-size: 0.75rem;
   color: var(--text-muted);
+}
+
+/* Tools nav dropdown */
+.tools-nav {
+  position: relative;
+}
+
+.tools-toggle {
+  font-size: 0.8rem;
+  padding: 8px 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-hover);
+  color: var(--text-main);
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.tools-toggle:hover {
+  border-color: var(--blue);
+  background: rgba(59,130,246,0.1);
+}
+.tools-chevron {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+}
+
+.tools-dropdown {
+  display: none;
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0,0,0,0.5);
+  min-width: 200px;
+  padding: 6px 0;
+  z-index: 100;
+}
+.tools-dropdown.open {
+  display: block;
+}
+
+.tools-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  color: var(--text-main);
+  font-size: 0.85rem;
+  font-weight: 500;
+  transition: background 0.15s;
+  text-decoration: none;
+}
+.tools-link:hover {
+  background: var(--bg-hover);
+}
+.tools-link span {
+  font-size: 1.1rem;
 }
 
 /* ── Search Container ───────────────────────────────────────── */

@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Lookup Hub — Fello Command Center</title>
-  <meta name="description" content="Centralized search for Fello Command Center. Search by Group Number or Device Serial.">
+  <title>Fello Command Center</title>
+  <meta name="description" content="Fello Command Center — Centralized fleet management for iPads, SIMs, and connectivity.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
@@ -14,11 +14,24 @@
 <body>
   
   <header class="header">
-    <div>
-      <a href="/" class="back-link">← Back to Command Center</a>
+    <div class="header-top">
+      <div class="header-brand">
+        <span class="brand-logo">✦</span>
+        <div>
+          <h1 class="header-title">Fello Command Center</h1>
+          <div class="header-subtitle">Fleet Management & Device Control</div>
+        </div>
+      </div>
+      <div class="tools-nav">
+        <button class="tools-toggle" id="tools-toggle">🧰 Tools <span class="tools-chevron">▼</span></button>
+        <div class="tools-dropdown" id="tools-dropdown">
+          <a href="/simplemdm/" class="tools-link"><span>📱</span> SimpleMDM</a>
+          <a href="/webbing/" class="tools-link"><span>📶</span> Webbing IoT</a>
+          <a href="/starlink/" class="tools-link"><span>📡</span> Starlink</a>
+          <a href="/hexnode/" class="tools-link"><span>🔒</span> Hexnode UEM</a>
+        </div>
+      </div>
     </div>
-    <h1 class="header-title">🔍 Lookup Hub</h1>
-    <div class="header-subtitle">Search by Group Number or Device Serial</div>
   </header>
 
   <main>

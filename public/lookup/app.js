@@ -9,6 +9,17 @@
   let currentChart = null;
   let currentMap = null;
 
+  // ── Tools Dropdown ──
+  const toolsToggle = document.getElementById('tools-toggle');
+  const toolsDropdown = document.getElementById('tools-dropdown');
+  if (toolsToggle && toolsDropdown) {
+    toolsToggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      toolsDropdown.classList.toggle('open');
+    });
+    document.addEventListener('click', () => toolsDropdown.classList.remove('open'));
+  }
+
   // ── Column Definitions ──────────────────────────────────────
   // All possible columns with source, key, label, and default visibility
   const ALL_COLUMNS = [
