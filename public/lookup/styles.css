@@ -70,10 +70,12 @@ a {
   text-decoration: none;
 }
 
-.brand-logo-img {
-  height: 22px;
-  width: auto;
-  filter: brightness(0) invert(1);
+.brand-wordmark {
+  font-size: 22px;
+  font-weight: 800;
+  color: #FFFFFF;
+  letter-spacing: 1.5px;
+  text-transform: lowercase;
 }
 
 .brand-divider {
