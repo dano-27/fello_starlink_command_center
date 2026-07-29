@@ -178,6 +178,8 @@
     const usage = data.usage || {};
     const matchIcon = stats.countMatch ? '✅' : '⚠️';
     const branchId = data.branchName || query;
+    const numericBranchId = data.branchId || null;
+    window._currentBranchId = numericBranchId;
 
     let html = `
       <!-- Overview Bar -->
@@ -206,6 +208,27 @@
         <button class="btn btn-success" onclick="window.bulkAction('${esc(branchId)}', 'activate')">▶ Bulk Activate SIMs</button>
         <button class="btn btn-outline" style="border-color:var(--red);color:var(--red);" onclick="window.bulkLostMode('enable')">🔴 Enable Lost Mode All</button>
         <button class="btn btn-outline" style="border-color:var(--green);color:var(--green);" onclick="window.bulkLostMode('disable')">🟢 Disable Lost Mode All</button>
+      </div>
+
+      <!-- Data Usage Calculator -->
+      <div class="usage-calculator">
+        <div class="usage-calc-header">
+          <h3 class="usage-calc-title">📊 Data Usage Calculator</h3>
+        </div>
+        <div class="usage-calc-controls">
+          <div class="usage-calc-dates">
+            <div class="usage-date-group">
+              <label class="usage-date-label">Start Date</label>
+              <input type="date" id="usage-start-date" class="usage-date-input">
+            </div>
+            <div class="usage-date-group">
+              <label class="usage-date-label">End Date</label>
+              <input type="date" id="usage-end-date" class="usage-date-input">
+            </div>
+            <button class="btn btn-primary" id="usage-calc-btn" onclick="window.calculateUsage()">📊 Calculate Usage</button>
+          </div>
+        </div>
+        <div id="usage-results" class="usage-results"></div>
       </div>
     `;
 
@@ -500,6 +523,128 @@
     }
     
     showToast(`${label}: ${success}/${ipads.length} succeeded`, failed > 0 ? 'error' : 'success');
+  };
+
+  // ── Data Usage Calculator ───────────────────────────────────
+  window.calculateUsage = async function() {
+    const branchId = window._currentBranchId;
+    if (!branchId) { alert('No branch ID available.'); return; }
+    
+    const startEl = document.getElementById('usage-start-date');
+    const endEl = document.getElementById('usage-end-date');
+    if (!startEl.value || !endEl.value) { alert('Please select both start and end dates.'); return; }
+    
+    // Convert YYYY-MM-DD to MM/dd/yyyy for the API
+    const [sy, sm, sd] = startEl.value.split('-');
+    const [ey, em, ed] = endEl.value.split('-');
+    const start = `${sm}/${sd}/${sy}`;
+    const end = `${em}/${ed}/${ey}`;
+    
+    const resultsDiv = document.getElementById('usage-results');
+    const btn = document.getElementById('usage-calc-btn');
+    btn.disabled = true;
+    btn.textContent = '⏳ Calculating...';
+    resultsDiv.innerHTML = '<div class="usage-loading">Fetching usage data for all lines... This may take a moment.</div>';
+    
+    try {
+      const res = await fetch(`/api/webbing/branches/${branchId}/usage?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}&interval=Day`);
+      if (!res.ok) throw new Error('Failed to fetch usage data');
+      const data = await res.json();
+      
+      const results = data.results || [];
+      const totals = data.totals || {};
+      const totalGB = (totals.totalUsage / 1024).toFixed(3);
+      
+      let tableHtml = `
+        <div class="usage-summary">
+          <div class="usage-summary-card">
+            <div class="usage-summary-label">Total Data Usage</div>
+            <div class="usage-summary-value">${totalGB} GB</div>
+          </div>
+          <div class="usage-summary-card">
+            <div class="usage-summary-label">Total Lines</div>
+            <div class="usage-summary-value">${totals.totalDevices || 0}</div>
+          </div>
+          <div class="usage-summary-card">
+            <div class="usage-summary-label">Lines With Usage</div>
+            <div class="usage-summary-value">${totals.devicesWithUsage || 0}</div>
+          </div>
+          <div class="usage-summary-card">
+            <div class="usage-summary-label">Period</div>
+            <div class="usage-summary-value">${startEl.value} → ${endEl.value}</div>
+          </div>
+        </div>
+        <table class="usage-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Serial</th>
+              <th>SSID</th>
+              <th>IMEI</th>
+              <th>Plan</th>
+              <th>Status</th>
+              <th>Usage (MB)</th>
+              <th>Usage (GB)</th>
+              <th>Active Days</th>
+            </tr>
+          </thead>
+          <tbody>`;
+      
+      results.forEach((r, i) => {
+        const usageGB = (r.TotalUsage / 1024).toFixed(3);
+        const usageMB = r.TotalUsage.toFixed(2);
+        const statusClass = r.StatusName === 'Active' ? 'status-active' : 'status-suspended';
+        tableHtml += `
+            <tr>
+              <td>${i + 1}</td>
+              <td class="mono">${esc(r.Serial || '—')}</td>
+              <td>${esc(r.SSID || '—')}</td>
+              <td class="mono">${esc(r.IMEI || '—')}</td>
+              <td>${esc(r.ProductName || '—')}</td>
+              <td><span class="badge ${statusClass}">${esc(r.StatusName || '—')}</span></td>
+              <td class="mono">${usageMB}</td>
+              <td class="mono" style="font-weight:600;">${usageGB}</td>
+              <td>${r.TotalUsageDays || 0}</td>
+            </tr>`;
+      });
+      
+      tableHtml += `
+            <tr class="usage-total-row">
+              <td colspan="6"><strong>TOTAL</strong></td>
+              <td class="mono"><strong>${(totals.totalUsage || 0).toFixed(2)}</strong></td>
+              <td class="mono" style="font-weight:700;">${totalGB}</td>
+              <td></td>
+            </tr>
+          </tbody>
+        </table>
+        <button class="btn btn-outline" style="margin-top:12px;border-color:var(--blue);color:var(--blue);" onclick="window.exportUsageCSV()">📥 Export CSV</button>`;
+      
+      resultsDiv.innerHTML = tableHtml;
+      window._usageResults = { results, totals, start: startEl.value, end: endEl.value };
+      
+    } catch (err) {
+      resultsDiv.innerHTML = `<div class="usage-loading" style="color:var(--red);">Error: ${err.message}</div>`;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '📊 Calculate Usage';
+    }
+  };
+
+  window.exportUsageCSV = function() {
+    const d = window._usageResults;
+    if (!d) return;
+    let csv = 'Serial,SSID,IMEI,Plan,Status,Usage (MB),Usage (GB),Active Days\n';
+    d.results.forEach(r => {
+      csv += `${r.Serial},${r.SSID},${r.IMEI},${r.ProductName},${r.StatusName},${r.TotalUsage.toFixed(2)},${(r.TotalUsage / 1024).toFixed(3)},${r.TotalUsageDays}\n`;
+    });
+    csv += `TOTAL,,,,,${d.totals.totalUsage.toFixed(2)},${(d.totals.totalUsage / 1024).toFixed(3)},\n`;
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Usage_Report_${d.start}_to_${d.end}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   // ── Device Results ───────────────────────────────────────────
