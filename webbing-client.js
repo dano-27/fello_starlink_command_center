@@ -440,6 +440,30 @@ class WebbingClient {
   }
 
   /**
+   * Search accounts by branchId
+   */
+  async searchAccounts(branchId, page = 1, pageSize = 100) {
+    return this.call('accounts', 'SearchAccounts', {
+      SearchAccountsRequest: {
+        BranchID: branchId,
+        PaginationRequest: { PageSize: pageSize, PageNumber: page }
+      }
+    });
+  }
+
+  /**
+   * Search assignments by accountId (returns ServiceDeviceIDs)
+   */
+  async searchAssignments(accountId, page = 1, pageSize = 100) {
+    return this.call('devices', 'SearchAssignments', {
+      SearchAssignmentsRequest: {
+        AccountID: accountId,
+        PaginationRequest: { PageSize: pageSize, PageNumber: page }
+      }
+    });
+  }
+
+  /**
    * Get products list
    */
   async getProducts(page = 1, pageSize = 100) {

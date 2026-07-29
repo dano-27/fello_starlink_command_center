@@ -4367,9 +4367,60 @@ app.get('/api/lookup', async (req, res) => {
             let devRecords = devResult.ServiceDevices?.ServiceDeviceRecord || devResult.ServiceDevices || [];
             if (!Array.isArray(devRecords)) devRecords = devRecords ? [devRecords] : [];
             branchDevices = devRecords;
-            console.log(`[Lookup] Found ${branchDevices.length} devices for branch ${branchName} (ID: ${branchId})`);
+            console.log(`[Lookup] Found ${branchDevices.length} devices via GetServiceDevices`);
           } catch (e) {
             console.error(`[Lookup] Device fetch error: ${e.message}`);
+          }
+          
+          // Fallback: if GetServiceDevices returns 0, try via Accounts → Assignments
+          if (branchDevices.length === 0) {
+            console.log(`[Lookup] GetServiceDevices returned 0, trying Accounts/Assignments fallback...`);
+            try {
+              const acctResult = await client.searchAccounts(branchId);
+              const acctContainer = acctResult.Accounts || {};
+              let accounts = acctContainer.AccountRecord || [];
+              if (!Array.isArray(accounts)) accounts = accounts ? [accounts] : [];
+              console.log(`[Lookup] Found ${accounts.length} accounts for branch ${branchId}`);
+              
+              const deviceIds = [];
+              for (const acct of accounts) {
+                const acctId = acct.ID;
+                const assignResult = await client.searchAssignments(acctId);
+                const assignContainer = assignResult.Assignments || {};
+                let assignments = assignContainer.AssignmentRecord || [];
+                if (!Array.isArray(assignments)) assignments = assignments ? [assignments] : [];
+                console.log(`[Lookup] Account ${acctId}: ${assignments.length} assignments`);
+                for (const a of assignments) {
+                  if (a.ServiceDeviceID) deviceIds.push(a.ServiceDeviceID);
+                }
+              }
+              
+              console.log(`[Lookup] Found ${deviceIds.length} device IDs via assignments`);
+              
+              // Build device records from live data
+              for (const sdId of deviceIds) {
+                try {
+                  const liveResult = await client.getLiveData(sdId);
+                  branchDevices.push({
+                    ServiceDeviceID: sdId,
+                    Serial: null,
+                    SSID: null,
+                    StatusName: liveResult.IsActive ? 'Active' : 'In Use',
+                    StatusID: liveResult.IsActive ? 3 : 2,
+                    ProductName: null,
+                    BranchID: branchId,
+                    BranchName: branchName,
+                    _liveData: liveResult
+                  });
+                } catch (e) {
+                  console.error(`[Lookup] Live data error for ${sdId}: ${e.message}`);
+                }
+                await new Promise(r => setTimeout(r, 100));
+              }
+              console.log(`[Lookup] Built ${branchDevices.length} device records via assignments`);
+            } catch (e) {
+              console.error(`[Lookup] Assignment fallback error: ${e.message}`);
+            }
           }
         } else {
           console.log(`[Lookup] Branch "${branchName}" not found via SearchBranches`);
@@ -4386,7 +4437,7 @@ app.get('/api/lookup', async (req, res) => {
       const client = getWebbingClient();
       for (const d of branchDevices) {
         try {
-          const liveResult = await client.getLiveData(d.ServiceDeviceID);
+          const liveResult = d._liveData || await client.getLiveData(d.ServiceDeviceID);
           webbingDevices.push({
             serviceDeviceId: d.ServiceDeviceID,
             serial: d.Serial,
