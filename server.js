@@ -4326,15 +4326,26 @@ app.get('/api/lookup', async (req, res) => {
         try {
           const client = getWebbingClient();
           const searchResult = await client.searchBranches(query);
-          const branches = searchResult.Branches || searchResult.branches || [];
-          if (Array.isArray(branches) && branches.length > 0) {
-            const branch = branches.find(b => 
+          // SOAP response: { Branches: { BranchRecord: [...] } }
+          const branchesContainer = searchResult.Branches || searchResult.branches || {};
+          let branchRecords = branchesContainer.BranchRecord || branchesContainer;
+          if (!Array.isArray(branchRecords)) branchRecords = branchRecords ? [branchRecords] : [];
+          
+          if (branchRecords.length > 0) {
+            const branch = branchRecords.find(b => 
+              (b.BranchName || b.Name || '').toUpperCase() === branchName
+            ) || branchRecords.find(b =>
               (b.BranchName || b.Name || '').toUpperCase().includes(branchName)
-            ) || branches[0];
-            branchId = branch.BranchID || branch.ID;
-            // Fetch devices for this branch
-            const devResult = await client.getBranchDevices(branchId);
-            branchDevices = devResult.devices || devResult.ServiceDevices || [];
+            );
+            if (branch) {
+              branchId = branch.BranchID || branch.ID;
+              // Fetch devices for this branch using getServiceDevices
+              const devResult = await client.getServiceDevices({ branchId, pageSize: 500 });
+              let devRecords = devResult.ServiceDevices?.ServiceDeviceRecord || devResult.ServiceDevices || [];
+              if (!Array.isArray(devRecords)) devRecords = devRecords ? [devRecords] : [];
+              branchDevices = devRecords;
+              console.log(`[Lookup] Found ${branchDevices.length} devices via API for branch ${branchName} (ID: ${branchId})`);
+            }
           }
         } catch (e) {
           console.error('[Lookup] Branch search error:', e.message);
