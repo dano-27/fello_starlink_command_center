@@ -1085,12 +1085,14 @@
       const data = await res.json();
       const live = data.liveData || data;
       container.innerHTML = `
-        <div class="telemetry-item"><div class="telemetry-label">IP Address</div><div class="telemetry-value">${esc(live.ipAddress || live.ip || '—')}</div></div>
-        <div class="telemetry-item"><div class="telemetry-label">Carrier</div><div class="telemetry-value">${esc(live.vplmnName || live.carrier || '—')}</div></div>
-        <div class="telemetry-item"><div class="telemetry-label">Home Network</div><div class="telemetry-value">${esc(live.hplmnName || '—')}</div></div>
-        <div class="telemetry-item"><div class="telemetry-label">Session</div><div class="telemetry-value">${esc(live.sessionState || live.state || '—')}</div></div>
-        <div class="telemetry-item"><div class="telemetry-label">Device</div><div class="telemetry-value">${esc(live.model || '—')}</div></div>
-        <div class="telemetry-item"><div class="telemetry-label">Vendor</div><div class="telemetry-value">${esc(live.vendor || '—')}</div></div>
+        <div class="telemetry-item"><div class="telemetry-label">IP Address</div><div class="telemetry-value">${esc(live.IP || live.ipAddress || live.ip || '—')}</div></div>
+        <div class="telemetry-item"><div class="telemetry-label">Carrier</div><div class="telemetry-value">${esc(live.VPLMN || live.vplmnName || '—')}</div></div>
+        <div class="telemetry-item"><div class="telemetry-label">Country</div><div class="telemetry-value">${esc(live.CountryName || live.country || '—')}</div></div>
+        <div class="telemetry-item"><div class="telemetry-label">Status</div><div class="telemetry-value">${live.IsActive ? '🟢 Active' : '🔴 Inactive'}</div></div>
+        <div class="telemetry-item"><div class="telemetry-label">Last Active</div><div class="telemetry-value">${esc(live.LastActive || live.PDP || '—')}</div></div>
+        <div class="telemetry-item"><div class="telemetry-label">APN</div><div class="telemetry-value">${esc(live.APN || '—')}</div></div>
+        <div class="telemetry-item"><div class="telemetry-label">Device</div><div class="telemetry-value">${esc(live.Model || live.model || '—')}</div></div>
+        <div class="telemetry-item"><div class="telemetry-label">Vendor</div><div class="telemetry-value">${esc(live.Vendor || live.vendor || '—')}</div></div>
       `;
     } catch (e) {
       container.innerHTML = `<div class="telemetry-item"><div class="telemetry-label" style="color:var(--red)">Error loading telemetry</div></div>`;
