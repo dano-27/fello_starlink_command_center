@@ -429,6 +429,17 @@ class WebbingClient {
   }
 
   /**
+   * Get a single service device by ICCID, IMEI, or ServiceDeviceID
+   */
+  async getServiceDevice(identifier) {
+    return this.call('devices', 'GetServiceDevice', {
+      GetServiceDeviceRequest: {
+        ServiceDeviceIdentifier: buildIdentifier(identifier)
+      }
+    });
+  }
+
+  /**
    * Get products list
    */
   async getProducts(page = 1, pageSize = 100) {
