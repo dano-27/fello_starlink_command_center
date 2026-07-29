@@ -73,6 +73,7 @@ a {
 .brand-logo-img {
   height: 22px;
   width: auto;
+  filter: brightness(0) invert(1);
 }
 
 .brand-divider {
