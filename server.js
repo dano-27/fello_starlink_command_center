@@ -3480,12 +3480,13 @@ app.get('/api/webbing/devices', (req, res) => {
     if (search) {
       const q = search.toLowerCase();
       devices = devices.filter(d =>
-        (d.SSID && d.SSID.toLowerCase().includes(q)) ||
-        (d.Serial && d.Serial.toLowerCase().includes(q)) ||
-        (d.IMEI && d.IMEI.toLowerCase().includes(q)) ||
-        (d.MSISDN && d.MSISDN.toLowerCase().includes(q)) ||
-        (d.ProductName && d.ProductName.toLowerCase().includes(q)) ||
-        (d.BranchName && d.BranchName.toLowerCase().includes(q))
+        (d.SSID && String(d.SSID).toLowerCase().includes(q)) ||
+        (d.Serial && String(d.Serial).toLowerCase().includes(q)) ||
+        (d.IMEI && String(d.IMEI).toLowerCase().includes(q)) ||
+        (d.MSISDN && String(d.MSISDN).toLowerCase().includes(q)) ||
+        (d.ICCID && String(d.ICCID).toLowerCase().includes(q)) ||
+        (d.ProductName && String(d.ProductName).toLowerCase().includes(q)) ||
+        (d.BranchName && String(d.BranchName).toLowerCase().includes(q))
       );
     }
 
