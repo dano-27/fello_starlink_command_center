@@ -3,6 +3,7 @@ const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs');
 const multer = require('multer');
+const { FelloCrmClient, CrmApiError } = require('./fello-crm-client');
 
 // File upload config — uses /data for Railway volume persistence, falls back to ./data
 const UPLOAD_DIR = fs.existsSync('/data') ? '/data/uploads' : path.join(__dirname, 'data', 'uploads');
@@ -917,6 +918,12 @@ const MDM_ACCOUNTS = {
     webbingBranch: 'SQ14503'  // Alamo SIMs live under this Webbing branch
   }
 };
+
+// ── Fello CRM Integration ─────────────────────────────────────────────
+const crmClient = new FelloCrmClient({
+  baseUrl: process.env.FELLO_CRM_URL || '',
+  apiKey: process.env.FELLO_CRM_KEY || ''
+});
 
 function getMdmAccountKey(accountId) {
   const acct = MDM_ACCOUNTS[accountId];
@@ -3894,6 +3901,70 @@ app.get('/api/webbing/plans', async (req, res) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════════════
+// ██  FELLO CRM API ENDPOINTS                                         ██
+// ═══════════════════════════════════════════════════════════════════════
+
+// ── CRM Status ──────────────────────────────────────────────────────────
+app.get('/api/crm/status', async (req, res) => {
+  try {
+    const health = await crmClient.healthCheck();
+    res.json({
+      configured: crmClient.isConfigured(),
+      mockMode: crmClient.mockMode,
+      ...health
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── CRM Order Lookup ────────────────────────────────────────────────────
+app.get('/api/crm/orders/:orderNumber', async (req, res) => {
+  try {
+    const order = await crmClient.getOrder(req.params.orderNumber);
+    res.json(order);
+  } catch (err) {
+    const status = err instanceof CrmApiError ? (err.statusCode || 500) : 500;
+    res.status(status).json({ error: err.message });
+  }
+});
+
+// ── CRM Order Devices ───────────────────────────────────────────────────
+app.get('/api/crm/orders/:orderNumber/devices', async (req, res) => {
+  try {
+    const devices = await crmClient.getOrderDevices(req.params.orderNumber);
+    res.json({ devices });
+  } catch (err) {
+    const status = err instanceof CrmApiError ? (err.statusCode || 500) : 500;
+    res.status(status).json({ error: err.message });
+  }
+});
+
+// ── CRM Order Search ────────────────────────────────────────────────────
+app.get('/api/crm/search', async (req, res) => {
+  try {
+    const query = req.query.q || '';
+    if (!query) return res.status(400).json({ error: 'Query parameter q is required' });
+    const results = await crmClient.searchOrders(query);
+    res.json({ results });
+  } catch (err) {
+    const status = err instanceof CrmApiError ? (err.statusCode || 500) : 500;
+    res.status(status).json({ error: err.message });
+  }
+});
+
+// ── CRM Device Lookup ───────────────────────────────────────────────────
+app.get('/api/crm/devices/:serial', async (req, res) => {
+  try {
+    const device = await crmClient.getDevice(req.params.serial);
+    res.json(device);
+  } catch (err) {
+    const status = err instanceof CrmApiError ? (err.statusCode || 500) : 500;
+    res.status(status).json({ error: err.message });
+  }
+});
+
 // ── Usage Overview ──────────────────────────────────────────────────────
 app.get('/api/webbing/usage/overview', async (req, res) => {
   try {
@@ -4428,7 +4499,22 @@ app.get('/api/lookup', async (req, res) => {
     acct.name.toLowerCase() === query.toLowerCase() && acct.getKey()
   ) : null;
   
-  const isGroupSearch = !isICCID && !isIMEI && !mdmAccountMatch && (
+  // Try CRM lookup for order numbers
+  let crmOrder = null;
+  if (!isICCID && !isIMEI && !mdmAccountMatch) {
+    try {
+      const crmResult = await crmClient.getOrder(query);
+      if (crmResult && crmResult.devices && crmResult.devices.length > 0) {
+        crmOrder = crmResult;
+        console.log(`[Lookup] CRM order found: ${crmResult.orderNumber} (${crmResult.devices.length} devices, ${crmClient.mockMode ? 'MOCK' : 'LIVE'})`);
+      }
+    } catch (crmErr) {
+      // CRM not available or order not found — fall through to prefix search
+      console.log(`[Lookup] CRM lookup failed for "${query}": ${crmErr.message}`);
+    }
+  }
+  
+  const isGroupSearch = !isICCID && !isIMEI && !mdmAccountMatch && !crmOrder && (
     /^(FE|SQ|EB|CB|MO|Z5|SH|LE|AR|OR|RS|MEAL|CAMO|CASQ|ALA)/i.test(query) || 
     (query.length >= 4 && /^\d+$/.test(query))
   );
@@ -4804,6 +4890,153 @@ app.get('/api/lookup', async (req, res) => {
         } : null,
         usage,
         location
+      });
+    } else if (crmOrder) {
+      // ── CRM ORDER SEARCH ────────────────────────────────────────
+      console.log(`[Lookup] CRM order: ${crmOrder.orderNumber} — looking up ${crmOrder.devices.length} device serials in SimpleMDM`);
+      
+      const crmSerials = crmOrder.devices.map(d => (d.serial || '').toUpperCase()).filter(Boolean);
+      const simpleMdmDevices = [];
+      
+      // Search each MDM account for the CRM device serials
+      for (const [mdmAcctId, mdmAcct] of Object.entries(MDM_ACCOUNTS)) {
+        const mdmKey = mdmAcct.getKey();
+        if (!mdmKey) continue;
+        
+        const auth = 'Basic ' + Buffer.from(mdmKey + ':').toString('base64');
+        
+        // Fetch all devices from this account and filter by serial
+        let hasMore = true;
+        let startingAfter = '';
+        
+        while (hasMore) {
+          const url = `https://a.simplemdm.com/api/v1/devices?limit=100${startingAfter ? `&starting_after=${startingAfter}` : ''}`;
+          const devResp = await fetch(url, { headers: { 'Authorization': auth } });
+          if (!devResp.ok) break;
+          const devData = await devResp.json();
+          const items = devData.data || [];
+          
+          for (const d of items) {
+            const attr = d.attributes || {};
+            const serial = (attr.serial_number || '').toUpperCase();
+            
+            if (crmSerials.includes(serial)) {
+              const subs = attr.service_subscriptions || [];
+              const primarySub = Array.isArray(subs) && subs.length > 0 ? subs[0] : {};
+              const subIccid = (primarySub.iccid || '').replace(/\s/g, '');
+              const subImei = (primarySub.imei || '').replace(/\s/g, '');
+              const subEid = (primarySub.eid || '').replace(/\s/g, '');
+              
+              simpleMdmDevices.push({
+                id: d.id, name: (attr.name || '').trim(), serial: attr.serial_number,
+                model: attr.model_name, osVersion: attr.os_version,
+                batteryLevel: attr.battery_level, lastSeenAt: attr.last_seen_at,
+                phoneNumber: attr.phone_number || primarySub.phone_number || null,
+                wifiMac: attr.wifi_mac || null,
+                imei: subImei || attr.imei || null,
+                iccid: subIccid || attr.iccid || null,
+                eid: subEid || null,
+                carrier: primarySub.current_carrier_network || null,
+                capacity: attr.device_capacity || null,
+                enrolledAt: attr.enrolled_at || null,
+                deviceGroupId: attr.device_group_id || null,
+                mdmAccount: mdmAcctId,
+                mdmAccountName: mdmAcct.name
+              });
+            }
+          }
+          hasMore = devData.has_more === true;
+          startingAfter = items.length > 0 ? items[items.length - 1].id : '';
+          if (!startingAfter) break;
+        }
+      }
+      
+      console.log(`[Lookup] CRM: Found ${simpleMdmDevices.length}/${crmSerials.length} devices in SimpleMDM`);
+      
+      // Match to Webbing SIMs via ICCID (same logic as MDM account search)
+      const webbingDevices = [];
+      const matches = [];
+      
+      for (const ipad of simpleMdmDevices) {
+        if (!ipad.iccid) continue;
+        const mdmIccid = ipad.iccid.replace(/\s/g, '');
+        
+        // Search entire Webbing cache by ICCID
+        const rawMatch = webbingDeviceCache.find(d => {
+          const simIccid = (d.ICCID || '').replace(/\s/g, '');
+          return simIccid && simIccid === mdmIccid;
+        });
+        
+        if (rawMatch) {
+          const matchedSim = {
+            serviceDeviceId: rawMatch.ServiceDeviceID,
+            serial: rawMatch.Serial || rawMatch.SSID,
+            ssid: rawMatch.SSID,
+            iccid: rawMatch.ICCID,
+            imei: String(rawMatch.IMEI || ''),
+            msisdn: rawMatch.MSISDN,
+            status: rawMatch.StatusName,
+            statusId: rawMatch.StatusID,
+            plan: rawMatch.ProductName,
+            productName: rawMatch.ProductName,
+            branch: rawMatch.BranchName,
+            branchName: rawMatch.BranchName,
+            branchId: rawMatch.BranchID,
+            ip: rawMatch.IP || '',
+            model: rawMatch.Model || '',
+            vendor: rawMatch.Vendor || '',
+            deviceType: rawMatch.DeviceTypeName,
+            statusDate: rawMatch.StatusDateChange
+          };
+          
+          if (!webbingDevices.find(w => w.serviceDeviceId === matchedSim.serviceDeviceId)) {
+            webbingDevices.push(matchedSim);
+          }
+          
+          matches.push({
+            ipadName: ipad.name, ipadSerial: ipad.serial,
+            ipadImei: ipad.imei || '',
+            simSerial: matchedSim.serial, simImei: matchedSim.imei || '',
+            simIccid: matchedSim.iccid,
+            simCarrier: ipad.carrier || '', simStatus: matchedSim.status,
+            simIp: matchedSim.ip || ''
+          });
+          ipad.matchedSimSerial = matchedSim.serial;
+          matchedSim.matchedIpadName = ipad.name;
+          matchedSim.matchedIpadSerial = ipad.serial;
+        }
+      }
+      
+      console.log(`[Lookup] CRM: ${matches.length} SIM matches`);
+      
+      // Determine branchId from matched SIMs
+      const resolvedBranchId = webbingDevices.length > 0 ? webbingDevices[0].branchId : null;
+      
+      return res.json({
+        type: 'group',
+        found: true,
+        source: 'crm',
+        branchName: crmOrder.orderNumber,
+        branchId: resolvedBranchId,
+        webbingDevices,
+        simpleMdmDevices,
+        matches,
+        stats: {
+          mdmCount: simpleMdmDevices.length,
+          webbingCount: webbingDevices.length,
+          matchedCount: matches.length,
+          abmStatus: 'not_needed'
+        },
+        crm: {
+          orderNumber: crmOrder.orderNumber,
+          customerName: crmOrder.customerName,
+          eventName: crmOrder.eventName,
+          eventAddress: crmOrder.eventAddress,
+          eventDate: crmOrder.eventDate,
+          config: crmOrder.config,
+          status: crmOrder.status,
+          mockMode: crmClient.mockMode
+        }
       });
       
     } else if (isGroupSearch) {
