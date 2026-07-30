@@ -907,12 +907,14 @@ const MDM_ACCOUNTS = {
   fello: {
     name: 'Fello',
     getKey: () => serverConfig.simpleMdmKey || process.env.SIMPLEMDM_API_KEY || '',
-    depServerId: '10650'
+    depServerId: '10650',
+    webbingBranch: null  // Fello uses per-order branches
   },
   alamo: {
     name: 'Alamo Fireworks',
     getKey: () => process.env.SIMPLEMDM_ALAMO_KEY || 'Ze4rUrKGFpQW4hsO9g4wZsDRBMszrNAWkoHI01PCnKp3fQG6tuJvyVeZPyIpR7rS',
-    depServerId: '7997'
+    depServerId: '7997',
+    webbingBranch: 'SQ14503'  // Alamo SIMs live under this Webbing branch
   }
 };
 
@@ -4459,10 +4461,43 @@ app.get('/api/lookup', async (req, res) => {
       
       console.log(`[Lookup] Found ${simpleMdmDevices.length} devices in ${mdmAcct.name} account`);
       
-      // Match to Webbing SIMs via ABM IMEI
+      // Load Webbing SIMs from linked branch (if configured)
       const webbingDevices = [];
       const matches = [];
       let abmStatus = 'not_configured';
+      let branchId = null;
+      
+      if (mdmAcct.webbingBranch) {
+        const branchName = mdmAcct.webbingBranch.toUpperCase();
+        const branchDevs = webbingDeviceCache.filter(d =>
+          d.BranchName && d.BranchName.toUpperCase() === branchName
+        );
+        branchId = branchDevs.length > 0 ? branchDevs[0].BranchID : null;
+        
+        for (const d of branchDevs) {
+          webbingDevices.push({
+            serviceDeviceId: d.ServiceDeviceID,
+            serial: d.Serial || d.SSID,
+            ssid: d.SSID,
+            iccid: d.ICCID,
+            imei: String(d.IMEI || ''),
+            msisdn: d.MSISDN,
+            status: d.StatusName,
+            statusId: d.StatusID,
+            plan: d.ProductName,
+            productName: d.ProductName,
+            branch: d.BranchName,
+            branchName: d.BranchName,
+            branchId: d.BranchID,
+            ip: d.IP || '',
+            model: d.Model || '',
+            vendor: d.Vendor || '',
+            deviceType: d.DeviceTypeName,
+            statusDate: d.StatusDateChange
+          });
+        }
+        console.log(`[Lookup] Loaded ${webbingDevices.length} Webbing SIMs from branch ${mdmAcct.webbingBranch}`);
+      }
       
       try {
         if (abmPrivateKey && simpleMdmDevices.length > 0) {
@@ -4480,32 +4515,51 @@ app.get('/api/lookup', async (req, res) => {
             ipad.allImeis = abmData.allImeis;
             ipad.abmEid = abmData.eid || null;
             
-            // Find matching Webbing SIM by IMEI (search entire cache)
-            const matchedSim = webbingDeviceCache.find(sim => {
-              const simImei = sim.IMEI ? String(sim.IMEI) : '';
-              return simImei && abmData.allImeis.some(abmImei => 
-                simImei === abmImei || simImei.includes(abmImei) || abmImei.includes(simImei)
-              );
-            });
+            // Find matching Webbing SIM by IMEI
+            // If branch SIMs were pre-loaded, search those; otherwise search entire cache
+            const searchPool = webbingDevices.length > 0 ? webbingDevices : null;
+            let matchedSim = null;
+            
+            if (searchPool) {
+              // Match against pre-loaded branch SIMs (already normalized)
+              matchedSim = searchPool.find(sim => {
+                const simImei = sim.imei || '';
+                return simImei && abmData.allImeis.some(abmImei => 
+                  simImei === abmImei || simImei.includes(abmImei) || abmImei.includes(simImei)
+                );
+              });
+            } else {
+              // Fallback: search entire Webbing cache (raw field names)
+              const rawMatch = webbingDeviceCache.find(sim => {
+                const simImei = sim.IMEI ? String(sim.IMEI) : '';
+                return simImei && abmData.allImeis.some(abmImei => 
+                  simImei === abmImei || simImei.includes(abmImei) || abmImei.includes(simImei)
+                );
+              });
+              if (rawMatch) matchedSim = rawMatch;
+            }
             
             if (matchedSim) {
               ipad.abmLookupStatus = 'matched';
               const simDevice = {
-                serviceDeviceId: matchedSim.ServiceDeviceID,
-                serial: matchedSim.Serial || matchedSim.SSID,
-                ssid: matchedSim.SSID,
-                iccid: matchedSim.ICCID,
-                imei: String(matchedSim.IMEI || ''),
-                msisdn: matchedSim.MSISDN,
-                status: matchedSim.StatusName,
-                statusId: matchedSim.StatusID,
-                plan: matchedSim.ProductName,
-                productName: matchedSim.ProductName,
-                branch: matchedSim.BranchName,
-                branchName: matchedSim.BranchName,
-                branchId: matchedSim.BranchID,
-                deviceType: matchedSim.DeviceTypeName,
-                statusDate: matchedSim.StatusDateChange
+                serviceDeviceId: matchedSim.serviceDeviceId || matchedSim.ServiceDeviceID,
+                serial: matchedSim.serial || matchedSim.Serial || matchedSim.ssid || matchedSim.SSID,
+                ssid: matchedSim.ssid || matchedSim.SSID,
+                iccid: matchedSim.iccid || matchedSim.ICCID,
+                imei: String(matchedSim.imei || matchedSim.IMEI || ''),
+                msisdn: matchedSim.msisdn || matchedSim.MSISDN,
+                status: matchedSim.status || matchedSim.StatusName,
+                statusId: matchedSim.statusId || matchedSim.StatusID,
+                plan: matchedSim.plan || matchedSim.ProductName,
+                productName: matchedSim.productName || matchedSim.ProductName,
+                branch: matchedSim.branch || matchedSim.BranchName,
+                branchName: matchedSim.branchName || matchedSim.BranchName,
+                branchId: matchedSim.branchId || matchedSim.BranchID,
+                ip: matchedSim.ip || matchedSim.IP || '',
+                model: matchedSim.model || matchedSim.Model || '',
+                vendor: matchedSim.vendor || matchedSim.Vendor || '',
+                deviceType: matchedSim.deviceType || matchedSim.DeviceTypeName,
+                statusDate: matchedSim.statusDate || matchedSim.StatusDateChange
               };
               
               if (!webbingDevices.find(w => w.serviceDeviceId === simDevice.serviceDeviceId)) {
@@ -4544,7 +4598,7 @@ app.get('/api/lookup', async (req, res) => {
         type: 'group',
         found: true,
         branchName: mdmAcct.name,
-        branchId: null,
+        branchId: branchId,
         mdmAccountId: mdmAcctId,
         webbingDevices,
         simpleMdmDevices,
