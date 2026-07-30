@@ -210,6 +210,7 @@
     const branchId = data.branchName || query;
     const numericBranchId = data.branchId || null;
     window._currentBranchId = numericBranchId;
+    window._currentBranchName = branchId;
 
     const nonMdmDevices = web.filter(w => !w.matchedIpadName).length;
     const mdmMatched = stats.matchedCount || 0;
@@ -243,6 +244,20 @@
         <button class="btn btn-success" onclick="window.bulkAction('${esc(branchId)}', 'activate')">▶ Bulk Activate SIMs</button>
         <button class="btn btn-outline" style="border-color:var(--red);color:var(--red);" onclick="window.bulkLostMode('enable')">🔴 Enable Lost Mode All</button>
         <button class="btn btn-outline" style="border-color:var(--green);color:var(--green);" onclick="window.bulkLostMode('disable')">🟢 Disable Lost Mode All</button>
+      </div>
+
+      <!-- Carrier Switch -->
+      <div class="carrier-switch-bar" style="display:flex;align-items:center;gap:12px;padding:14px 20px;background:var(--surface);border:1px solid var(--border);border-radius:12px;margin-bottom:20px;flex-wrap:wrap;">
+        <span style="font-weight:700;font-size:14px;color:var(--text);white-space:nowrap;">📡 Switch Carrier:</span>
+        <select id="bulk-carrier-select" style="flex:1;min-width:200px;max-width:420px;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:13px;font-weight:500;cursor:pointer;">
+          <option value="" disabled selected>Select a carrier plan…</option>
+          <option value="11105">🌐 Multi-Carrier — Pay as You Go (US, CA, MX)</option>
+          <option value="11125">📶 AT&T — Pay as You Go (US/AT&T, CA/BELL, MX)</option>
+          <option value="11126">📶 T-Mobile — Pay as You Go (US/TMO, CA/ROGERS, MX)</option>
+          <option value="11127">📶 Verizon — Pay as You Go (US/VZ, CA/TELUS, MX)</option>
+        </select>
+        <button class="btn btn-primary" onclick="window.bulkChangeCarrier()" style="white-space:nowrap;">🔄 Apply to All SIMs</button>
+        <span style="font-size:12px;color:var(--muted);">Current: <strong id="current-plan-label" style="color:var(--text);">${esc(web.length > 0 ? (web[0].productName || web[0].ProductName || '—') : '—')}</strong></span>
       </div>
 
       <!-- Data Usage Calculator -->
@@ -557,6 +572,56 @@
       handleSearch(); // Refresh
     } catch (err) {
       alert('Error: ' + err.message);
+    }
+  };
+
+  // Bulk Carrier Change
+  window.bulkChangeCarrier = async function() {
+    const sel = document.getElementById('bulk-carrier-select');
+    if (!sel || !sel.value) { alert('Please select a carrier plan first.'); return; }
+    const productId = parseInt(sel.value);
+    const planName = sel.options[sel.selectedIndex].text;
+    const branchId = window._currentBranchId;
+    if (!branchId) { alert('No branch ID available for bulk change.'); return; }
+
+    const web = window._fleetRows || [];
+    const simCount = web.filter(r => r.simSerial).length;
+    const currentPlan = document.getElementById('current-plan-label')?.textContent || '—';
+
+    const msg = `⚠️ BULK CARRIER CHANGE\n\n` +
+      `Branch: ${window._currentBranchName || branchId}\n` +
+      `Devices: ${simCount} SIM lines\n\n` +
+      `Current Plan:\n  ${currentPlan}\n\n` +
+      `New Plan:\n  ${planName}\n\n` +
+      `This will change the carrier for ALL ${simCount} SIM lines in this order. Continue?`;
+
+    if (!confirm(msg)) return;
+
+    try {
+      sel.disabled = true;
+      const btn = sel.nextElementSibling;
+      const origText = btn.innerHTML;
+      btn.innerHTML = '⏳ Switching…';
+      btn.disabled = true;
+
+      const res = await fetch(`/api/webbing/branches/${encodeURIComponent(branchId)}/change-plan`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ productId })
+      });
+      const result = await res.json();
+      if (!res.ok) throw new Error(result.error || 'Change failed');
+
+      const successes = result.results?.filter(r => r.success).length || 0;
+      const failures = result.results?.filter(r => !r.success).length || 0;
+      alert(`✅ Carrier switch complete!\n\nSuccess: ${successes}\nFailed: ${failures}`);
+      handleSearch(); // Refresh
+    } catch (err) {
+      alert('❌ Error: ' + err.message);
+    } finally {
+      sel.disabled = false;
+      const btn = document.querySelector('.carrier-switch-bar .btn-primary');
+      if (btn) { btn.innerHTML = '🔄 Apply to All SIMs'; btn.disabled = false; }
     }
   };
 
@@ -1068,14 +1133,12 @@
     }
   }
 
-  // Carrier plan mapping
+  // Carrier plan mapping (real Webbing product IDs)
   const CARRIER_PLANS = [
-    { id: 20, label: 'Pay as You Go (US, CA, MX)' },
-    { id: 21, label: 'AT&T (US)' },
-    { id: 22, label: 'T-Mobile (US)' },
-    { id: 23, label: 'Verizon (US)' },
-    { id: 30, label: 'Rogers (Canada)' },
-    { id: 31, label: 'Bell (Canada)' },
+    { id: 11105, label: 'Multi-Carrier — Pay as You Go (US, CA, MX)' },
+    { id: 11125, label: 'AT&T — Pay as You Go (US/AT&T, CA/BELL, MX)' },
+    { id: 11126, label: 'T-Mobile — Pay as You Go (US/TMO, CA/ROGERS, MX)' },
+    { id: 11127, label: 'Verizon — Pay as You Go (US/VZ, CA/TELUS, MX)' },
   ];
 
   window.openDeviceDrawer = function(idx) {
