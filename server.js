@@ -4395,16 +4395,173 @@ app.get('/api/lookup', async (req, res) => {
   
   console.log(`[Lookup] Search: "${query}"`);
   
-  // Detect search type: ICCID (19-20 digits) | IMEI (15 digits) | group/branch | device serial
+  // Detect search type: MDM account name | ICCID (19-20 digits) | IMEI (15 digits) | group/branch | device serial
   const isICCID = /^\d{19,20}$/.test(query);
   const isIMEI = /^\d{15}$/.test(query);
-  const isGroupSearch = !isICCID && !isIMEI && (
-    /^(FE|SQ|EB|CB|MO|Z5|SH|LE|AR|OR|RS|MEAL|CAMO|CASQ)/i.test(query) || 
+  
+  // Check if query matches an MDM account name (e.g. "Alamo Fireworks")
+  const mdmAccountMatch = !isICCID && !isIMEI ? Object.entries(MDM_ACCOUNTS).find(([id, acct]) => 
+    acct.name.toLowerCase() === query.toLowerCase() && acct.getKey()
+  ) : null;
+  
+  const isGroupSearch = !isICCID && !isIMEI && !mdmAccountMatch && (
+    /^(FE|SQ|EB|CB|MO|Z5|SH|LE|AR|OR|RS|MEAL|CAMO|CASQ|ALA)/i.test(query) || 
     (query.length >= 4 && /^\d+$/.test(query))
   );
   
   try {
-    if (isICCID || isIMEI) {
+    if (mdmAccountMatch) {
+      // ── MDM ACCOUNT SEARCH ─────────────────────────────────────
+      const [mdmAcctId, mdmAcct] = mdmAccountMatch;
+      const mdmKey = mdmAcct.getKey();
+      console.log(`[Lookup] MDM Account search: "${mdmAcct.name}" (${mdmAcctId})`);
+      
+      // Fetch ALL devices from this SimpleMDM account
+      const simpleMdmDevices = [];
+      const auth = 'Basic ' + Buffer.from(mdmKey + ':').toString('base64');
+      let hasMore = true;
+      let startingAfter = '';
+      
+      while (hasMore) {
+        const url = `https://a.simplemdm.com/api/v1/devices?limit=100${startingAfter ? `&starting_after=${startingAfter}` : ''}`;
+        const devResp = await fetch(url, { headers: { 'Authorization': auth } });
+        if (!devResp.ok) break;
+        const devData = await devResp.json();
+        const items = devData.data || [];
+        
+        for (const d of items) {
+          const attr = d.attributes || {};
+          simpleMdmDevices.push({
+            id: d.id, name: (attr.name || '').trim(), serial: attr.serial_number,
+            model: attr.model_name, osVersion: attr.os_version,
+            batteryLevel: attr.battery_level, lastSeenAt: attr.last_seen_at,
+            phoneNumber: attr.phone_number || null,
+            wifiMac: attr.wifi_mac || null,
+            imei: attr.imei || null,
+            iccid: attr.iccid || null,
+            capacity: attr.device_capacity || null,
+            enrolledAt: attr.enrolled_at || null,
+            deviceGroupId: attr.device_group_id || null,
+            mdmAccount: mdmAcctId,
+            mdmAccountName: mdmAcct.name
+          });
+        }
+        hasMore = devData.has_more === true;
+        startingAfter = items.length > 0 ? items[items.length - 1].id : '';
+        if (!startingAfter) break;
+      }
+      
+      simpleMdmDevices.sort((a, b) => {
+        const numA = parseInt((a.name.match(/(\d+)/) || [])[1]) || 0;
+        const numB = parseInt((b.name.match(/(\d+)/) || [])[1]) || 0;
+        return a.name.localeCompare(b.name) || numA - numB;
+      });
+      
+      console.log(`[Lookup] Found ${simpleMdmDevices.length} devices in ${mdmAcct.name} account`);
+      
+      // Match to Webbing SIMs via ABM IMEI
+      const webbingDevices = [];
+      const matches = [];
+      let abmStatus = 'not_configured';
+      
+      try {
+        if (abmPrivateKey && simpleMdmDevices.length > 0) {
+          const { serialToImei, imeiToSerial } = await buildAbmImeiMap();
+          abmStatus = 'connected';
+          
+          for (const ipad of simpleMdmDevices) {
+            const serial = (ipad.serial || '').toUpperCase();
+            if (!serial) { ipad.abmLookupStatus = 'no-serial'; continue; }
+            
+            const abmData = serialToImei.get(serial);
+            if (!abmData) { ipad.abmLookupStatus = 'not-in-abm'; continue; }
+            
+            ipad.abmImei = abmData.imei;
+            ipad.allImeis = abmData.allImeis;
+            ipad.abmEid = abmData.eid || null;
+            
+            // Find matching Webbing SIM by IMEI (search entire cache)
+            const matchedSim = webbingDeviceCache.find(sim => {
+              const simImei = sim.IMEI ? String(sim.IMEI) : '';
+              return simImei && abmData.allImeis.some(abmImei => 
+                simImei === abmImei || simImei.includes(abmImei) || abmImei.includes(simImei)
+              );
+            });
+            
+            if (matchedSim) {
+              ipad.abmLookupStatus = 'matched';
+              const simDevice = {
+                serviceDeviceId: matchedSim.ServiceDeviceID,
+                serial: matchedSim.Serial || matchedSim.SSID,
+                ssid: matchedSim.SSID,
+                iccid: matchedSim.ICCID,
+                imei: String(matchedSim.IMEI || ''),
+                msisdn: matchedSim.MSISDN,
+                status: matchedSim.StatusName,
+                statusId: matchedSim.StatusID,
+                plan: matchedSim.ProductName,
+                productName: matchedSim.ProductName,
+                branch: matchedSim.BranchName,
+                branchName: matchedSim.BranchName,
+                branchId: matchedSim.BranchID,
+                deviceType: matchedSim.DeviceTypeName,
+                statusDate: matchedSim.StatusDateChange
+              };
+              
+              if (!webbingDevices.find(w => w.serviceDeviceId === simDevice.serviceDeviceId)) {
+                webbingDevices.push(simDevice);
+              }
+              
+              matches.push({
+                ipadName: ipad.name,
+                ipadSerial: ipad.serial,
+                ipadImei: abmData.imei,
+                simSerial: simDevice.serial,
+                simImei: simDevice.imei,
+                simIccid: simDevice.iccid,
+                simCarrier: simDevice.carrier,
+                simStatus: simDevice.status,
+                simIp: simDevice.ip
+              });
+              ipad.matchedSimSerial = simDevice.serial;
+              simDevice.matchedIpadName = ipad.name;
+              simDevice.matchedIpadSerial = ipad.serial;
+            } else {
+              ipad.abmLookupStatus = `imei-no-sim-match:${abmData.imei}`;
+            }
+          }
+          console.log(`[Lookup] ABM IMEI matching: ${matches.length} pairs out of ${simpleMdmDevices.length} devices`);
+        }
+      } catch (e) {
+        console.error('[Lookup] ABM IMEI matching error:', e.message);
+        abmStatus = 'error';
+      }
+      
+      const activeCount = webbingDevices.filter(d => d.statusId === 3).length;
+      const suspendedCount = webbingDevices.filter(d => d.statusId === 4).length;
+      
+      return res.json({
+        type: 'group',
+        found: true,
+        branchName: mdmAcct.name,
+        branchId: null,
+        mdmAccountId: mdmAcctId,
+        webbingDevices,
+        simpleMdmDevices,
+        matches,
+        usage: null,
+        stats: {
+          webbingCount: webbingDevices.length,
+          mdmCount: simpleMdmDevices.length,
+          countMatch: webbingDevices.length === simpleMdmDevices.length,
+          matchedCount: matches.length,
+          activeCount,
+          suspendedCount,
+          abmStatus
+        }
+      });
+      
+    } else if (isICCID || isIMEI) {
       // ── ICCID / IMEI SEARCH ──────────────────────────────────
       const searchType = isICCID ? 'ICCID' : 'IMEI';
       console.log(`[Lookup] Performing ${searchType} search for "${query}"`);
