@@ -4054,7 +4054,10 @@ app.get('/api/webbing/branches/:branchId/usage', async (req, res) => {
     let totalUsageMB = 0;
     let devicesWithUsage = 0;
 
-    for (const device of devicesToProcess) {
+    // Process devices in parallel batches to avoid Railway timeout
+    const BATCH_SIZE = 20;
+    
+    async function fetchDeviceUsage(device) {
       try {
         let usageMB = 0;
         let usageDays = 0;
@@ -4076,38 +4079,30 @@ app.get('/api/webbing/branches/:branchId/usage', async (req, res) => {
           }
         }
         
-        if (usageMB > 0) {
-            devicesWithUsage++;
-        }
-        
-        totalUsageMB += usageMB;
-
-        results.push({
-            SSID: device.SSID,
-            Serial: device.Serial,
-            IMEI: device.IMEI,
-            ProductName: device.ProductName,
-            TotalUsage: usageMB,
-            TotalUsageDays: usageDays,
-            ServiceDeviceID: device.ServiceDeviceID,
-            StatusName: device.StatusName
-        });
+        return {
+          SSID: device.SSID, Serial: device.Serial, IMEI: device.IMEI,
+          ProductName: device.ProductName, TotalUsage: usageMB,
+          TotalUsageDays: usageDays, ServiceDeviceID: device.ServiceDeviceID,
+          StatusName: device.StatusName
+        };
       } catch (err) {
-        console.error(`Error fetching usage for device ${device.ServiceDeviceID}:`, err);
-        results.push({
-            SSID: device.SSID,
-            Serial: device.Serial,
-            IMEI: device.IMEI,
-            ProductName: device.ProductName,
-            TotalUsage: 0,
-            TotalUsageDays: 0,
-            ServiceDeviceID: device.ServiceDeviceID,
-            StatusName: device.StatusName
-        });
+        return {
+          SSID: device.SSID, Serial: device.Serial, IMEI: device.IMEI,
+          ProductName: device.ProductName, TotalUsage: 0,
+          TotalUsageDays: 0, ServiceDeviceID: device.ServiceDeviceID,
+          StatusName: device.StatusName
+        };
       }
-      
-      // 200ms delay between calls
-      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    
+    for (let i = 0; i < devicesToProcess.length; i += BATCH_SIZE) {
+      const batch = devicesToProcess.slice(i, i + BATCH_SIZE);
+      const batchResults = await Promise.all(batch.map(d => fetchDeviceUsage(d)));
+      results.push(...batchResults);
+      for (const r of batchResults) {
+        totalUsageMB += r.TotalUsage;
+        if (r.TotalUsage > 0) devicesWithUsage++;
+      }
     }
 
     results.sort((a, b) => b.TotalUsage - a.TotalUsage);
