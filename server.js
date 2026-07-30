@@ -4027,6 +4027,28 @@ app.get('/api/webbing/branches/:branchId/usage', async (req, res) => {
     const limitNum = parseInt(limit, 10);
     const devicesToProcess = limitNum > 0 ? devices.slice(0, limitNum) : devices;
     
+    // Split date range into 31-day chunks (Webbing API max)
+    const [sm, sd, sy] = start.split('/').map(Number);
+    const [em, ed, ey] = end.split('/').map(Number);
+    const startDt = new Date(sy, sm - 1, sd);
+    const endDt = new Date(ey, em - 1, ed);
+    const MAX_DAYS = 31;
+    const dateChunks = [];
+    let chunkStart = new Date(startDt);
+    while (chunkStart < endDt) {
+      let chunkEnd = new Date(chunkStart);
+      chunkEnd.setDate(chunkEnd.getDate() + MAX_DAYS - 1);
+      if (chunkEnd > endDt) chunkEnd = new Date(endDt);
+      dateChunks.push({
+        start: `${String(chunkStart.getMonth()+1).padStart(2,'0')}/${String(chunkStart.getDate()).padStart(2,'0')}/${chunkStart.getFullYear()}`,
+        end: `${String(chunkEnd.getMonth()+1).padStart(2,'0')}/${String(chunkEnd.getDate()).padStart(2,'0')}/${chunkEnd.getFullYear()}`
+      });
+      chunkStart = new Date(chunkEnd);
+      chunkStart.setDate(chunkStart.getDate() + 1);
+    }
+    if (dateChunks.length === 0) dateChunks.push({ start, end });
+    console.log(`[Usage] Date range split into ${dateChunks.length} chunk(s) for ${devicesToProcess.length} devices`);
+    
     const client = getWebbingClient();
     const results = [];
     let totalUsageMB = 0;
@@ -4034,19 +4056,24 @@ app.get('/api/webbing/branches/:branchId/usage', async (req, res) => {
 
     for (const device of devicesToProcess) {
       try {
-        const usageData = await client.getDeviceUsage(device.ServiceDeviceID, start, end, interval);
-        let records = [];
-        const usage = usageData?.Usage;
-        if (usage && usage.DeviceUsageRecord) {
-            records = Array.isArray(usage.DeviceUsageRecord) ? usage.DeviceUsageRecord : [usage.DeviceUsageRecord];
-        }
-
         let usageMB = 0;
         let usageDays = 0;
         
-        for (const r of records) {
-            usageMB += parseFloat(r.TotalUsage || 0);
-            usageDays += parseInt(r.TotalUsageDays || 0, 10);
+        for (const chunk of dateChunks) {
+          try {
+            const usageData = await client.getDeviceUsage(device.ServiceDeviceID, chunk.start, chunk.end, interval);
+            let records = [];
+            const usage = usageData?.Usage;
+            if (usage && usage.DeviceUsageRecord) {
+              records = Array.isArray(usage.DeviceUsageRecord) ? usage.DeviceUsageRecord : [usage.DeviceUsageRecord];
+            }
+            for (const r of records) {
+              usageMB += parseFloat(r.TotalUsage || 0);
+              usageDays += parseInt(r.TotalUsageDays || 0, 10);
+            }
+          } catch (chunkErr) {
+            // Individual chunk errors are non-fatal
+          }
         }
         
         if (usageMB > 0) {
