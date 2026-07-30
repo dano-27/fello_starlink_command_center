@@ -4509,36 +4509,71 @@ app.get('/api/lookup', async (req, res) => {
       }
       
       // Pass 1: Direct ICCID matching (eSIM devices have ICCID in service_subscriptions)
-      if (webbingDevices.length > 0) {
-        for (const ipad of simpleMdmDevices) {
-          if (!ipad.iccid) continue;
-          const mdmIccid = ipad.iccid.replace(/\s/g, '');
-          
-          const matchedSim = webbingDevices.find(sim => {
-            const simIccid = (sim.iccid || '').replace(/\s/g, '');
+      // First search branch SIMs, then fallback to entire Webbing cache
+      for (const ipad of simpleMdmDevices) {
+        if (!ipad.iccid) continue;
+        const mdmIccid = ipad.iccid.replace(/\s/g, '');
+        
+        // Try branch SIMs first
+        let matchedSim = webbingDevices.find(sim => {
+          const simIccid = (sim.iccid || '').replace(/\s/g, '');
+          return simIccid && simIccid === mdmIccid && !sim.matchedIpadName;
+        });
+        
+        // Fallback: search entire Webbing cache
+        if (!matchedSim) {
+          const rawMatch = webbingDeviceCache.find(d => {
+            const simIccid = (d.ICCID || '').replace(/\s/g, '');
             return simIccid && simIccid === mdmIccid;
           });
-          
-          if (matchedSim && !matchedSim.matchedIpadName) {
-            matches.push({
-              ipadName: ipad.name,
-              ipadSerial: ipad.serial,
-              ipadImei: ipad.imei || '',
-              simSerial: matchedSim.serial,
-              simImei: matchedSim.imei || '',
-              simIccid: matchedSim.iccid,
-              simCarrier: matchedSim.carrier || ipad.carrier || '',
-              simStatus: matchedSim.status,
-              simIp: matchedSim.ip || ''
-            });
-            ipad.matchedSimSerial = matchedSim.serial;
-            matchedSim.matchedIpadName = ipad.name;
-            matchedSim.matchedIpadSerial = ipad.serial;
-            ipad.abmLookupStatus = 'iccid-matched';
+          if (rawMatch) {
+            // Add to webbingDevices list (normalized)
+            matchedSim = {
+              serviceDeviceId: rawMatch.ServiceDeviceID,
+              serial: rawMatch.Serial || rawMatch.SSID,
+              ssid: rawMatch.SSID,
+              iccid: rawMatch.ICCID,
+              imei: String(rawMatch.IMEI || ''),
+              msisdn: rawMatch.MSISDN,
+              status: rawMatch.StatusName,
+              statusId: rawMatch.StatusID,
+              plan: rawMatch.ProductName,
+              productName: rawMatch.ProductName,
+              branch: rawMatch.BranchName,
+              branchName: rawMatch.BranchName,
+              branchId: rawMatch.BranchID,
+              ip: rawMatch.IP || '',
+              model: rawMatch.Model || '',
+              vendor: rawMatch.Vendor || '',
+              deviceType: rawMatch.DeviceTypeName,
+              statusDate: rawMatch.StatusDateChange
+            };
+            if (!webbingDevices.find(w => w.serviceDeviceId === matchedSim.serviceDeviceId)) {
+              webbingDevices.push(matchedSim);
+            }
           }
         }
-        console.log(`[Lookup] ICCID direct matching: ${matches.length} pairs`);
+        
+        if (matchedSim && !matchedSim.matchedIpadName) {
+          matches.push({
+            ipadName: ipad.name,
+            ipadSerial: ipad.serial,
+            ipadImei: ipad.imei || '',
+            simSerial: matchedSim.serial,
+            simImei: matchedSim.imei || '',
+            simIccid: matchedSim.iccid,
+            simCarrier: matchedSim.carrier || ipad.carrier || '',
+            simStatus: matchedSim.status,
+            simIp: matchedSim.ip || ''
+          });
+          ipad.matchedSimSerial = matchedSim.serial;
+          matchedSim.matchedIpadName = ipad.name;
+          matchedSim.matchedIpadSerial = ipad.serial;
+          ipad.abmLookupStatus = 'iccid-matched';
+        }
       }
+      console.log(`[Lookup] ICCID matching: ${matches.length} pairs (branch + full cache)`);
+
       
       // Pass 2: ABM IMEI matching (for remaining unmatched devices)
       try {
