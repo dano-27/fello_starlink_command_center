@@ -298,6 +298,8 @@
       window._fleetRows.push({
         linked: true,
         mdmId: ipad.id || null,
+        mdmAccount: ipad.mdmAccount || 'fello',
+        mdmAccountName: ipad.mdmAccountName || 'Fello',
         simDeviceId: sim.serviceDeviceId || null,
         simStatusRaw: sim.status || m.simStatus || '',
         // iPad fields
@@ -331,6 +333,8 @@
       window._fleetRows.push({
         linked: false,
         mdmId: d.id || null,
+        mdmAccount: d.mdmAccount || 'fello',
+        mdmAccountName: d.mdmAccountName || 'Fello',
         simDeviceId: null,
         simStatusRaw: '',
         name: d.name || d.device_name || '',
@@ -642,14 +646,14 @@
     for (const ipad of ipads) {
       try {
         if (mode === 'enable') {
-          const res = await fetch(`/api/simplemdm/devices/${ipad.mdmId}/lost_mode`, {
+          const res = await fetch(`/api/simplemdm/devices/${ipad.mdmId}/lost_mode?account=${ipad.mdmAccount || 'fello'}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ message: msg })
           });
           if (res.ok) { success++; } else { failed++; }
         } else {
-          const res = await fetch(`/api/simplemdm/devices/${ipad.mdmId}/lost_mode`, { method: 'DELETE' });
+          const res = await fetch(`/api/simplemdm/devices/${ipad.mdmId}/lost_mode?account=${ipad.mdmAccount || 'fello'}`, { method: 'DELETE' });
           if (res.ok) { success++; } else { failed++; }
         }
       } catch { failed++; }
@@ -1144,6 +1148,7 @@
   window.openDeviceDrawer = function(idx) {
     const row = window._fleetRows[idx];
     if (!row) return;
+    window._currentDrawerAccount = row.mdmAccount || 'fello';
 
     drawerTitle.innerHTML = `
       ${esc(row.name || row.simSerial || 'Device')}
@@ -1367,11 +1372,11 @@
   };
 
   // ── MDM Device Actions ──
-  window.mdmAction = async function(deviceId, action, btn) {
+  window.mdmAction = async function(deviceId, action, btn, account) {
     if (!confirm(`Are you sure you want to ${action} this device?`)) return;
     btn.classList.add('loading');
     try {
-      await drawerAction(`/api/simplemdm/devices/${deviceId}/${action}`);
+      await drawerAction(`/api/simplemdm/devices/${deviceId}/${action}?account=${account || 'fello'}`);
       btn.classList.add('success');
       setTimeout(() => btn.classList.remove('success'), 2000);
     } finally {
@@ -1385,7 +1390,8 @@
     if (!msg) return;
     btn.classList.add('loading');
     try {
-      await drawerAction(`/api/simplemdm/devices/${deviceId}/lost_mode`, 'POST', { message: msg });
+      const acct = window._currentDrawerAccount || 'fello';
+      await drawerAction(`/api/simplemdm/devices/${deviceId}/lost_mode?account=${acct}`, 'POST', { message: msg });
       btn.classList.add('success');
     } finally {
       btn.classList.remove('loading');
@@ -1396,7 +1402,8 @@
     if (!confirm('Disable Lost Mode?')) return;
     btn.classList.add('loading');
     try {
-      await drawerAction(`/api/simplemdm/devices/${deviceId}/lost_mode`, 'DELETE');
+      const acct = window._currentDrawerAccount || 'fello';
+      await drawerAction(`/api/simplemdm/devices/${deviceId}/lost_mode?account=${acct}`, 'DELETE');
       btn.classList.add('success');
     } finally {
       btn.classList.remove('loading');
@@ -1535,7 +1542,8 @@
   window.wipeDevice = async function(deviceId, name) {
     if (!confirm(`⚠️ FACTORY RESET: This will ERASE ALL DATA on "${name}". This cannot be undone!\n\nAre you sure?`)) return;
     if (!confirm(`FINAL WARNING: Type the device name to confirm.\n\nDevice: ${name}\n\nProceed with factory reset?`)) return;
-    await drawerAction(`/api/simplemdm/devices/${deviceId}/wipe`);
+    const acct = window._currentDrawerAccount || 'fello';
+    await drawerAction(`/api/simplemdm/devices/${deviceId}/wipe?account=${acct}`);
   };
 
 })();

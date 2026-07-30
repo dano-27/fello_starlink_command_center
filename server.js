@@ -902,6 +902,33 @@ function saveConfig(config) {
 
 let serverConfig = loadConfig();
 
+// ── Multi-account SimpleMDM registry ─────────────────────────────────
+const MDM_ACCOUNTS = {
+  fello: {
+    name: 'Fello',
+    getKey: () => serverConfig.simpleMdmKey || process.env.SIMPLEMDM_API_KEY || '',
+    depServerId: '10650'
+  },
+  alamo: {
+    name: 'Alamo Fireworks',
+    getKey: () => process.env.SIMPLEMDM_ALAMO_KEY || 'Ze4rUrKGFpQW4hsO9g4wZsDRBMszrNAWkoHI01PCnKp3fQG6tuJvyVeZPyIpR7rS',
+    depServerId: '7997'
+  }
+};
+
+function getMdmAccountKey(accountId) {
+  const acct = MDM_ACCOUNTS[accountId];
+  if (!acct) throw new Error(`Unknown MDM account: ${accountId}`);
+  return acct.getKey();
+}
+
+function getAllMdmAccounts() {
+  return Object.entries(MDM_ACCOUNTS)
+    .filter(([_, acct]) => !!acct.getKey())
+    .map(([id, acct]) => ({ id, name: acct.name, depServerId: acct.depServerId }));
+}
+
+
 // Env var fallback — Railway environment variables persist across deploys
 function getSimpleMdmKey() {
   return serverConfig.simpleMdmKey || process.env.SIMPLEMDM_API_KEY || '';
@@ -1529,12 +1556,21 @@ const PROFILE_IDS = {
 };
 
 // ── DEP Sync ────────────────────────────────────────────────────────
+
+// ── List configured MDM accounts ────────────────────────────────────
+app.get('/api/simplemdm/accounts', (req, res) => {
+  const accounts = getAllMdmAccounts();
+  res.json({ accounts });
+});
+
 app.post('/api/simplemdm/dep/sync', async (req, res) => {
-  const auth = req.headers.authorization;
-  if (!auth) return res.status(401).json({ error: 'Missing Authorization header' });
+  const accountId = req.query.account || req.body?.account || 'fello';
+  const rawKey = getMdmAccountKey(accountId);
+  const auth = 'Basic ' + Buffer.from(rawKey + ':').toString('base64');
+  const depServerId = MDM_ACCOUNTS[accountId]?.depServerId || '10650';
 
   try {
-    const resp = await fetch('https://a.simplemdm.com/api/v1/dep_servers/10650/sync', {
+    const resp = await fetch(`https://a.simplemdm.com/api/v1/dep_servers/${depServerId}/sync`, {
       method: 'POST',
       headers: { Authorization: auth },
     });
@@ -1548,8 +1584,10 @@ app.post('/api/simplemdm/dep/sync', async (req, res) => {
 
 // ── Assign Devices by Serial Number ─────────────────────────────────
 app.post('/api/simplemdm/groups/:groupId/assign-serials', async (req, res) => {
-  const auth = req.headers.authorization;
-  if (!auth) return res.status(401).json({ error: 'Missing Authorization header' });
+  const accountId = req.query.account || req.body?.account || 'fello';
+  const rawKey = getMdmAccountKey(accountId);
+  const auth = 'Basic ' + Buffer.from(rawKey + ':').toString('base64');
+  const depServerId = MDM_ACCOUNTS[accountId]?.depServerId || '10650';
 
   const { serials, autoSync } = req.body;
   const groupId = req.params.groupId;
@@ -1566,13 +1604,7 @@ app.post('/api/simplemdm/groups/:groupId/assign-serials', async (req, res) => {
   const cleanSerials = [...new Set(serials.map(s => s.trim().toUpperCase()).filter(Boolean))];
   console.log(`[ASSIGN] Processing ${cleanSerials.length} serials for group ${groupId}`);
 
-  // Extract the API key for smdmRequest calls
-  let rawKey;
-  if (auth.startsWith('Basic ')) {
-    rawKey = Buffer.from(auth.replace('Basic ', ''), 'base64').toString().replace(/:$/, '');
-  } else {
-    rawKey = auth;
-  }
+
 
   // Fetch group name to extract order number for device naming
   let orderNumber = null;
@@ -1632,7 +1664,7 @@ app.post('/api/simplemdm/groups/:groupId/assign-serials', async (req, res) => {
     let hasMore = true;
     let depCursor = '';
     while (hasMore) {
-      const depUrl = `https://a.simplemdm.com/api/v1/dep_servers/10650/dep_devices?limit=100${depCursor ? `&starting_after=${depCursor}` : ''}`;
+      const depUrl = `https://a.simplemdm.com/api/v1/dep_servers/${depServerId}/dep_devices?limit=100${depCursor ? `&starting_after=${depCursor}` : ''}`;
       const depResp = await fetch(depUrl, { headers: { Authorization: auth } });
       const depData = depResp.ok ? await depResp.json() : { data: [], has_more: false };
       for (const d of (depData.data || [])) {
@@ -1808,7 +1840,7 @@ app.post('/api/simplemdm/groups/:groupId/assign-serials', async (req, res) => {
         for (let attempt = 1; attempt <= 3; attempt++) {
           try {
             await apiDelay(attempt === 1 ? 1000 : 3000); // Wait longer on retries
-            const syncResp = await fetch('https://a.simplemdm.com/api/v1/dep_servers/10650/sync', {
+            const syncResp = await fetch(`https://a.simplemdm.com/api/v1/dep_servers/${depServerId}/sync`, {
               method: 'POST',
               headers: { Authorization: auth },
             });
@@ -1838,7 +1870,7 @@ app.post('/api/simplemdm/groups/:groupId/assign-serials', async (req, res) => {
           let depCursor = '';
           while (hasMore) {
             try {
-              const depUrl = `https://a.simplemdm.com/api/v1/dep_servers/10650/dep_devices?limit=100${depCursor ? `&starting_after=${depCursor}` : ''}`;
+              const depUrl = `https://a.simplemdm.com/api/v1/dep_servers/${depServerId}/dep_devices?limit=100${depCursor ? `&starting_after=${depCursor}` : ''}`;
               const depResp = await fetch(depUrl, { headers: { Authorization: auth } });
               const depData = depResp.ok ? await depResp.json() : { data: [], has_more: false };
               const depDevices = depData.data || [];
@@ -2344,8 +2376,10 @@ app.delete('/api/automation/queue/:id', (req, res) => {
 // SimpleMDM doesn't have a /groups/:id/profiles endpoint, so we fetch
 // ALL profiles (regular + custom) and filter by assignment_groups relationship
 app.get('/api/simplemdm/assignment_groups/:groupId/profiles', async (req, res) => {
-  const auth = req.headers.authorization;
-  if (!auth) return res.status(401).json({ error: 'Missing Authorization header' });
+  const accountId = req.query.account || req.body?.account || 'fello';
+  const rawKey = getMdmAccountKey(accountId);
+  const auth = 'Basic ' + Buffer.from(rawKey + ':').toString('base64');
+  const depServerId = MDM_ACCOUNTS[accountId]?.depServerId || '10650';
 
   const groupId = parseInt(req.params.groupId);
 
@@ -2382,8 +2416,10 @@ app.get('/api/simplemdm/assignment_groups/:groupId/profiles', async (req, res) =
 
 // Remove a profile from a group
 app.delete('/api/simplemdm/assignment_groups/:groupId/profiles/:profileId', async (req, res) => {
-  const auth = req.headers.authorization;
-  if (!auth) return res.status(401).json({ error: 'Missing Authorization header' });
+  const accountId = req.query.account || req.body?.account || 'fello';
+  const rawKey = getMdmAccountKey(accountId);
+  const auth = 'Basic ' + Buffer.from(rawKey + ':').toString('base64');
+  const depServerId = MDM_ACCOUNTS[accountId]?.depServerId || '10650';
 
   try {
     const url = `https://a.simplemdm.com/api/v1/assignment_groups/${req.params.groupId}/profiles/${req.params.profileId}`;
@@ -2407,8 +2443,10 @@ app.delete('/api/simplemdm/assignment_groups/:groupId/profiles/:profileId', asyn
 
 // Add a profile to a group
 app.post('/api/simplemdm/assignment_groups/:groupId/profiles/:profileId', async (req, res) => {
-  const auth = req.headers.authorization;
-  if (!auth) return res.status(401).json({ error: 'Missing Authorization header' });
+  const accountId = req.query.account || req.body?.account || 'fello';
+  const rawKey = getMdmAccountKey(accountId);
+  const auth = 'Basic ' + Buffer.from(rawKey + ':').toString('base64');
+  const depServerId = MDM_ACCOUNTS[accountId]?.depServerId || '10650';
 
   try {
     const url = `https://a.simplemdm.com/api/v1/assignment_groups/${req.params.groupId}/profiles/${req.params.profileId}`;
@@ -2434,8 +2472,10 @@ app.post('/api/simplemdm/assignment_groups/:groupId/profiles/:profileId', async 
 // SimpleMDM doesn't have a /groups/:id/apps listing endpoint, so we fetch
 // ALL apps and filter by assignment_groups relationship
 app.get('/api/simplemdm/assignment_groups/:groupId/apps', async (req, res) => {
-  const auth = req.headers.authorization;
-  if (!auth) return res.status(401).json({ error: 'Missing Authorization header' });
+  const accountId = req.query.account || req.body?.account || 'fello';
+  const rawKey = getMdmAccountKey(accountId);
+  const auth = 'Basic ' + Buffer.from(rawKey + ':').toString('base64');
+  const depServerId = MDM_ACCOUNTS[accountId]?.depServerId || '10650';
 
   const groupId = parseInt(req.params.groupId);
 
@@ -2470,8 +2510,10 @@ app.get('/api/simplemdm/assignment_groups/:groupId/apps', async (req, res) => {
 
 // Remove an app from a group
 app.delete('/api/simplemdm/assignment_groups/:groupId/apps/:appId', async (req, res) => {
-  const auth = req.headers.authorization;
-  if (!auth) return res.status(401).json({ error: 'Missing Authorization header' });
+  const accountId = req.query.account || req.body?.account || 'fello';
+  const rawKey = getMdmAccountKey(accountId);
+  const auth = 'Basic ' + Buffer.from(rawKey + ':').toString('base64');
+  const depServerId = MDM_ACCOUNTS[accountId]?.depServerId || '10650';
 
   try {
     const url = `https://a.simplemdm.com/api/v1/assignment_groups/${req.params.groupId}/apps/${req.params.appId}`;
@@ -2495,8 +2537,10 @@ app.delete('/api/simplemdm/assignment_groups/:groupId/apps/:appId', async (req, 
 
 // Create assignment group — always force auto_deploy: true
 app.post('/api/simplemdm/assignment_groups', async (req, res) => {
-  const auth = req.headers.authorization;
-  if (!auth) return res.status(401).json({ error: 'Missing Authorization header' });
+  const accountId = req.query.account || req.body?.account || 'fello';
+  const rawKey = getMdmAccountKey(accountId);
+  const auth = 'Basic ' + Buffer.from(rawKey + ':').toString('base64');
+  const depServerId = MDM_ACCOUNTS[accountId]?.depServerId || '10650';
 
   try {
     const params = new URLSearchParams();
@@ -2525,8 +2569,10 @@ app.post('/api/simplemdm/assignment_groups', async (req, res) => {
 
 // Update assignment group — always force auto_deploy: true
 app.patch('/api/simplemdm/assignment_groups/:groupId', async (req, res) => {
-  const auth = req.headers.authorization;
-  if (!auth) return res.status(401).json({ error: 'Missing Authorization header' });
+  const accountId = req.query.account || req.body?.account || 'fello';
+  const rawKey = getMdmAccountKey(accountId);
+  const auth = 'Basic ' + Buffer.from(rawKey + ':').toString('base64');
+  const depServerId = MDM_ACCOUNTS[accountId]?.depServerId || '10650';
 
   try {
     const params = new URLSearchParams();
@@ -2552,8 +2598,10 @@ app.patch('/api/simplemdm/assignment_groups/:groupId', async (req, res) => {
 
 // Add an app to a group — force deployment_type: standard
 app.post('/api/simplemdm/assignment_groups/:groupId/apps/:appId', async (req, res) => {
-  const auth = req.headers.authorization;
-  if (!auth) return res.status(401).json({ error: 'Missing Authorization header' });
+  const accountId = req.query.account || req.body?.account || 'fello';
+  const rawKey = getMdmAccountKey(accountId);
+  const auth = 'Basic ' + Buffer.from(rawKey + ':').toString('base64');
+  const depServerId = MDM_ACCOUNTS[accountId]?.depServerId || '10650';
 
   try {
     const url = `https://a.simplemdm.com/api/v1/assignment_groups/${req.params.groupId}/apps/${req.params.appId}`;
@@ -2580,8 +2628,10 @@ app.post('/api/simplemdm/assignment_groups/:groupId/apps/:appId', async (req, re
 
 // Add a device to a group
 app.post('/api/simplemdm/assignment_groups/:groupId/devices/:deviceId', async (req, res) => {
-  const auth = req.headers.authorization;
-  if (!auth) return res.status(401).json({ error: 'Missing Authorization header' });
+  const accountId = req.query.account || req.body?.account || 'fello';
+  const rawKey = getMdmAccountKey(accountId);
+  const auth = 'Basic ' + Buffer.from(rawKey + ':').toString('base64');
+  const depServerId = MDM_ACCOUNTS[accountId]?.depServerId || '10650';
 
   try {
     const url = `https://a.simplemdm.com/api/v1/assignment_groups/${req.params.groupId}/devices/${req.params.deviceId}`;
@@ -2605,8 +2655,10 @@ app.post('/api/simplemdm/assignment_groups/:groupId/devices/:deviceId', async (r
 
 // Remove a device from a group
 app.delete('/api/simplemdm/assignment_groups/:groupId/devices/:deviceId', async (req, res) => {
-  const auth = req.headers.authorization;
-  if (!auth) return res.status(401).json({ error: 'Missing Authorization header' });
+  const accountId = req.query.account || req.body?.account || 'fello';
+  const rawKey = getMdmAccountKey(accountId);
+  const auth = 'Basic ' + Buffer.from(rawKey + ':').toString('base64');
+  const depServerId = MDM_ACCOUNTS[accountId]?.depServerId || '10650';
 
   try {
     const url = `https://a.simplemdm.com/api/v1/assignment_groups/${req.params.groupId}/devices/${req.params.deviceId}`;
@@ -2630,8 +2682,10 @@ app.delete('/api/simplemdm/assignment_groups/:groupId/devices/:deviceId', async 
 
 // List all profiles (regular + custom, merged)
 app.get('/api/simplemdm/profiles', async (req, res) => {
-  const auth = req.headers.authorization;
-  if (!auth) return res.status(401).json({ error: 'Missing Authorization header' });
+  const accountId = req.query.account || req.body?.account || 'fello';
+  const rawKey = getMdmAccountKey(accountId);
+  const auth = 'Basic ' + Buffer.from(rawKey + ':').toString('base64');
+  const depServerId = MDM_ACCOUNTS[accountId]?.depServerId || '10650';
 
   try {
     const [regResp, customResp] = await Promise.all([
@@ -2694,8 +2748,10 @@ async function enrichAppsWithIcons(apps) {
 
 // List all apps (enriched with App Store icons)
 app.get('/api/simplemdm/apps', async (req, res) => {
-  const auth = req.headers.authorization;
-  if (!auth) return res.status(401).json({ error: 'Missing Authorization header' });
+  const accountId = req.query.account || req.body?.account || 'fello';
+  const rawKey = getMdmAccountKey(accountId);
+  const auth = 'Basic ' + Buffer.from(rawKey + ':').toString('base64');
+  const depServerId = MDM_ACCOUNTS[accountId]?.depServerId || '10650';
 
   try {
     const url = new URL('https://a.simplemdm.com/api/v1/apps');
@@ -2721,15 +2777,12 @@ app.get('/api/simplemdm/apps', async (req, res) => {
 
 // ── Bulk Device Wipe, Unenroll & DEP Unassign ──────────────────────
 app.post('/api/simplemdm/devices/bulk-unenroll', async (req, res) => {
-  const auth = req.headers.authorization;
-  if (!auth) return res.status(401).json({ error: 'Missing Authorization header' });
+  const accountId = req.query.account || req.body?.account || 'fello';
+  const rawKey = getMdmAccountKey(accountId);
+  const auth = 'Basic ' + Buffer.from(rawKey + ':').toString('base64');
+  const depServerId = MDM_ACCOUNTS[accountId]?.depServerId || '10650';
 
-  let rawKey;
-  if (auth.startsWith('Basic ')) {
-    rawKey = Buffer.from(auth.replace('Basic ', ''), 'base64').toString().replace(/:$/, '');
-  } else {
-    rawKey = auth;
-  }
+
 
   const { devices } = req.body; // [{ deviceId, serial }]
   if (!Array.isArray(devices) || devices.length === 0) {
@@ -2826,15 +2879,12 @@ app.post('/api/simplemdm/devices/bulk-unenroll', async (req, res) => {
 
 // ── Bulk Device Wipe (Factory Reset) ────────────────────────────────
 app.post('/api/simplemdm/devices/bulk-wipe', async (req, res) => {
-  const auth = req.headers.authorization;
-  if (!auth) return res.status(401).json({ error: 'Missing Authorization header' });
+  const accountId = req.query.account || req.body?.account || 'fello';
+  const rawKey = getMdmAccountKey(accountId);
+  const auth = 'Basic ' + Buffer.from(rawKey + ':').toString('base64');
+  const depServerId = MDM_ACCOUNTS[accountId]?.depServerId || '10650';
 
-  let rawKey;
-  if (auth.startsWith('Basic ')) {
-    rawKey = Buffer.from(auth.replace('Basic ', ''), 'base64').toString().replace(/:$/, '');
-  } else {
-    rawKey = auth;
-  }
+
 
   const { devices } = req.body;
   if (!Array.isArray(devices) || devices.length === 0) {
@@ -2861,15 +2911,12 @@ app.post('/api/simplemdm/devices/bulk-wipe', async (req, res) => {
 
 // ── Delete Group with Device Cleanup ────────────────────────────────
 app.post('/api/simplemdm/groups/:groupId/delete-with-cleanup', async (req, res) => {
-  const auth = req.headers.authorization;
-  if (!auth) return res.status(401).json({ error: 'Missing Authorization header' });
+  const accountId = req.query.account || req.body?.account || 'fello';
+  const rawKey = getMdmAccountKey(accountId);
+  const auth = 'Basic ' + Buffer.from(rawKey + ':').toString('base64');
+  const depServerId = MDM_ACCOUNTS[accountId]?.depServerId || '10650';
 
-  let rawKey;
-  if (auth.startsWith('Basic ')) {
-    rawKey = Buffer.from(auth.replace('Basic ', ''), 'base64').toString().replace(/:$/, '');
-  } else {
-    rawKey = auth;
-  }
+
 
   const groupId = req.params.groupId;
   const { wipeFirst } = req.body || {};
@@ -2947,8 +2994,10 @@ app.post('/api/simplemdm/groups/:groupId/delete-with-cleanup', async (req, res) 
 
 // Lost Mode — enable (SimpleMDM requires form-encoded body)
 app.post('/api/simplemdm/devices/:deviceId/lost_mode', async (req, res) => {
-  const auth = req.headers.authorization;
-  if (!auth) return res.status(401).json({ error: 'Missing Authorization header' });
+  const accountId = req.query.account || req.body?.account || 'fello';
+  const rawKey = getMdmAccountKey(accountId);
+  const auth = 'Basic ' + Buffer.from(rawKey + ':').toString('base64');
+  const depServerId = MDM_ACCOUNTS[accountId]?.depServerId || '10650';
 
   const { deviceId } = req.params;
   const { message, phone_number, footnote } = req.body || {};
@@ -2978,8 +3027,10 @@ app.post('/api/simplemdm/devices/:deviceId/lost_mode', async (req, res) => {
 
 // Lost Mode — disable
 app.delete('/api/simplemdm/devices/:deviceId/lost_mode', async (req, res) => {
-  const auth = req.headers.authorization;
-  if (!auth) return res.status(401).json({ error: 'Missing Authorization header' });
+  const accountId = req.query.account || req.body?.account || 'fello';
+  const rawKey = getMdmAccountKey(accountId);
+  const auth = 'Basic ' + Buffer.from(rawKey + ':').toString('base64');
+  const depServerId = MDM_ACCOUNTS[accountId]?.depServerId || '10650';
 
   const { deviceId } = req.params;
   try {
@@ -2998,8 +3049,10 @@ app.delete('/api/simplemdm/devices/:deviceId/lost_mode', async (req, res) => {
 
 // Generic SimpleMDM proxy — forwards /api/simplemdm/* to SimpleMDM API
 app.all('/api/simplemdm/*', async (req, res) => {
-  const auth = req.headers.authorization;
-  if (!auth) return res.status(401).json({ error: 'Missing Authorization header' });
+  const accountId = req.query.account || req.body?.account || 'fello';
+  const rawKey = getMdmAccountKey(accountId);
+  const auth = 'Basic ' + Buffer.from(rawKey + ':').toString('base64');
+  const depServerId = MDM_ACCOUNTS[accountId]?.depServerId || '10650';
 
   // Strip /api/simplemdm prefix to get the SimpleMDM path
   const apiPath = req.path.replace('/api/simplemdm', '');
@@ -4299,11 +4352,13 @@ app.get('/api/debug/abm-devices', async (req, res) => {
 
 app.get('/api/debug/dep-devices', async (req, res) => {
   try {
-    const mdmKey = getSimpleMdmKey();
+    const accountId = req.query.account || req.body?.account || 'fello';
+    const mdmKey = getMdmAccountKey(accountId);
     const auth = 'Basic ' + Buffer.from(mdmKey + ':').toString('base64');
+    const depServerId = MDM_ACCOUNTS[accountId]?.depServerId || '10650';
     const limit = parseInt(req.query.limit) || 5;
     
-    const url = `https://a.simplemdm.com/api/v1/dep_servers/10650/dep_devices?limit=${limit}`;
+    const url = `https://a.simplemdm.com/api/v1/dep_servers/${depServerId}/dep_devices?limit=${limit}`;
     const resp = await fetch(url, { headers: { 'Authorization': auth } });
     if (!resp.ok) return res.status(resp.status).json({ error: `DEP fetch failed: ${resp.status}` });
     
@@ -4562,53 +4617,58 @@ app.get('/api/lookup', async (req, res) => {
         await new Promise(r => setTimeout(r, 100));
       }
       
-      // Step 3: Scan SimpleMDM for matching iPads by name prefix
+      // Step 3: Scan ALL SimpleMDM accounts for matching iPads by name prefix
       const simpleMdmDevices = [];
-      try {
-        const mdmKey = getSimpleMdmKey();
-        const auth = 'Basic ' + Buffer.from(mdmKey + ':').toString('base64');
-        const branchPrefix = branchName.toLowerCase();
-        let hasMore = true;
-        let startingAfter = '';
-        
-        while (hasMore) {
-          const url = `https://a.simplemdm.com/api/v1/devices?limit=100${startingAfter ? `&starting_after=${startingAfter}` : ''}`;
-          const devResp = await fetch(url, { headers: { 'Authorization': auth } });
-          if (!devResp.ok) break;
-          const devData = await devResp.json();
-          const items = devData.data || [];
+      for (const [mdmAcctId, mdmAcct] of Object.entries(MDM_ACCOUNTS)) {
+        const mdmKey = mdmAcct.getKey();
+        if (!mdmKey) continue;
+        try {
+          const auth = 'Basic ' + Buffer.from(mdmKey + ':').toString('base64');
+          const branchPrefix = branchName.toLowerCase();
+          let hasMore = true;
+          let startingAfter = '';
           
-          for (const d of items) {
-            const attr = d.attributes || {};
-            const name = (attr.name || '').trim();
-            if (name.toLowerCase().startsWith(branchPrefix)) {
-              simpleMdmDevices.push({
-                id: d.id, name, serial: attr.serial_number,
-                model: attr.model_name, osVersion: attr.os_version,
-                batteryLevel: attr.battery_level, lastSeenAt: attr.last_seen_at,
-                phoneNumber: attr.phone_number || null,
-                wifiMac: attr.wifi_mac || null,
-                imei: attr.imei || null,
-                iccid: attr.iccid || null,
-                capacity: attr.device_capacity || null,
-                enrolledAt: attr.enrolled_at || null,
-                deviceGroupId: attr.device_group_id || null
-              });
+          while (hasMore) {
+            const url = `https://a.simplemdm.com/api/v1/devices?limit=100${startingAfter ? `&starting_after=${startingAfter}` : ''}`;
+            const devResp = await fetch(url, { headers: { 'Authorization': auth } });
+            if (!devResp.ok) break;
+            const devData = await devResp.json();
+            const items = devData.data || [];
+            
+            for (const d of items) {
+              const attr = d.attributes || {};
+              const name = (attr.name || '').trim();
+              if (name.toLowerCase().startsWith(branchPrefix)) {
+                simpleMdmDevices.push({
+                  id: d.id, name, serial: attr.serial_number,
+                  model: attr.model_name, osVersion: attr.os_version,
+                  batteryLevel: attr.battery_level, lastSeenAt: attr.last_seen_at,
+                  phoneNumber: attr.phone_number || null,
+                  wifiMac: attr.wifi_mac || null,
+                  imei: attr.imei || null,
+                  iccid: attr.iccid || null,
+                  capacity: attr.device_capacity || null,
+                  enrolledAt: attr.enrolled_at || null,
+                  deviceGroupId: attr.device_group_id || null,
+                  mdmAccount: mdmAcctId,
+                  mdmAccountName: mdmAcct.name
+                });
+              }
             }
+            hasMore = devData.has_more === true;
+            startingAfter = items.length > 0 ? items[items.length - 1].id : '';
+            if (!startingAfter) break;
           }
-          hasMore = devData.has_more === true;
-          startingAfter = items.length > 0 ? items[items.length - 1].id : '';
-          if (!startingAfter) break;
+        } catch (e) {
+          console.error(`[Lookup] SimpleMDM ${mdmAcct.name} scan error:`, e.message);
         }
-        
-        simpleMdmDevices.sort((a, b) => {
-          const numA = parseInt((a.name.match(/\((\d+)\)/) || [])[1]) || 0;
-          const numB = parseInt((b.name.match(/\((\d+)\)/) || [])[1]) || 0;
-          return numA - numB;
-        });
-      } catch (e) {
-        console.error('[Lookup] SimpleMDM scan error:', e.message);
       }
+      
+      simpleMdmDevices.sort((a, b) => {
+        const numA = parseInt((a.name.match(/\((\d+)\)/) || [])[1]) || 0;
+        const numB = parseInt((b.name.match(/\((\d+)\)/) || [])[1]) || 0;
+        return numA - numB;
+      });
       
       // NOTE: Branch usage is skipped in lookup (requires per-device API calls, too slow)
       // Users can access the full usage report from the Webbing IoT dashboard
@@ -4708,26 +4768,32 @@ app.get('/api/lookup', async (req, res) => {
       if (!device) {
         // Try searching SimpleMDM by serial number
         let mdmDevice = null;
-        try {
-          const mdmKey = getSimpleMdmKey();
-          const auth = 'Basic ' + Buffer.from(mdmKey + ':').toString('base64');
-          const searchResp = await fetch(`https://a.simplemdm.com/api/v1/devices?search=${encodeURIComponent(query)}`, {
-            headers: { 'Authorization': auth }
-          });
-          if (searchResp.ok) {
-            const searchData = await searchResp.json();
-            const items = searchData.data || [];
-            if (items.length > 0) {
-              const attr = items[0].attributes || {};
-              mdmDevice = {
-                id: items[0].id, name: attr.name, serial: attr.serial_number,
-                model: attr.model_name, osVersion: attr.os_version,
-                batteryLevel: attr.battery_level, lastSeenAt: attr.last_seen_at
-              };
+        for (const [mdmAcctId, mdmAcct] of Object.entries(MDM_ACCOUNTS)) {
+          const mdmKey = mdmAcct.getKey();
+          if (!mdmKey) continue;
+          try {
+            const auth = 'Basic ' + Buffer.from(mdmKey + ':').toString('base64');
+            const searchResp = await fetch(`https://a.simplemdm.com/api/v1/devices?search=${encodeURIComponent(query)}`, {
+              headers: { 'Authorization': auth }
+            });
+            if (searchResp.ok) {
+              const searchData = await searchResp.json();
+              const items = searchData.data || [];
+              if (items.length > 0) {
+                const attr = items[0].attributes || {};
+                mdmDevice = {
+                  id: items[0].id, name: attr.name, serial: attr.serial_number,
+                  model: attr.model_name, osVersion: attr.os_version,
+                  batteryLevel: attr.battery_level, lastSeenAt: attr.last_seen_at,
+                  mdmAccount: mdmAcctId,
+                  mdmAccountName: mdmAcct.name
+                };
+                break; // Found in this account, stop searching
+              }
             }
+          } catch (e) {
+            console.error(`[Lookup] SimpleMDM ${mdmAcct.name} search error:`, e.message);
           }
-        } catch (e) {
-          console.error('[Lookup] SimpleMDM search error:', e.message);
         }
         
         if (mdmDevice) {
