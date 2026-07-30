@@ -4499,14 +4499,14 @@ app.get('/api/lookup', async (req, res) => {
     acct.name.toLowerCase() === query.toLowerCase() && acct.getKey()
   ) : null;
   
-  // Try CRM lookup for order numbers
+  // Try CRM lookup for order numbers (only when real CRM is configured)
   let crmOrder = null;
-  if (!isICCID && !isIMEI && !mdmAccountMatch) {
+  if (!isICCID && !isIMEI && !mdmAccountMatch && crmClient.isConfigured()) {
     try {
       const crmResult = await crmClient.getOrder(query);
       if (crmResult && crmResult.devices && crmResult.devices.length > 0) {
         crmOrder = crmResult;
-        console.log(`[Lookup] CRM order found: ${crmResult.orderNumber} (${crmResult.devices.length} devices, ${crmClient.mockMode ? 'MOCK' : 'LIVE'})`);
+        console.log(`[Lookup] CRM order found: ${crmResult.orderNumber} (${crmResult.devices.length} devices)`);
       }
     } catch (crmErr) {
       // CRM not available or order not found — fall through to prefix search
