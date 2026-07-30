@@ -28,6 +28,7 @@
     // iPad (SimpleMDM)
     { key: 'name',         label: 'iPad Name',     source: 'ipad',    default: true,  group: 'iPad' },
     { key: 'ipadSerial',   label: 'iPad Serial',   source: 'ipad',    default: true,  group: 'iPad' },
+    { key: 'barcode',      label: 'Barcode',       source: 'ipad',    default: false, group: 'iPad' },
     { key: 'model',        label: 'Model',         source: 'ipad',    default: true,  group: 'iPad' },
     { key: 'os',           label: 'OS Version',    source: 'ipad',    default: true,  group: 'iPad' },
     { key: 'battery',      label: 'Battery',       source: 'ipad',    default: true,  group: 'iPad' },
@@ -305,6 +306,7 @@
         // iPad fields
         name: m.ipadName,
         ipadSerial: m.ipadSerial,
+        barcode: ipad.barcode || '',
         model: ipad.model || ipad.model_name || '',
         os: ipad.osVersion || ipad.os_version || '',
         battery: ipad.batteryLevel || ipad.battery_level || null,
@@ -339,6 +341,7 @@
         simStatusRaw: '',
         name: d.name || d.device_name || '',
         ipadSerial: d.serial || d.serial_number || '',
+        barcode: d.barcode || '',
         model: d.model || d.model_name || '',
         os: d.osVersion || d.os_version || '',
         battery: d.batteryLevel || d.battery_level || null,
@@ -351,7 +354,7 @@
         imei: d.abmImei || '',
         eid: d.abmEid || '',
         simSerial: '', iccid: '', carrier: '', simStatus: null,
-        plan: '', ip: '', simModel: '', vendor: ''
+        plan: '', ip: '', simModel: '', vendor: '', barcode: ''
       });
     }
     // Unmatched SIMs — detect device type from vendor/model
@@ -403,7 +406,8 @@
         plan: w.plan || '',
         ip: w.ip || w.ipAddress || '',
         simModel: w.model || '',
-        vendor: w.vendor || ''
+        vendor: w.vendor || '',
+        barcode: ''
       });
     }
 

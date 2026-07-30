@@ -184,6 +184,7 @@ class FelloCrmClient {
       status: d.status || 'unknown',
       configProfile: d.configProfile || d.config_profile || d.profile || null,
       assignedSlot: d.assignedSlot || d.assigned_slot || d.slot || null,
+      barcode: d.barcode || d.bar_code || d.assetTag || d.asset_tag || '',
       notes: d.notes || '',
       raw: raw
     };
@@ -234,6 +235,7 @@ class FelloCrmClient {
         status: 'assigned',
         configProfile: `${num}_profile`,
         assignedSlot: i,
+        barcode: '',
         notes: ''
       });
     }
@@ -273,6 +275,7 @@ class FelloCrmClient {
         status: 'assigned',
         configProfile: 'default_profile',
         assignedSlot: 1,
+        barcode: '',
         notes: 'Mock device'
       }
     };

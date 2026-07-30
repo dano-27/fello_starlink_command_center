@@ -4562,7 +4562,8 @@ app.get('/api/lookup', async (req, res) => {
             enrolledAt: attr.enrolled_at || null,
             deviceGroupId: attr.device_group_id || null,
             mdmAccount: mdmAcctId,
-            mdmAccountName: mdmAcct.name
+            mdmAccountName: mdmAcct.name,
+            barcode: ''
           });
         }
         hasMore = devData.has_more === true;
@@ -4941,7 +4942,8 @@ app.get('/api/lookup', async (req, res) => {
                 enrolledAt: attr.enrolled_at || null,
                 deviceGroupId: attr.device_group_id || null,
                 mdmAccount: mdmAcctId,
-                mdmAccountName: mdmAcct.name
+                mdmAccountName: mdmAcct.name,
+            barcode: ''
               });
             }
           }
@@ -5195,7 +5197,8 @@ app.get('/api/lookup', async (req, res) => {
                   enrolledAt: attr.enrolled_at || null,
                   deviceGroupId: attr.device_group_id || null,
                   mdmAccount: mdmAcctId,
-                  mdmAccountName: mdmAcct.name
+                  mdmAccountName: mdmAcct.name,
+            barcode: ''
                 });
               }
             }
@@ -5330,7 +5333,8 @@ app.get('/api/lookup', async (req, res) => {
                   model: attr.model_name, osVersion: attr.os_version,
                   batteryLevel: attr.battery_level, lastSeenAt: attr.last_seen_at,
                   mdmAccount: mdmAcctId,
-                  mdmAccountName: mdmAcct.name
+                  mdmAccountName: mdmAcct.name,
+            barcode: ''
                 };
                 break; // Found in this account, stop searching
               }
