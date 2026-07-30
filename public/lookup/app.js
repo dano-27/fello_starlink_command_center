@@ -823,15 +823,16 @@
   window.exportUsageCSV = function() {
     const d = window._usageResults;
     if (!d) return;
-    let csv = 'iPad Name,iPad Serial,SIM Serial,IMEI,Plan,Status,Usage (MB),Usage (GB),Active Days\n';
+    let csv = '"iPad Name","iPad Serial","SIM Serial","IMEI","Plan","Status","Usage (MB)","Usage (GB)","Active Days"\n';
     const fleetRows = window._fleetRows || [];
     d.results.forEach(r => {
       const matchedRow = fleetRows.find(fr => fr.simSerial === r.Serial || fr.simSerial === r.SSID);
       const ipadName = matchedRow ? matchedRow.name : '';
       const ipadSerial = matchedRow ? matchedRow.ipadSerial : '';
-      csv += `${ipadName},${ipadSerial},${r.Serial},${r.IMEI},${r.ProductName},${r.StatusName},${r.TotalUsage.toFixed(2)},${(r.TotalUsage / 1024).toFixed(3)},${r.TotalUsageDays}\n`;
+      const q = v => `"${String(v || '').replace(/"/g, '""')}"`;
+      csv += `${q(ipadName)},${q(ipadSerial)},${q(r.Serial)},${q(r.IMEI)},${q(r.ProductName)},${q(r.StatusName)},${r.TotalUsage.toFixed(2)},${(r.TotalUsage / 1024).toFixed(3)},${r.TotalUsageDays}\n`;
     });
-    csv += `TOTAL,,,,,,${d.totals.totalUsage.toFixed(2)},${(d.totals.totalUsage / 1024).toFixed(3)},\n`;
+    csv += `"TOTAL","","","","","",${d.totals.totalUsage.toFixed(2)},${(d.totals.totalUsage / 1024).toFixed(3)},\n`;
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
