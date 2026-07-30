@@ -4433,14 +4433,23 @@ app.get('/api/lookup', async (req, res) => {
         
         for (const d of items) {
           const attr = d.attributes || {};
+          // Extract ICCID/IMEI from service_subscriptions (eSIM data)
+          const subs = attr.service_subscriptions || [];
+          const primarySub = Array.isArray(subs) && subs.length > 0 ? subs[0] : {};
+          const subIccid = (primarySub.iccid || '').replace(/\s/g, '');
+          const subImei = (primarySub.imei || '').replace(/\s/g, '');
+          const subEid = (primarySub.eid || '').replace(/\s/g, '');
+          
           simpleMdmDevices.push({
             id: d.id, name: (attr.name || '').trim(), serial: attr.serial_number,
             model: attr.model_name, osVersion: attr.os_version,
             batteryLevel: attr.battery_level, lastSeenAt: attr.last_seen_at,
-            phoneNumber: attr.phone_number || null,
+            phoneNumber: attr.phone_number || primarySub.phone_number || null,
             wifiMac: attr.wifi_mac || null,
-            imei: attr.imei || null,
-            iccid: attr.iccid || null,
+            imei: subImei || attr.imei || null,
+            iccid: subIccid || attr.iccid || null,
+            eid: subEid || null,
+            carrier: primarySub.current_carrier_network || null,
             capacity: attr.device_capacity || null,
             enrolledAt: attr.enrolled_at || null,
             deviceGroupId: attr.device_group_id || null,
@@ -4499,14 +4508,48 @@ app.get('/api/lookup', async (req, res) => {
         console.log(`[Lookup] Loaded ${webbingDevices.length} Webbing SIMs from branch ${mdmAcct.webbingBranch}`);
       }
       
+      // Pass 1: Direct ICCID matching (eSIM devices have ICCID in service_subscriptions)
+      if (webbingDevices.length > 0) {
+        for (const ipad of simpleMdmDevices) {
+          if (!ipad.iccid) continue;
+          const mdmIccid = ipad.iccid.replace(/\s/g, '');
+          
+          const matchedSim = webbingDevices.find(sim => {
+            const simIccid = (sim.iccid || '').replace(/\s/g, '');
+            return simIccid && simIccid === mdmIccid;
+          });
+          
+          if (matchedSim && !matchedSim.matchedIpadName) {
+            matches.push({
+              ipadName: ipad.name,
+              ipadSerial: ipad.serial,
+              ipadImei: ipad.imei || '',
+              simSerial: matchedSim.serial,
+              simImei: matchedSim.imei || '',
+              simIccid: matchedSim.iccid,
+              simCarrier: matchedSim.carrier || ipad.carrier || '',
+              simStatus: matchedSim.status,
+              simIp: matchedSim.ip || ''
+            });
+            ipad.matchedSimSerial = matchedSim.serial;
+            matchedSim.matchedIpadName = ipad.name;
+            matchedSim.matchedIpadSerial = ipad.serial;
+            ipad.abmLookupStatus = 'iccid-matched';
+          }
+        }
+        console.log(`[Lookup] ICCID direct matching: ${matches.length} pairs`);
+      }
+      
+      // Pass 2: ABM IMEI matching (for remaining unmatched devices)
       try {
-        if (abmPrivateKey && simpleMdmDevices.length > 0) {
+        const unmatchedIpads = simpleMdmDevices.filter(d => !d.matchedSimSerial);
+        if (abmPrivateKey && unmatchedIpads.length > 0) {
           const { serialToImei, imeiToSerial } = await buildAbmImeiMap();
           abmStatus = 'connected';
           
-          for (const ipad of simpleMdmDevices) {
+          for (const ipad of unmatchedIpads) {
             const serial = (ipad.serial || '').toUpperCase();
-            if (!serial) { ipad.abmLookupStatus = 'no-serial'; continue; }
+            if (!serial) { ipad.abmLookupStatus = ipad.abmLookupStatus || 'no-serial'; continue; }
             
             const abmData = serialToImei.get(serial);
             if (!abmData) { ipad.abmLookupStatus = 'not-in-abm'; continue; }
