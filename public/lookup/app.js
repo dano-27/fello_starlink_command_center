@@ -80,6 +80,10 @@
     setLoading(true);
     resultsContainer.classList.remove('visible');
     
+    // Hide the tool guide once a search starts
+    const toolGuide = document.getElementById('tool-guide');
+    if (toolGuide) toolGuide.classList.add('hidden');
+    
     // Clear previous instances
     if (currentChart) { currentChart.destroy(); currentChart = null; }
     if (currentMap) { currentMap.remove(); currentMap = null; }

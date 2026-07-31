@@ -47,6 +47,46 @@
       </div>
     </div>
 
+    <div id="tool-guide" class="tool-guide">
+      <div class="tool-guide-inner">
+        <h2 class="tool-guide-title">Fello Command Center</h2>
+        <p class="tool-guide-subtitle">Unified device management — search by order, SIM, serial, ICCID, or account name</p>
+        
+        <div class="tool-guide-grid">
+          <div class="tool-guide-card">
+            <div class="tool-guide-card-icon">📦</div>
+            <h3>Order Lookup</h3>
+            <p>Search an order number (e.g. <strong>FE13916</strong>, <strong>OR1533</strong>) to view all iPads, SIM pairings, battery levels, and MDM status for that order.</p>
+          </div>
+          
+          <div class="tool-guide-card">
+            <div class="tool-guide-card-icon">📡</div>
+            <h3>SIM &amp; Device Search</h3>
+            <p>Look up a SIM serial (<strong>WW13725786</strong>), ICCID, or IMEI to find the exact device, its live data, carrier info, and usage history.</p>
+          </div>
+          
+          <div class="tool-guide-card">
+            <div class="tool-guide-card-icon">🏢</div>
+            <h3>Account View</h3>
+            <p>Type <strong>Alamo Fireworks</strong> to load all devices under that MDM account with full SIM matching and fleet management.</p>
+          </div>
+          
+          <div class="tool-guide-card">
+            <div class="tool-guide-card-icon">⚡</div>
+            <h3>Fleet Actions</h3>
+            <p>From any search — switch carriers, activate/suspend SIMs, enable lost mode, calculate data usage, and export CSV reports.</p>
+          </div>
+        </div>
+
+        <div class="tool-guide-examples">
+          <span class="tool-guide-examples-label">Try:</span>
+          <button class="tool-guide-chip" onclick="document.getElementById('search-input').value=this.textContent;document.getElementById('search-btn').click();">FE13916</button>
+          <button class="tool-guide-chip" onclick="document.getElementById('search-input').value=this.textContent;document.getElementById('search-btn').click();">Alamo Fireworks</button>
+          <button class="tool-guide-chip" onclick="document.getElementById('search-input').value=this.textContent;document.getElementById('search-btn').click();">WW13725786</button>
+        </div>
+      </div>
+    </div>
+
     <div id="results-container" class="results-container">
       <!-- Dynamic Content Will Be Injected Here -->
     </div>
