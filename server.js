@@ -9,6 +9,21 @@ const { FelloCrmClient, CrmApiError } = require('./fello-crm-client');
 const UPLOAD_DIR = fs.existsSync('/data') ? '/data/uploads' : path.join(__dirname, 'data', 'uploads');
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
+// Site check results persistence
+const SITE_CHECKS_DIR = fs.existsSync('/data') ? '/data' : path.join(__dirname, 'data');
+const SITE_CHECKS_FILE = path.join(SITE_CHECKS_DIR, 'site-checks.json');
+if (!fs.existsSync(SITE_CHECKS_DIR)) fs.mkdirSync(SITE_CHECKS_DIR, { recursive: true });
+
+function loadSiteChecks() {
+  try {
+    if (fs.existsSync(SITE_CHECKS_FILE)) return JSON.parse(fs.readFileSync(SITE_CHECKS_FILE, 'utf8'));
+  } catch (e) { console.warn('[SiteCheck] Failed to load:', e.message); }
+  return {};
+}
+function saveSiteChecks(data) {
+  try { fs.writeFileSync(SITE_CHECKS_FILE, JSON.stringify(data, null, 2)); } catch (e) { console.warn('[SiteCheck] Failed to save:', e.message); }
+}
+
 const upload = multer({
   storage: multer.diskStorage({
     destination: (req, file, cb) => {
@@ -3928,6 +3943,157 @@ app.get('/api/webbing/plans', async (req, res) => {
 // ██  ORDER CREATION                                                   ██
 // ═══════════════════════════════════════════════════════════════════════
 
+// ── Site Checker per order/branch ───────────────────────────────────────
+app.post('/api/orders/:branchId/site-check', async (req, res) => {
+  try {
+    const branchId = req.params.branchId;
+    const { address } = req.body;
+    if (!address) return res.status(400).json({ error: 'Missing address' });
+
+    // Geocode address via Nominatim
+    const geoRes = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`, {
+      headers: { 'User-Agent': 'FelloCommandCenter/1.0' }
+    });
+    const geoData = await geoRes.json();
+    if (!geoData.length) return res.status(404).json({ error: 'Address not found' });
+
+    const lat = parseFloat(geoData[0].lat);
+    const lon = parseFloat(geoData[0].lon);
+    const displayName = geoData[0].display_name;
+
+    // Get carrier coverage from CoverageMap API
+    const COVERAGEMAP_KEY = process.env.COVERAGEMAP_KEY;
+    let coverage = {};
+    if (COVERAGEMAP_KEY) {
+      const cmRes = await fetch(`https://enterprise.coveragemap.com/api/v1/signal-strength/lookup?latitude=${lat}&longitude=${lon}`, {
+        headers: { 'Authorization': `Bearer ${COVERAGEMAP_KEY}`, 'Accept': 'application/json' }
+      });
+      const cmData = await cmRes.json();
+      if (cmData.status === 200 && Array.isArray(cmData.data)) {
+        for (const entry of cmData.data) {
+          const carrier = entry.provider?.name;
+          const tech = entry.technology?.code;
+          if (!carrier || !tech) continue;
+          if (!coverage[carrier]) coverage[carrier] = {};
+          coverage[carrier][tech] = {
+            signal: entry.signal?.signal,
+            quarterMile: entry.signal?.quarterMile,
+            halfMile: entry.signal?.halfMile,
+            oneMile: entry.signal?.oneMile,
+            coverage: entry.coverage?.quarterMile
+          };
+        }
+      }
+    }
+
+    // Determine recommendation
+    const carrierPlanMap = {
+      'T-Mobile': 11126,
+      'AT&T': 11125,
+      'Verizon': 11127
+    };
+    let recommended = null;
+    let bestSignal = -999;
+    for (const [carrier, techs] of Object.entries(coverage)) {
+      // Prefer 5G signal, fall back to 4G
+      const sig = techs['5G']?.signal || techs['4G']?.signal || -999;
+      if (sig > bestSignal && carrierPlanMap[carrier]) {
+        bestSignal = sig;
+        recommended = carrier;
+      }
+    }
+
+    // Build flat carriers array for frontend rendering
+    const carriers = Object.entries(coverage).map(([name, techs]) => {
+      const sig = techs['5G']?.signal || techs['4G']?.signal || -999;
+      return {
+        name,
+        signalDbm: sig,
+        tech5G: techs['5G'] || null,
+        tech4G: techs['4G'] || null,
+        recommended: name === recommended,
+        planId: carrierPlanMap[name] || null
+      };
+    }).sort((a, b) => b.signalDbm - a.signalDbm);
+
+    const result = {
+      address: displayName,
+      inputAddress: address,
+      geocodedAddress: displayName,
+      latitude: lat,
+      longitude: lon,
+      coverage,
+      carriers,
+      recommended,
+      recommendedPlanId: recommended ? carrierPlanMap[recommended] : null,
+      checkedAt: new Date().toISOString()
+    };
+
+    // Persist
+    const checks = loadSiteChecks();
+    checks[branchId] = result;
+    saveSiteChecks(checks);
+
+    console.log(`[SiteCheck] Branch ${branchId}: ${address} → ${recommended || 'no recommendation'} (${bestSignal} dBm)`);
+    res.json(result);
+  } catch (err) {
+    console.error('[SiteCheck] Error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Get stored site check result
+app.get('/api/orders/:branchId/site-check', (req, res) => {
+  const checks = loadSiteChecks();
+  const result = checks[req.params.branchId];
+  if (result) return res.json(result);
+  res.json(null);
+});
+
+// Apply recommended carrier to all devices in a branch
+app.post('/api/orders/:branchId/apply-carrier', async (req, res) => {
+  try {
+    const branchId = parseInt(req.params.branchId);
+    const { planId, carrierName, address } = req.body;
+    if (!planId) return res.status(400).json({ error: 'Missing planId' });
+
+    // Find all devices in this branch
+    const devices = webbingDeviceCache.filter(d => d.BranchID === branchId);
+    if (!devices.length) return res.status(404).json({ error: 'No devices found in branch' });
+
+    const client = getWebbingClient();
+    const results = [];
+    for (const d of devices) {
+      try {
+        await client.changePlan(d.ServiceDeviceID, planId);
+        results.push({ id: d.ServiceDeviceID, success: true });
+      } catch (e) {
+        results.push({ id: d.ServiceDeviceID, success: false, error: e.message });
+      }
+      await new Promise(r => setTimeout(r, 200));
+    }
+
+    // Update stored site check with applied carrier
+    const checks = loadSiteChecks();
+    const branchKey = req.params.branchId;
+    if (checks[branchKey]) {
+      checks[branchKey].appliedCarrier = carrierName;
+      checks[branchKey].appliedPlanId = planId;
+      checks[branchKey].appliedAt = new Date().toISOString();
+      saveSiteChecks(checks);
+    }
+
+    // Trigger Webbing cache refresh
+    setTimeout(() => syncWebbingDevices(false), 2000);
+
+    const successCount = results.filter(r => r.success).length;
+    console.log(`[SiteCheck] Applied ${carrierName} (plan ${planId}) to ${successCount}/${devices.length} devices in branch ${branchId}`);
+    res.json({ success: true, total: devices.length, changed: successCount, results });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/orders/create', async (req, res) => {
   try {
     const { orderName, account = 'fello', serials = [] } = req.body;
@@ -5411,6 +5577,10 @@ app.get('/api/lookup', async (req, res) => {
       const activeCount = webbingDevices.filter(d => d.statusId === 3).length;
       const suspendedCount = webbingDevices.filter(d => d.statusId === 4).length;
       
+      // Include stored site check result if available
+      const siteChecks = loadSiteChecks();
+      const siteCheck = siteChecks[branchName] || siteChecks[String(branchId)] || null;
+
       return res.json({
         type: 'group',
         found: true,
@@ -5420,6 +5590,7 @@ app.get('/api/lookup', async (req, res) => {
         simpleMdmDevices,
         matches,
         usage: null,
+        siteCheck,
         stats: {
           webbingCount: webbingDevices.length,
           mdmCount: simpleMdmDevices.length,

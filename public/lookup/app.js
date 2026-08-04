@@ -421,6 +421,7 @@
     const usage = data.usage || {};
     const branchId = data.branchName || query;
     const numericBranchId = data.branchId || null;
+    const siteCheck = data.siteCheck || null;
     window._currentBranchId = numericBranchId;
     window._currentBranchName = branchId;
 
@@ -458,18 +459,35 @@
         <button class="btn btn-outline" style="border-color:var(--green);color:var(--green);" onclick="window.bulkLostMode('disable')">🟢 Disable Lost Mode All</button>
       </div>
 
-      <!-- Carrier Switch -->
-      <div class="carrier-switch-bar" style="display:flex;align-items:center;gap:12px;padding:14px 20px;background:var(--surface);border:1px solid var(--border);border-radius:12px;margin-bottom:20px;flex-wrap:wrap;">
-        <span style="font-weight:700;font-size:14px;color:var(--text);white-space:nowrap;">📡 Switch Carrier:</span>
-        <select id="bulk-carrier-select" style="flex:1;min-width:200px;max-width:420px;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:13px;font-weight:500;cursor:pointer;">
-          <option value="" disabled selected>Select a carrier plan…</option>
-          <option value="11105">🌐 Multi-Carrier — Pay as You Go (US, CA, MX)</option>
-          <option value="11125">📶 AT&T — Pay as You Go (US/AT&T, CA/BELL, MX)</option>
-          <option value="11126">📶 T-Mobile — Pay as You Go (US/TMO, CA/ROGERS, MX)</option>
-          <option value="11127">📶 Verizon — Pay as You Go (US/VZ, CA/TELUS, MX)</option>
-        </select>
-        <button class="btn btn-primary" onclick="window.bulkChangeCarrier()" style="white-space:nowrap;">🔄 Apply to All SIMs</button>
-        <span style="font-size:12px;color:var(--muted);">Current: <strong id="current-plan-label" style="color:var(--text);">${esc(web.length > 0 ? (web[0].productName || web[0].ProductName || '—') : '—')}</strong></span>
+      <!-- Site Checker & Carrier Assignment -->
+      <div class="site-checker-panel" style="background:var(--surface);border:1px solid var(--border);border-radius:12px;margin-bottom:20px;overflow:hidden;">
+        <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
+          <h3 style="margin:0;font-size:15px;font-weight:700;color:var(--text);">📡 Site Checker & Carrier Assignment</h3>
+          <span id="site-check-status" style="font-size:12px;color:var(--muted);">${siteCheck?.appliedCarrier ? 'Currently applied: ' + esc(siteCheck.appliedCarrier) : ''}</span>
+        </div>
+        
+        <!-- Address Input -->
+        <div style="padding:16px 20px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
+          <input type="text" id="site-check-address" placeholder="Enter deployment address..." value="${esc(siteCheck?.inputAddress || '')}" style="flex:1;min-width:280px;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:13px;">
+          <button class="btn btn-primary" onclick="window.runSiteCheck()" id="site-check-btn">🔍 Check Coverage</button>
+        </div>
+        
+        <!-- Coverage Results -->
+        <div id="site-check-results" style="display:none;padding:16px 20px;background:rgba(0,0,0,0.02);"></div>
+        
+        <!-- Carrier Assignment -->
+        <div style="padding:16px 20px;border-top:1px solid var(--border);display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+          <span style="font-weight:700;font-size:14px;">Switch Carrier:</span>
+          <select id="bulk-carrier-select" style="flex:1;min-width:200px;max-width:420px;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:13px;font-weight:500;cursor:pointer;">
+            <option value="" disabled selected>Select a carrier plan…</option>
+            <option value="11105">🌐 Multi-Carrier — Pay as You Go (US, CA, MX)</option>
+            <option value="11125">📶 AT&T — Pay as You Go (US/AT&T, CA/BELL, MX)</option>
+            <option value="11126">📶 T-Mobile — Pay as You Go (US/TMO, CA/ROGERS, MX)</option>
+            <option value="11127">📶 Verizon — Pay as You Go (US/VZ, CA/TELUS, MX)</option>
+          </select>
+          <button class="btn btn-primary" onclick="window.bulkChangeCarrier()" style="white-space:nowrap;">🔄 Apply to All SIMs</button>
+          <span style="font-size:12px;color:var(--muted);">Current: <strong id="current-plan-label" style="color:var(--text);">${esc(web.length > 0 ? (web[0].productName || web[0].ProductName || '—') : '—')}</strong></span>
+        </div>
       </div>
 
       <!-- Data Usage Calculator -->
@@ -678,7 +696,99 @@
     
     // Wire up column picker
     initColumnPicker();
+    
+    if (siteCheck && (siteCheck.results || siteCheck.carriers)) {
+      setTimeout(() => window.renderSiteCheckResults(siteCheck), 0);
+    }
   }
+
+  window.runSiteCheck = async function() {
+    const address = document.getElementById('site-check-address').value.trim();
+    if (!address) {
+      showToast('Please enter an address', 'error');
+      return;
+    }
+    const btn = document.getElementById('site-check-btn');
+    btn.disabled = true;
+    btn.innerHTML = '⏳ Checking...';
+    try {
+      const res = await fetch(`/api/orders/${window._currentBranchName}/site-check`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ address })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to check site');
+      window.renderSiteCheckResults(data);
+      showToast('Coverage check complete');
+    } catch (err) {
+      showToast(err.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '🔍 Check Coverage';
+    }
+  };
+
+  window.renderSiteCheckResults = function(data) {
+    const container = document.getElementById('site-check-results');
+    if (!container) return;
+    
+    let html = `<div style="margin-bottom:12px;font-size:13px;color:var(--text);"><i style="color:var(--muted);">Geocoded:</i> <strong>${esc(data.geocodedAddress || data.inputAddress || '')}</strong></div>`;
+    
+    html += `<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:16px;">`;
+    
+    const carriers = data.carriers || data.results || [];
+    carriers.forEach(c => {
+      const dbm = c.signalDbm || -100;
+      let bars = 1;
+      let barColor = 'var(--red)';
+      let qual = 'Poor';
+      if (dbm >= -75) { bars = 4; barColor = 'var(--green)'; qual = 'Excellent'; }
+      else if (dbm >= -85) { bars = 3; barColor = 'var(--green)'; qual = 'Good'; }
+      else if (dbm >= -95) { bars = 2; barColor = 'var(--amber)'; qual = 'Fair'; }
+      
+      const isRec = c.recommended;
+      
+      html += `
+        <div style="background:var(--bg);border:2px solid ${isRec ? 'var(--green)' : 'var(--border)'};border-radius:12px;padding:16px;position:relative;">
+          ${isRec ? '<div style="position:absolute;top:-10px;right:10px;background:var(--green);color:#fff;font-size:11px;font-weight:bold;padding:2px 8px;border-radius:10px;">★ Recommended</div>' : ''}
+          <h4 style="margin:0 0 12px 0;font-size:16px;">${esc(c.name)}</h4>
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+            <div style="display:flex;gap:3px;align-items:flex-end;height:24px;">
+              <div style="width:6px;height:25%;background:${bars >= 1 ? barColor : '#ddd'};border-radius:2px;"></div>
+              <div style="width:6px;height:50%;background:${bars >= 2 ? barColor : '#ddd'};border-radius:2px;"></div>
+              <div style="width:6px;height:75%;background:${bars >= 3 ? barColor : '#ddd'};border-radius:2px;"></div>
+              <div style="width:6px;height:100%;background:${bars >= 4 ? barColor : '#ddd'};border-radius:2px;"></div>
+            </div>
+            <div style="font-size:14px;font-weight:bold;">${dbm} dBm <span style="font-weight:normal;color:var(--muted);font-size:12px;">(${qual})</span></div>
+          </div>
+          ${isRec ? `<button class="btn btn-primary btn-sm" style="width:100%;margin-top:8px;" onclick="window.applySiteCheckCarrier('${esc(c.name)}', '${c.planId}')">✅ Apply to All</button>` : ''}
+        </div>
+      `;
+      
+      if (isRec && c.planId) {
+        const select = document.getElementById('bulk-carrier-select');
+        if (select) select.value = c.planId;
+      }
+    });
+    
+    html += `</div>`;
+    container.innerHTML = html;
+    container.style.display = 'block';
+  };
+
+  window.applySiteCheckCarrier = async function(carrierName, planId) {
+    if (!confirm(`Are you sure you want to apply ${carrierName} to all SIMs in this branch?`)) return;
+    try {
+      const res = await drawerAction(`/api/orders/${window._currentBranchId}/apply-carrier`, 'POST', { planId, carrierName });
+      if (res && res.success) {
+        showToast(`Successfully applied ${carrierName} to ${res.changed || res.total || 'all'} devices!`);
+        setTimeout(handleSearch, 1000);
+      }
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  };
 
   function buildFleetTable(rows, visCols) {
     const ipadBorderCol = (() => {
