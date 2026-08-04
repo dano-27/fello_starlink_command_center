@@ -5409,6 +5409,167 @@ app.get('/api/lookup', async (req, res) => {
       });
       
     } else {
+      // ── FALLBACK: Check SimpleMDM assignment groups by name ──────
+      // This catches orders created via "Create Order" that don't match prefix patterns
+      let foundGroup = null;
+      let foundGroupAcctId = null;
+      
+      for (const [mdmAcctId, mdmAcct] of Object.entries(MDM_ACCOUNTS)) {
+        const mdmKey = mdmAcct.getKey();
+        if (!mdmKey) continue;
+        try {
+          const groupsResp = await smdmRequest(mdmKey, '/assignment_groups');
+          const groups = groupsResp?.data || [];
+          const match = groups.find(g => 
+            (g.attributes?.name || '').toLowerCase() === query.toLowerCase()
+          );
+          if (match) {
+            foundGroup = match;
+            foundGroupAcctId = mdmAcctId;
+            break;
+          }
+        } catch (e) {
+          console.log(`[Lookup] Assignment group search error (${mdmAcct.name}):`, e.message);
+        }
+      }
+      
+      if (foundGroup) {
+        // Found an assignment group — fetch its devices and return as group result
+        const mdmAcct = MDM_ACCOUNTS[foundGroupAcctId];
+        const mdmKey = mdmAcct.getKey();
+        const groupId = foundGroup.id;
+        const groupName = foundGroup.attributes?.name || query;
+        
+        console.log(`[Lookup] Found assignment group "${groupName}" (ID: ${groupId}) in ${mdmAcct.name}`);
+        
+        // Fetch all devices from this MDM account, filter by group membership
+        const auth = 'Basic ' + Buffer.from(mdmKey + ':').toString('base64');
+        const simpleMdmDevices = [];
+        let hasMore = true;
+        let startingAfter = '';
+        
+        while (hasMore) {
+          const url = `https://a.simplemdm.com/api/v1/devices?limit=100${startingAfter ? `&starting_after=${startingAfter}` : ''}`;
+          const devResp = await fetch(url, { headers: { 'Authorization': auth } });
+          if (!devResp.ok) break;
+          const devData = await devResp.json();
+          const items = devData.data || [];
+          
+          for (const d of items) {
+            const attr = d.attributes || {};
+            // Check if device name starts with the group name (common naming convention)
+            const deviceName = (attr.name || '').trim();
+            const nameMatch = deviceName.toLowerCase().startsWith(groupName.toLowerCase());
+            
+            // Also check assignment_group relationship
+            const groupIds = (d.relationships?.device_group?.data || []).map(g => g.id);
+            const inGroup = groupIds.includes(groupId) || groupIds.includes(String(groupId));
+            
+            if (nameMatch || inGroup) {
+              const subs = attr.service_subscriptions || [];
+              const primarySub = Array.isArray(subs) && subs.length > 0 ? subs[0] : {};
+              const subIccid = (primarySub.iccid || '').replace(/\s/g, '');
+              const subImei = (primarySub.imei || '').replace(/\s/g, '');
+              const subEid = (primarySub.eid || '').replace(/\s/g, '');
+              
+              simpleMdmDevices.push({
+                id: d.id, name: deviceName, serial: attr.serial_number,
+                model: attr.model_name, osVersion: attr.os_version,
+                batteryLevel: attr.battery_level, lastSeenAt: attr.last_seen_at,
+                phoneNumber: attr.phone_number || primarySub.phone_number || null,
+                wifiMac: attr.wifi_mac || null,
+                imei: subImei || attr.imei || null,
+                iccid: subIccid || attr.iccid || null,
+                eid: subEid || null,
+                carrier: primarySub.current_carrier_network || null,
+                capacity: attr.device_capacity || null,
+                enrolledAt: attr.enrolled_at || null,
+                deviceGroupId: attr.device_group_id || null,
+                mdmAccount: foundGroupAcctId,
+                mdmAccountName: mdmAcct.name,
+                barcode: ''
+              });
+            }
+          }
+          hasMore = devData.has_more === true;
+          startingAfter = items.length > 0 ? items[items.length - 1].id : '';
+          if (!startingAfter) break;
+        }
+        
+        console.log(`[Lookup] Assignment group "${groupName}": ${simpleMdmDevices.length} devices`);
+        
+        // Match to Webbing SIMs via ICCID
+        const webbingDevices = [];
+        const matches = [];
+        
+        for (const ipad of simpleMdmDevices) {
+          if (!ipad.iccid) continue;
+          const mdmIccid = ipad.iccid.replace(/\s/g, '');
+          
+          const rawMatch = webbingDeviceCache.find(d => {
+            const simIccid = (d.ICCID || '').replace(/\s/g, '');
+            return simIccid && simIccid === mdmIccid;
+          });
+          
+          if (rawMatch) {
+            const matchedSim = {
+              serviceDeviceId: rawMatch.ServiceDeviceID,
+              serial: rawMatch.Serial || rawMatch.SSID,
+              ssid: rawMatch.SSID,
+              iccid: rawMatch.ICCID,
+              imei: String(rawMatch.IMEI || ''),
+              msisdn: rawMatch.MSISDN,
+              status: rawMatch.StatusName,
+              statusId: rawMatch.StatusID,
+              plan: rawMatch.ProductName,
+              productName: rawMatch.ProductName,
+              branch: rawMatch.BranchName,
+              branchName: rawMatch.BranchName,
+              branchId: rawMatch.BranchID,
+              ip: rawMatch.IP || '',
+              model: rawMatch.Model || '',
+              vendor: rawMatch.Vendor || '',
+              deviceType: rawMatch.DeviceTypeName,
+              statusDate: rawMatch.StatusDateChange
+            };
+            
+            if (!webbingDevices.find(w => w.serviceDeviceId === matchedSim.serviceDeviceId)) {
+              webbingDevices.push(matchedSim);
+            }
+            
+            matches.push({
+              ipadName: ipad.name, ipadSerial: ipad.serial,
+              ipadImei: ipad.imei || '',
+              simSerial: matchedSim.serial, simImei: matchedSim.imei || '',
+              simIccid: matchedSim.iccid,
+              simCarrier: ipad.carrier || '', simStatus: matchedSim.status,
+              simIp: matchedSim.ip || ''
+            });
+            ipad.matchedSimSerial = matchedSim.serial;
+            matchedSim.matchedIpadName = ipad.name;
+            matchedSim.matchedIpadSerial = ipad.serial;
+          }
+        }
+        
+        return res.json({
+          type: 'group',
+          found: simpleMdmDevices.length > 0,
+          source: 'assignment_group',
+          branchName: groupName,
+          branchId: null,
+          groupId,
+          webbingDevices,
+          simpleMdmDevices,
+          matches,
+          stats: {
+            mdmCount: simpleMdmDevices.length,
+            webbingCount: webbingDevices.length,
+            matchedCount: matches.length,
+            abmStatus: 'not_needed'
+          }
+        });
+      }
+      
       // ── DEVICE SERIAL SEARCH ──────────────────────────────────
       console.log(`[Lookup] Performing DEVICE search for "${query}"`);
       
