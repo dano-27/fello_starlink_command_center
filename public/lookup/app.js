@@ -1735,29 +1735,11 @@
       });
       const data = await res.json();
       
-      const overlay = document.getElementById('screen-overlay');
-      const iframe = document.getElementById('screen-iframe');
-      
-      if (data.sessionUrl) {
-        // Try the session URL first
-        iframe.src = data.sessionUrl;
-        overlay.style.display = 'flex';
-        closeDrawer();
-        
-        // If session stays pending for 8 seconds, fall back to connect page
-        if (data.connectUrl) {
-          setTimeout(() => {
-            // Check if still on the "waiting" screen by checking iframe
-            // The connect URL lets CoBrowse handle the WebSocket negotiation
-            if (overlay.style.display === 'flex') {
-              console.log('[ScreenShare] Session pending too long, trying connect URL...');
-              iframe.src = data.connectUrl;
-            }
-          }, 8000);
-        }
-      } else if (data.connectUrl) {
-        // Use CoBrowse connect page directly
-        iframe.src = data.connectUrl;
+      const url = data.connectUrl || data.sessionUrl;
+      if (url) {
+        const overlay = document.getElementById('screen-overlay');
+        const iframe = document.getElementById('screen-iframe');
+        iframe.src = url;
         overlay.style.display = 'flex';
         closeDrawer();
       } else {
