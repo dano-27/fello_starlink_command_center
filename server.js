@@ -4106,23 +4106,23 @@ app.post('/api/esim/assign', async (req, res) => {
     const client = getWebbingClient();
     const results = [];
 
-    // Step 1: Get available eSIM profiles from Webbing
-    // StatusID 100 = Available
-    console.log(`[eSIM] Searching for available eSIM profiles...`);
+    // Step 1: Get available (Inactive) eSIM service devices from Webbing
+    // StatusID 2 = Inactive — these are unassigned eSIM SIM lines
+    console.log(`[eSIM] Searching for inactive (unassigned) eSIM devices...`);
     let availableProfiles = [];
     try {
-      const profileResult = await client.searchESIMProfiles({ statusId: 100, pageSize: 1000 });
-      const profiles = profileResult.ESIMProfiles?.ESIMProfileRecord;
-      if (profiles) {
-        availableProfiles = Array.isArray(profiles) ? profiles : [profiles];
+      const profileResult = await client.getServiceDevices({ statusId: 2, pageSize: 1000 });
+      const devices = profileResult.ServiceDevices?.ServiceDeviceRecord;
+      if (devices) {
+        availableProfiles = Array.isArray(devices) ? devices : [devices];
       }
-      console.log(`[eSIM] Found ${availableProfiles.length} available eSIM profiles`);
+      console.log(`[eSIM] Found ${availableProfiles.length} inactive eSIM devices`);
     } catch (e) {
-      console.error('[eSIM] Failed to fetch eSIM profiles:', e.message);
+      console.error('[eSIM] Failed to fetch inactive devices:', e.message);
     }
 
     if (!availableProfiles.length) {
-      return res.status(404).json({ error: 'No available eSIM profiles found in Webbing. Contact Webbing support to provision more profiles.' });
+      return res.status(404).json({ error: 'No inactive eSIM devices found in Webbing. All profiles may already be assigned.' });
     }
 
     // Step 2: For each serial, get EID from ABM and match to an available eSIM profile
@@ -4163,8 +4163,9 @@ app.post('/api/esim/assign', async (req, res) => {
         const profile = availableProfiles[profileIndex];
         const iccid = profile.ICCID || '';
         result.iccid = iccid;
-        result.profileId = profile.ID;
+        result.profileId = profile.ServiceDeviceID || profile.ID;
         result.msisdn = profile.MSISDN || '';
+        result.serial_sim = profile.Serial || '';
 
         // Match EID to eSIM profile
         console.log(`[eSIM] Matching serial ${serial} (EID: ${eid}) to profile ICCID: ${iccid}`);
@@ -4235,7 +4236,8 @@ app.get('/api/esim/status/:serial', async (req, res) => {
 app.get('/api/esim/available', async (req, res) => {
   try {
     const client = getWebbingClient();
-    const result = await client.searchESIMProfiles({ statusId: 100, pageSize: 1 });
+    // Inactive eSIM devices (statusId=2) are unassigned and available
+    const result = await client.getServiceDevices({ statusId: 2, pageSize: 1 });
     const total = result.PaginationResponse?.TotalRecords || 0;
     res.json({ available: total });
   } catch (err) {
