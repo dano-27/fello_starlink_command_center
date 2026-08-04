@@ -3370,13 +3370,13 @@ app.post('/api/cobrowse/connect', async (req, res) => {
 
     // Filter to Fello Remote devices
     const felloDevices = allDevices.filter(d => d.custom_data?.app === 'Fello Remote' || d.custom_data?.app === 'Fello Connect');
-    const onlineDevices = felloDevices.filter(d => d.online);
+    const connectableDevices = felloDevices.filter(d => d.connectable);
     // Also consider recently active devices (within last 15 min)
     const recentCutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
     const recentDevices = felloDevices.filter(d => d.last_active && d.last_active > recentCutoff);
-    // Prefer online, then recently active, then all fello devices
-    const devices = onlineDevices.length > 0 ? onlineDevices : (recentDevices.length > 0 ? recentDevices : felloDevices);
-    console.log(`[Cobrowse] ${felloDevices.length} Fello Remote, ${onlineDevices.length} online, ${recentDevices.length} recently active`);
+    // Prefer connectable, then recently active, then all fello devices
+    const devices = connectableDevices.length > 0 ? connectableDevices : (recentDevices.length > 0 ? recentDevices : felloDevices);
+    console.log(`[Cobrowse] ${felloDevices.length} Fello devices, ${connectableDevices.length} connectable, ${recentDevices.length} recently active`);
 
     if (!devices || devices.length === 0) {
       return res.json({ error: 'No Fello Remote devices found. Make sure the app is installed and has been opened at least once.', devices: [] });
@@ -3400,10 +3400,10 @@ app.post('/api/cobrowse/connect', async (req, res) => {
         )
       );
       if (serialMatches.length > 0) {
-        // Prefer online device, then most recently active
-        targetDevice = serialMatches.find(d => d.online) 
+        // Prefer connectable device, then most recently active
+        targetDevice = serialMatches.find(d => d.connectable) 
           || serialMatches.sort((a, b) => (b.last_active || '').localeCompare(a.last_active || ''))[0];
-        console.log(`[Cobrowse] Matched by serial: ${serial} (${serialMatches.length} matches, picked ${targetDevice.online ? 'online' : 'offline'} device ${targetDevice.id})`);
+        console.log(`[Cobrowse] Matched by serial: ${serial} (${serialMatches.length} matches, picked ${targetDevice.connectable ? 'connectable' : 'offline'} device ${targetDevice.id})`);
       }
     }
 
@@ -3462,11 +3462,11 @@ app.post('/api/cobrowse/connect', async (req, res) => {
         id: d.id,
         name: d.custom_data?.device_name,
         serial: d.custom_data?.serial_number,
-        online: d.online,
+        connectable: d.connectable,
         last_active: d.last_active
       })),
       pickedDeviceId: targetDevice.id,
-      pickedOnline: targetDevice.online
+      pickedConnectable: targetDevice.connectable
     });
   } catch (err) {
     console.error(`[Cobrowse] Connect error:`, err.message);
