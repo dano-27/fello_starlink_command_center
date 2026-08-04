@@ -3352,12 +3352,19 @@ app.post('/api/cobrowse/connect', async (req, res) => {
     }
 
     const allDevices = await devicesResp.json();
-    console.log(`[Cobrowse] API returned ${allDevices.length} total device(s):`, JSON.stringify(allDevices.map(d => ({
+    console.log(`[Cobrowse] API returned ${allDevices.length} total device(s)`);
+    if (allDevices.length > 0) {
+      console.log(`[Cobrowse] Raw device fields:`, Object.keys(allDevices[0]).join(', '));
+      console.log(`[Cobrowse] First device raw:`, JSON.stringify(allDevices[0], null, 2).substring(0, 1000));
+    }
+    console.log(`[Cobrowse] All devices:`, JSON.stringify(allDevices.map(d => ({
       id: d.id,
       name: d.custom_data?.device_name,
       app: d.custom_data?.app,
       serial: d.custom_data?.serial_number,
       online: d.online,
+      connectable: d.connectable,
+      state: d.state,
       last_active: d.last_active
     })), null, 2));
 
