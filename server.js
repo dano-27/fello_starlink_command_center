@@ -5414,23 +5414,47 @@ app.get('/api/lookup', async (req, res) => {
       let foundGroup = null;
       let foundGroupAcctId = null;
       
+      console.log(`[Lookup] Checking SimpleMDM assignment groups for name "${query}"...`);
+      
       for (const [mdmAcctId, mdmAcct] of Object.entries(MDM_ACCOUNTS)) {
         const mdmKey = mdmAcct.getKey();
         if (!mdmKey) continue;
         try {
-          const groupsResp = await smdmRequest(mdmKey, '/assignment_groups');
-          const groups = groupsResp?.data || [];
-          const match = groups.find(g => 
-            (g.attributes?.name || '').toLowerCase() === query.toLowerCase()
-          );
-          if (match) {
-            foundGroup = match;
-            foundGroupAcctId = mdmAcctId;
-            break;
+          // Paginate through all assignment groups
+          let hasMore = true;
+          let startingAfter = '';
+          
+          while (hasMore && !foundGroup) {
+            const url = `/assignment_groups?limit=100${startingAfter ? `&starting_after=${startingAfter}` : ''}`;
+            const groupsResp = await smdmRequest(mdmKey, url);
+            const groups = groupsResp?.data || [];
+            
+            console.log(`[Lookup] ${mdmAcct.name}: fetched ${groups.length} groups (page)${startingAfter ? ` after ${startingAfter}` : ''}`);
+            
+            const match = groups.find(g => 
+              (g.attributes?.name || '').toLowerCase() === query.toLowerCase()
+            );
+            
+            if (match) {
+              foundGroup = match;
+              foundGroupAcctId = mdmAcctId;
+              console.log(`[Lookup] Found group "${match.attributes?.name}" (ID: ${match.id}) in ${mdmAcct.name}`);
+              break;
+            }
+            
+            hasMore = groupsResp?.has_more === true;
+            startingAfter = groups.length > 0 ? groups[groups.length - 1].id : '';
+            if (!startingAfter) break;
           }
+          
+          if (foundGroup) break;
         } catch (e) {
           console.log(`[Lookup] Assignment group search error (${mdmAcct.name}):`, e.message);
         }
+      }
+      
+      if (!foundGroup) {
+        console.log(`[Lookup] No assignment group found matching "${query}"`);
       }
       
       if (foundGroup) {
@@ -5553,7 +5577,7 @@ app.get('/api/lookup', async (req, res) => {
         
         return res.json({
           type: 'group',
-          found: simpleMdmDevices.length > 0,
+          found: true,
           source: 'assignment_group',
           branchName: groupName,
           branchId: null,
