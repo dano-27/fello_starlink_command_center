@@ -4097,6 +4097,152 @@ app.post('/api/orders/:branchId/apply-carrier', async (req, res) => {
   }
 });
 
+// ── eSIM Profile Assignment Tool ─────────────────────────────────────────
+app.post('/api/esim/assign', async (req, res) => {
+  try {
+    const { serials = [], branchId } = req.body;
+    if (!serials.length) return res.status(400).json({ error: 'No serials provided' });
+
+    const client = getWebbingClient();
+    const results = [];
+
+    // Step 1: Get available eSIM profiles from Webbing
+    // StatusID 100 = Available
+    console.log(`[eSIM] Searching for available eSIM profiles...`);
+    let availableProfiles = [];
+    try {
+      const profileResult = await client.searchESIMProfiles({ statusId: 100, pageSize: 1000 });
+      const profiles = profileResult.ESIMProfiles?.ESIMProfileRecord;
+      if (profiles) {
+        availableProfiles = Array.isArray(profiles) ? profiles : [profiles];
+      }
+      console.log(`[eSIM] Found ${availableProfiles.length} available eSIM profiles`);
+    } catch (e) {
+      console.error('[eSIM] Failed to fetch eSIM profiles:', e.message);
+    }
+
+    if (!availableProfiles.length) {
+      return res.status(404).json({ error: 'No available eSIM profiles found in Webbing. Contact Webbing support to provision more profiles.' });
+    }
+
+    // Step 2: For each serial, get EID from ABM and match to an available eSIM profile
+    let profileIndex = 0;
+    for (const serial of serials) {
+      const result = { serial, status: 'pending', eid: null, iccid: null, error: null };
+      
+      try {
+        // Get EID from ABM
+        console.log(`[eSIM] Looking up ABM device: ${serial}`);
+        const abmDevice = await abmLookupDevice(serial);
+        if (!abmDevice) {
+          result.status = 'error';
+          result.error = 'Device not found in Apple Business Manager';
+          results.push(result);
+          continue;
+        }
+
+        const attr = abmDevice.attributes || abmDevice;
+        const eid = attr.eid || '';
+        result.eid = eid;
+
+        if (!eid) {
+          result.status = 'error';
+          result.error = 'No EID found for device in ABM — device may not support eSIM or hasn\'t reported EID yet';
+          results.push(result);
+          continue;
+        }
+
+        // Pick next available profile
+        if (profileIndex >= availableProfiles.length) {
+          result.status = 'error';
+          result.error = 'No more available eSIM profiles — all have been assigned';
+          results.push(result);
+          continue;
+        }
+
+        const profile = availableProfiles[profileIndex];
+        const iccid = profile.ICCID || '';
+        result.iccid = iccid;
+        result.profileId = profile.ID;
+        result.msisdn = profile.MSISDN || '';
+
+        // Match EID to eSIM profile
+        console.log(`[eSIM] Matching serial ${serial} (EID: ${eid}) to profile ICCID: ${iccid}`);
+        await client.esimEIDMatch({ ICCID: iccid }, eid);
+        
+        result.status = 'success';
+        result.message = `Matched EID to eSIM profile (ICCID: ${iccid})`;
+        profileIndex++;
+        
+        console.log(`[eSIM] ✓ ${serial} → ICCID ${iccid}`);
+      } catch (e) {
+        result.status = 'error';
+        result.error = e.message || 'Unknown error during eSIM matching';
+        console.error(`[eSIM] ✗ ${serial}: ${e.message}`);
+      }
+
+      results.push(result);
+      // Rate limiting — 300ms between calls
+      await new Promise(r => setTimeout(r, 300));
+    }
+
+    const successCount = results.filter(r => r.status === 'success').length;
+    console.log(`[eSIM] Assignment complete: ${successCount}/${serials.length} successful`);
+
+    res.json({
+      success: true,
+      total: serials.length,
+      assigned: successCount,
+      failed: serials.length - successCount,
+      availableProfilesRemaining: availableProfiles.length - profileIndex,
+      results
+    });
+  } catch (err) {
+    console.error('[eSIM] Fatal error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── eSIM Status Check ───────────────────────────────────────────────────
+app.get('/api/esim/status/:serial', async (req, res) => {
+  try {
+    const serial = req.params.serial;
+    
+    // Find the device in Webbing cache by serial
+    const device = webbingDeviceCache.find(d => 
+      d.Serial && d.Serial.toUpperCase() === serial.toUpperCase()
+    );
+    
+    if (!device) {
+      return res.json({ serial, hasProfile: false, message: 'Device not found in Webbing' });
+    }
+
+    const client = getWebbingClient();
+    const subscription = await client.getESIMSubscription(device.ServiceDeviceID);
+    
+    res.json({
+      serial,
+      hasProfile: true,
+      serviceDeviceId: device.ServiceDeviceID,
+      subscription
+    });
+  } catch (err) {
+    res.json({ serial: req.params.serial, hasProfile: false, error: err.message });
+  }
+});
+
+// ── Available eSIM profiles count ───────────────────────────────────────
+app.get('/api/esim/available', async (req, res) => {
+  try {
+    const client = getWebbingClient();
+    const result = await client.searchESIMProfiles({ statusId: 100, pageSize: 1 });
+    const total = result.PaginationResponse?.TotalRecords || 0;
+    res.json({ available: total });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.post('/api/orders/create', async (req, res) => {
   try {
     const { orderName, account = 'fello', serials = [] } = req.body;

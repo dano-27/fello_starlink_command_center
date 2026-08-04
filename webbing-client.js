@@ -516,6 +516,74 @@ class WebbingClient {
       }
     });
   }
+
+  /**
+   * Search eSIM profiles (find available profiles in a branch)
+   */
+  async searchESIMProfiles(options = {}) {
+    const { branchId, wirelessCarrierId, statusId, iccid, page = 1, pageSize = 100 } = options;
+    return this.call('service', 'SearchESIMProfiles', {
+      SearchESIMProfilesRequest: {
+        ...(branchId ? { BranchID: branchId } : {}),
+        ...(wirelessCarrierId ? { WirelessCarrierID: wirelessCarrierId } : {}),
+        ...(statusId !== undefined ? { StatusID: statusId } : {}),
+        ...(iccid ? { ICCID: iccid } : {}),
+        PaginationRequest: { PageSize: pageSize, PageNumber: page }
+      }
+    });
+  }
+
+  /**
+   * Get eSIM subscription status for a device
+   */
+  async getESIMSubscription(identifier) {
+    return this.call('service', 'GetESIMSubscription', {
+      GetESIMSubscriptionRequest: {
+        ServiceDeviceIdentifier: buildIdentifier(identifier)
+      }
+    });
+  }
+
+  /**
+   * Match an EID to an eSIM profile
+   */
+  async esimEIDMatch(identifier, eid) {
+    return this.call('service', 'ESIMEIDMatch', {
+      ESIMEIDMatchRequest: {
+        ServiceDeviceIdentifier: buildIdentifier(identifier),
+        EID: eid
+      }
+    });
+  }
+
+  /**
+   * Remove EID from an eSIM profile
+   */
+  async removeESIMEID(identifier) {
+    return this.call('service', 'RemoveESIMEID', {
+      RemoveESIMEIDRequest: {
+        ServiceDeviceIdentifier: buildIdentifier(identifier)
+      }
+    });
+  }
+
+  /**
+   * Get eSIM profile by ID
+   */
+  async getESIMProfile(profileId) {
+    return this.call('service', 'GetESIMProfile', {
+      GetESIMProfileRequest: {
+        ID: profileId
+      }
+    });
+  }
+
+  /**
+   * Get list of eSIM profile statuses
+   */
+  async getESIMProfileStatuses() {
+    return this.call('service', 'GetESIMProfileStatusesList', {});
+  }
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────

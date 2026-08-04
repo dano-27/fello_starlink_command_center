@@ -1890,4 +1890,135 @@
     await drawerAction(`/api/simplemdm/devices/${deviceId}/wipe?account=${acct}`);
   };
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // ██  eSIM ASSIGNMENT TOOL                                            ██
+  // ═══════════════════════════════════════════════════════════════════════
+
+  window.showEsimTool = function() {
+    const container = document.getElementById('results');
+    container.innerHTML = `
+      <div style="max-width:800px;margin:0 auto;">
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;overflow:hidden;">
+          <div style="padding:20px 24px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
+            <div>
+              <h2 style="margin:0;font-size:20px;font-weight:700;">📲 eSIM Profile Assignment</h2>
+              <p style="margin:4px 0 0;font-size:13px;color:var(--muted);">Paste iPad serial numbers to assign available Webbing eSIM profiles</p>
+            </div>
+            <div id="esim-available-badge" style="background:var(--bg);padding:6px 14px;border-radius:20px;font-size:13px;font-weight:600;">Loading...</div>
+          </div>
+          
+          <div style="padding:20px 24px;">
+            <label style="display:block;font-size:13px;font-weight:600;margin-bottom:8px;color:var(--text);">Serial Numbers <span style="font-weight:normal;color:var(--muted);">(one per line)</span></label>
+            <textarea id="esim-serials" placeholder="Paste serial numbers here...\\nGG7FV11EQ1KV\\nDLXXX1234567\\n..." style="width:100%;height:180px;padding:14px;border-radius:10px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-family:monospace;font-size:13px;resize:vertical;"></textarea>
+            <div style="display:flex;gap:12px;margin-top:14px;align-items:center;">
+              <button class="btn btn-primary" id="esim-assign-btn" onclick="window.runEsimAssignment()" style="padding:10px 24px;font-size:14px;">📲 Assign eSIM Profiles</button>
+              <span id="esim-count" style="font-size:12px;color:var(--muted);">0 serials entered</span>
+            </div>
+          </div>
+          
+          <div id="esim-results" style="display:none;"></div>
+        </div>
+      </div>
+    `;
+
+    // Update serial count on input
+    document.getElementById('esim-serials').addEventListener('input', function() {
+      const count = this.value.trim().split('\\n').filter(s => s.trim()).length;
+      document.getElementById('esim-count').textContent = count + ' serial' + (count !== 1 ? 's' : '') + ' entered';
+    });
+
+    // Fetch available profile count
+    fetch('/api/esim/available').then(r => r.json()).then(data => {
+      const badge = document.getElementById('esim-available-badge');
+      if (badge) {
+        const count = data.available || 0;
+        badge.textContent = count + ' profiles available';
+        badge.style.color = count > 0 ? 'var(--green)' : 'var(--red)';
+        badge.style.border = '1px solid ' + (count > 0 ? 'var(--green)' : 'var(--red)');
+      }
+    }).catch(() => {
+      const badge = document.getElementById('esim-available-badge');
+      if (badge) badge.textContent = 'Could not check';
+    });
+  };
+
+  window.runEsimAssignment = async function() {
+    const textarea = document.getElementById('esim-serials');
+    const serials = textarea.value.trim().split('\\n').map(s => s.trim().toUpperCase()).filter(Boolean);
+    if (!serials.length) {
+      showToast('Please enter at least one serial number', 'error');
+      return;
+    }
+
+    const btn = document.getElementById('esim-assign-btn');
+    btn.disabled = true;
+    btn.innerHTML = '⏳ Assigning...';
+
+    const resultsDiv = document.getElementById('esim-results');
+    resultsDiv.style.display = 'block';
+    resultsDiv.innerHTML = '<div style="padding:20px 24px;text-align:center;color:var(--muted);"><div style="font-size:24px;margin-bottom:8px;">⏳</div>Looking up ' + serials.length + ' device(s) in ABM and matching to eSIM profiles...</div>';
+
+    try {
+      const res = await fetch('/api/esim/assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ serials })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Assignment failed');
+
+      // Render results
+      let html = \`
+        <div style="padding:16px 24px;border-top:1px solid var(--border);background:rgba(0,0,0,0.02);">
+          <div style="display:flex;gap:16px;margin-bottom:16px;">
+            <div style="flex:1;background:var(--bg);border-radius:10px;padding:12px 16px;text-align:center;">
+              <div style="font-size:24px;font-weight:700;color:var(--green);">\${data.assigned || 0}</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:2px;">Assigned</div>
+            </div>
+            <div style="flex:1;background:var(--bg);border-radius:10px;padding:12px 16px;text-align:center;">
+              <div style="font-size:24px;font-weight:700;color:var(--red);">\${data.failed || 0}</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:2px;">Failed</div>
+            </div>
+            <div style="flex:1;background:var(--bg);border-radius:10px;padding:12px 16px;text-align:center;">
+              <div style="font-size:24px;font-weight:700;color:var(--text);">\${data.availableProfilesRemaining ?? '—'}</div>
+              <div style="font-size:11px;color:var(--muted);margin-top:2px;">Profiles Left</div>
+            </div>
+          </div>
+          <table style="width:100%;border-collapse:collapse;font-size:13px;">
+            <thead>
+              <tr style="border-bottom:2px solid var(--border);">
+                <th style="text-align:left;padding:8px 12px;color:var(--muted);font-weight:600;">Serial</th>
+                <th style="text-align:left;padding:8px 12px;color:var(--muted);font-weight:600;">EID</th>
+                <th style="text-align:left;padding:8px 12px;color:var(--muted);font-weight:600;">ICCID</th>
+                <th style="text-align:left;padding:8px 12px;color:var(--muted);font-weight:600;">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+      \`;
+
+      for (const r of (data.results || [])) {
+        const statusIcon = r.status === 'success' ? '✅' : '❌';
+        const statusColor = r.status === 'success' ? 'var(--green)' : 'var(--red)';
+        const eidShort = r.eid ? (r.eid.substring(0, 8) + '...' + r.eid.substring(r.eid.length - 4)) : '—';
+        html += \`
+          <tr style="border-bottom:1px solid var(--border);">
+            <td style="padding:8px 12px;font-family:monospace;font-weight:600;">\${r.serial}</td>
+            <td style="padding:8px 12px;font-family:monospace;font-size:11px;color:var(--muted);" title="\${r.eid || ''}">\${eidShort}</td>
+            <td style="padding:8px 12px;font-family:monospace;font-size:11px;">\${r.iccid || '—'}</td>
+            <td style="padding:8px 12px;color:\${statusColor};">\${statusIcon} \${r.status === 'success' ? 'Assigned' : (r.error || 'Failed')}</td>
+          </tr>
+        \`;
+      }
+
+      html += '</tbody></table></div>';
+      resultsDiv.innerHTML = html;
+      showToast(\`eSIM assignment complete: \${data.assigned}/\${data.total} successful\`);
+    } catch (err) {
+      resultsDiv.innerHTML = \`<div style="padding:20px 24px;color:var(--red);">\${err.message}</div>\`;
+      showToast(err.message, 'error');
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '📲 Assign eSIM Profiles';
+    }
+  };
 })();
