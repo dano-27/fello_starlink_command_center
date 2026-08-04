@@ -5416,21 +5416,18 @@ app.get('/api/lookup', async (req, res) => {
       
       console.log(`[Lookup] Checking SimpleMDM assignment groups for name "${query}"...`);
       
-      for (const [mdmAcctId, mdmAcct] of Object.entries(MDM_ACCOUNTS)) {
-        const mdmKey = mdmAcct.getKey();
-        if (!mdmKey) continue;
-        try {
-          // Paginate through all assignment groups
-          let hasMore = true;
-          let startingAfter = '';
-          
-          while (hasMore && !foundGroup) {
-            const url = `/assignment_groups?limit=100${startingAfter ? `&starting_after=${startingAfter}` : ''}`;
-            const groupsResp = await smdmRequest(mdmKey, url);
+      try {
+        for (const [mdmAcctId, mdmAcct] of Object.entries(MDM_ACCOUNTS)) {
+          const mdmKey = mdmAcct.getKey();
+          if (!mdmKey) continue;
+          try {
+            // Use search parameter to find group by name
+            const groupsResp = await smdmRequest(mdmKey, `/assignment_groups?search=${encodeURIComponent(query)}`);
             const groups = groupsResp?.data || [];
             
-            console.log(`[Lookup] ${mdmAcct.name}: fetched ${groups.length} groups (page)${startingAfter ? ` after ${startingAfter}` : ''}`);
+            console.log(`[Lookup] ${mdmAcct.name}: search returned ${groups.length} groups for "${query}"`);
             
+            // Exact name match
             const match = groups.find(g => 
               (g.attributes?.name || '').toLowerCase() === query.toLowerCase()
             );
@@ -5441,16 +5438,12 @@ app.get('/api/lookup', async (req, res) => {
               console.log(`[Lookup] Found group "${match.attributes?.name}" (ID: ${match.id}) in ${mdmAcct.name}`);
               break;
             }
-            
-            hasMore = groupsResp?.has_more === true;
-            startingAfter = groups.length > 0 ? groups[groups.length - 1].id : '';
-            if (!startingAfter) break;
+          } catch (e) {
+            console.log(`[Lookup] Assignment group search error (${mdmAcct.name}):`, e.message);
           }
-          
-          if (foundGroup) break;
-        } catch (e) {
-          console.log(`[Lookup] Assignment group search error (${mdmAcct.name}):`, e.message);
         }
+      } catch (outerErr) {
+        console.log(`[Lookup] Assignment group search failed:`, outerErr.message);
       }
       
       if (!foundGroup) {
