@@ -3962,7 +3962,7 @@ app.post('/api/orders/:branchId/site-check', async (req, res) => {
     const displayName = geoData[0].display_name;
 
     // Get carrier coverage from CoverageMap API
-    const COVERAGEMAP_KEY = process.env.COVERAGEMAP_KEY;
+    const COVERAGEMAP_KEY = process.env.COVERAGEMAP_KEY || 'e3f45af8095f4148998998511ad55754';
     let coverage = {};
     if (COVERAGEMAP_KEY) {
       const cmRes = await fetch(`https://enterprise.coveragemap.com/api/v1/signal-strength/lookup?latitude=${lat}&longitude=${lon}`, {
