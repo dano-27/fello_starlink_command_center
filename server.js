@@ -3362,7 +3362,7 @@ app.post('/api/cobrowse/connect', async (req, res) => {
     })), null, 2));
 
     // Filter to Fello Remote devices
-    const felloDevices = allDevices.filter(d => d.custom_data?.app === 'Fello Remote');
+    const felloDevices = allDevices.filter(d => d.custom_data?.app === 'Fello Remote' || d.custom_data?.app === 'Fello Connect');
     const onlineDevices = felloDevices.filter(d => d.online);
     // Also consider recently active devices (within last 15 min)
     const recentCutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
