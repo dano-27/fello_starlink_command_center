@@ -5503,61 +5503,89 @@ app.get('/api/lookup', async (req, res) => {
         const groupId = foundGroup.id;
         const groupName = foundGroup.attributes?.name || query;
         
-        console.log(`[Lookup] Found assignment group "${groupName}" (ID: ${groupId}) in ${mdmAcct.name}`);
+        console.log(`[Lookup] Found group "${groupName}" (ID: ${groupId}) in ${mdmAcct.name} (type: ${foundGroupType})`);
         
-        // Fetch all devices from this MDM account, filter by group membership
+        // Step 1: Get the device IDs from the group's relationships
         const auth = 'Basic ' + Buffer.from(mdmKey + ':').toString('base64');
-        const simpleMdmDevices = [];
-        let hasMore = true;
-        let startingAfter = '';
+        let deviceIds = [];
         
-        while (hasMore) {
-          const url = `https://a.simplemdm.com/api/v1/devices?limit=100${startingAfter ? `&starting_after=${startingAfter}` : ''}`;
-          const devResp = await fetch(url, { headers: { 'Authorization': auth } });
-          if (!devResp.ok) break;
-          const devData = await devResp.json();
-          const items = devData.data || [];
+        try {
+          // Fetch the group details to get device relationships
+          const groupDetail = await smdmRequest(mdmKey, `/${foundGroupType === 'device' ? 'device_groups' : 'assignment_groups'}/${groupId}`);
+          console.log(`[Lookup] Group detail relationships:`, JSON.stringify(groupDetail?.data?.relationships || {}).substring(0, 500));
           
-          for (const d of items) {
-            const attr = d.attributes || {};
-            // Check if device name starts with the group name (common naming convention)
-            const deviceName = (attr.name || '').trim();
-            const nameMatch = deviceName.toLowerCase().startsWith(groupName.toLowerCase());
-            
-            // Also check assignment_group relationship
-            const dgData = d.relationships?.device_group?.data;
-            const groupIds = (Array.isArray(dgData) ? dgData : dgData ? [dgData] : []).map(g => g.id);
-            const inGroup = groupIds.includes(groupId) || groupIds.includes(String(groupId));
-            
-            if (nameMatch || inGroup) {
-              const subs = attr.service_subscriptions || [];
-              const primarySub = Array.isArray(subs) && subs.length > 0 ? subs[0] : {};
-              const subIccid = (primarySub.iccid || '').replace(/\s/g, '');
-              const subImei = (primarySub.imei || '').replace(/\s/g, '');
-              const subEid = (primarySub.eid || '').replace(/\s/g, '');
-              
-              simpleMdmDevices.push({
-                id: d.id, name: deviceName, serial: attr.serial_number,
-                model: attr.model_name, osVersion: attr.os_version,
-                batteryLevel: attr.battery_level, lastSeenAt: attr.last_seen_at,
-                phoneNumber: attr.phone_number || primarySub.phone_number || null,
-                wifiMac: attr.wifi_mac || null,
-                imei: subImei || attr.imei || null,
-                iccid: subIccid || attr.iccid || null,
-                eid: subEid || null,
-                carrier: primarySub.current_carrier_network || null,
-                capacity: attr.device_capacity || null,
-                enrolledAt: attr.enrolled_at || null,
-                deviceGroupId: attr.device_group_id || null,
-                mdmAccount: foundGroupAcctId,
-                mdmAccountName: mdmAcct.name,
-                barcode: ''
-              });
+          // Assignment groups can have devices directly and/or via device_groups
+          const relDevices = groupDetail?.data?.relationships?.devices?.data || [];
+          const relDeviceGroups = groupDetail?.data?.relationships?.device_groups?.data || [];
+          
+          // Get direct device IDs
+          const directDeviceIds = (Array.isArray(relDevices) ? relDevices : relDevices ? [relDevices] : [])
+            .map(d => d.id).filter(Boolean);
+          deviceIds = [...directDeviceIds];
+          
+          console.log(`[Lookup] Direct device IDs from group: ${directDeviceIds.length}`);
+          
+          // Also get devices from linked device groups
+          const linkedDgIds = (Array.isArray(relDeviceGroups) ? relDeviceGroups : relDeviceGroups ? [relDeviceGroups] : [])
+            .map(g => g.id).filter(Boolean);
+          
+          for (const dgId of linkedDgIds) {
+            try {
+              const dgDetail = await smdmRequest(mdmKey, `/device_groups/${dgId}`);
+              const dgDevices = dgDetail?.data?.relationships?.devices?.data || [];
+              const dgDevIds = (Array.isArray(dgDevices) ? dgDevices : dgDevices ? [dgDevices] : [])
+                .map(d => d.id).filter(Boolean);
+              deviceIds = deviceIds.concat(dgDevIds);
+              console.log(`[Lookup] Device group ${dgId}: ${dgDevIds.length} devices`);
+            } catch (dgErr) {
+              console.log(`[Lookup] Error fetching device group ${dgId}:`, dgErr.message);
             }
           }
-          hasMore = devData.has_more === true;
-          startingAfter = items.length > 0 ? items[items.length - 1].id : '';
-          if (!startingAfter) break;
+          
+          // Deduplicate
+          deviceIds = [...new Set(deviceIds)];
+          console.log(`[Lookup] Total unique device IDs: ${deviceIds.length}`);
+        } catch (relErr) {
+          console.log(`[Lookup] Error fetching group relationships:`, relErr.message);
+        }
+        
+        // Step 2: Fetch each device's details
+        const simpleMdmDevices = [];
+        
+        for (const devId of deviceIds) {
+          try {
+            const devResp = await smdmRequest(mdmKey, `/devices/${devId}`);
+            const d = devResp?.data;
+            if (!d) continue;
+            
+            const attr = d.attributes || {};
+            const deviceName = (attr.name || '').trim();
+            const subs = attr.service_subscriptions || [];
+            const primarySub = Array.isArray(subs) && subs.length > 0 ? subs[0] : {};
+            const subIccid = (primarySub.iccid || '').replace(/\s/g, '');
+            const subImei = (primarySub.imei || '').replace(/\s/g, '');
+            const subEid = (primarySub.eid || '').replace(/\s/g, '');
+            
+            simpleMdmDevices.push({
+              id: d.id, name: deviceName, serial: attr.serial_number,
+              model: attr.model_name, osVersion: attr.os_version,
+              batteryLevel: attr.battery_level, lastSeenAt: attr.last_seen_at,
+              phoneNumber: attr.phone_number || primarySub.phone_number || null,
+              wifiMac: attr.wifi_mac || null,
+              imei: subImei || attr.imei || null,
+              iccid: subIccid || attr.iccid || null,
+              eid: subEid || null,
+              carrier: primarySub.current_carrier_network || null,
+              capacity: attr.device_capacity || null,
+              enrolledAt: attr.enrolled_at || null,
+              deviceGroupId: attr.device_group_id || null,
+              mdmAccount: foundGroupAcctId,
+              mdmAccountName: mdmAcct.name,
+              barcode: ''
+            });
+          } catch (devErr) {
+            console.log(`[Lookup] Error fetching device ${devId}:`, devErr.message);
+          }
         }
         
         console.log(`[Lookup] Assignment group "${groupName}": ${simpleMdmDevices.length} devices`);
