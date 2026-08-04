@@ -3428,45 +3428,51 @@ app.post('/api/cobrowse/connect', async (req, res) => {
       return res.json({ error: 'No matching Fello Connect device found online. Make sure the app is open on the iPad.' });
     }
 
-    // Create a session for this device
-    console.log(`[Cobrowse] Creating session for device ${targetDevice.id}...`);
-    const sessionResp = await fetch('https://cobrowse.io/api/1/sessions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ device_id: targetDevice.id })
-    });
-
-    if (!sessionResp.ok) {
-      const errText = await sessionResp.text();
-      console.warn(`[Cobrowse] Session creation failed: ${sessionResp.status} ${errText}`);
-      return res.json({
-        mode: 'iframe',
-        token,
-        deviceId: targetDevice.id,
-        deviceName: targetDevice.custom_data?.device_name || 'Unknown'
+    // Instead of creating a session via REST (which stays "pending"),
+    // return the device ID and token so the frontend can use CoBrowse's
+    // connect page which handles WebSocket negotiation directly
+    console.log(`[Cobrowse] Returning connect URL for device ${targetDevice.id}`);
+    
+    // Try creating session first (may work if device is actively connected)
+    try {
+      const sessionResp = await fetch('https://cobrowse.io/api/1/sessions', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ device_id: targetDevice.id })
       });
+      
+      if (sessionResp.ok) {
+        const session = await sessionResp.json();
+        console.log(`[Cobrowse] Session created: ${session.id}, state: ${session.state}`);
+        
+        // Return both the session URL and the connect URL as fallback
+        return res.json({
+          mode: 'session',
+          token,
+          sessionId: session.id,
+          sessionUrl: `https://cobrowse.io/session/${session.id}?token=${encodeURIComponent(token)}&navigation=none`,
+          // Fallback: direct connect page filtered to this device's serial
+          connectUrl: `https://cobrowse.io/connect?token=${encodeURIComponent(token)}&filter_serial_number=${encodeURIComponent(serial || '')}&navigation=none`,
+          deviceId: targetDevice.id,
+          deviceName: targetDevice.custom_data?.device_name || 'Unknown',
+          connectable: targetDevice.connectable
+        });
+      }
+    } catch (sessErr) {
+      console.log(`[Cobrowse] Session creation failed, using connect URL: ${sessErr.message}`);
     }
-
-    const session = await sessionResp.json();
-    console.log(`[Cobrowse] Session created: ${session.id}, state: ${session.state}`);
+    
+    // Fallback: return connect page URL
     res.json({
-      mode: 'session',
+      mode: 'connect',
       token,
-      sessionId: session.id,
-      sessionUrl: `https://cobrowse.io/session/${session.id}?token=${encodeURIComponent(token)}&navigation=none`,
+      connectUrl: `https://cobrowse.io/connect?token=${encodeURIComponent(token)}&filter_serial_number=${encodeURIComponent(serial || '')}&navigation=none`,
+      deviceId: targetDevice.id,
       deviceName: targetDevice.custom_data?.device_name || 'Unknown',
-      devices: devices.map(d => ({
-        id: d.id,
-        name: d.custom_data?.device_name,
-        serial: d.custom_data?.serial_number,
-        connectable: d.connectable,
-        last_active: d.last_active
-      })),
-      pickedDeviceId: targetDevice.id,
-      pickedConnectable: targetDevice.connectable
+      connectable: targetDevice.connectable
     });
   } catch (err) {
     console.error(`[Cobrowse] Connect error:`, err.message);
