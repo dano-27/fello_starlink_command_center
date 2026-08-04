@@ -3455,8 +3455,11 @@ app.post('/api/cobrowse/connect', async (req, res) => {
         id: d.id,
         name: d.custom_data?.device_name,
         serial: d.custom_data?.serial_number,
-        online: d.online
-      }))
+        online: d.online,
+        last_active: d.last_active
+      })),
+      pickedDeviceId: targetDevice.id,
+      pickedOnline: targetDevice.online
     });
   } catch (err) {
     console.error(`[Cobrowse] Connect error:`, err.message);
