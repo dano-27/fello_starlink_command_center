@@ -3398,9 +3398,13 @@ app.post('/api/cobrowse/connect', async (req, res) => {
     }
 
     // Fallback: first online device
-    if (!targetDevice) {
+    if (!targetDevice && devices.length > 0) {
       targetDevice = devices[0];
       console.log(`[Cobrowse] No exact match — using first online device: ${targetDevice.custom_data?.device_name || targetDevice.id}`);
+    }
+    
+    if (!targetDevice) {
+      return res.json({ error: 'No matching Fello Connect device found online. Make sure the app is open on the iPad.' });
     }
 
     // Create a session for this device
@@ -3431,7 +3435,7 @@ app.post('/api/cobrowse/connect', async (req, res) => {
       mode: 'session',
       token,
       sessionId: session.id,
-      sessionUrl: `https://cobrowse.io/session/${session.id}?token=${encodeURIComponent(token)}&navigation=none&agent_tools=none`,
+      sessionUrl: `https://cobrowse.io/session/${session.id}?token=${encodeURIComponent(token)}&navigation=none`,
       deviceName: targetDevice.custom_data?.device_name || 'Unknown',
       devices: devices.map(d => ({
         id: d.id,
