@@ -1895,7 +1895,7 @@
   // ═══════════════════════════════════════════════════════════════════════
 
   window.showEsimTool = function() {
-    const container = document.getElementById('results');
+    const container = document.getElementById('results-container');
     container.innerHTML = `
       <div style="max-width:800px;margin:0 auto;">
         <div style="background:var(--surface);border:1px solid var(--border);border-radius:16px;overflow:hidden;">
