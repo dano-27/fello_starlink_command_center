@@ -4003,8 +4003,11 @@ app.post('/api/orders/:branchId/site-check', async (req, res) => {
       }
     }
 
-    // Build flat carriers array for frontend rendering
-    const carriers = Object.entries(coverage).map(([name, techs]) => {
+    // Build flat carriers array for frontend rendering (only carriers we have plans for)
+    const allowedCarriers = ['T-Mobile', 'AT&T', 'Verizon'];
+    const carriers = Object.entries(coverage)
+      .filter(([name]) => allowedCarriers.includes(name))
+      .map(([name, techs]) => {
       const sig = techs['5G']?.signal || techs['4G']?.signal || -999;
       return {
         name,

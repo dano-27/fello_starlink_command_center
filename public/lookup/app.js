@@ -733,36 +733,52 @@
     const container = document.getElementById('site-check-results');
     if (!container) return;
     
-    let html = `<div style="margin-bottom:12px;font-size:13px;color:var(--text);"><i style="color:var(--muted);">Geocoded:</i> <strong>${esc(data.geocodedAddress || data.inputAddress || '')}</strong></div>`;
+    const carrierBranding = {
+      'T-Mobile': { logo: 'https://logo.clearbit.com/t-mobile.com', color: '#E20074', bg: 'rgba(226,0,116,0.08)' },
+      'AT&T': { logo: 'https://logo.clearbit.com/att.com', color: '#009FDB', bg: 'rgba(0,159,219,0.08)' },
+      'Verizon': { logo: 'https://logo.clearbit.com/verizon.com', color: '#CD040B', bg: 'rgba(205,4,11,0.08)' }
+    };
+
+    let html = `<div style="margin-bottom:14px;font-size:13px;color:var(--text);"><i style="color:var(--muted);">Geocoded:</i> <strong>${esc(data.geocodedAddress || data.address || data.inputAddress || '')}</strong></div>`;
     
-    html += `<div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:16px;">`;
+    html += `<div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:16px;">`;
     
-    const carriers = data.carriers || data.results || [];
+    const carriers = data.carriers || [];
     carriers.forEach(c => {
       const dbm = c.signalDbm || -100;
       let bars = 1;
-      let barColor = 'var(--red)';
+      let barColor = '#ef4444';
       let qual = 'Poor';
-      if (dbm >= -75) { bars = 4; barColor = 'var(--green)'; qual = 'Excellent'; }
-      else if (dbm >= -85) { bars = 3; barColor = 'var(--green)'; qual = 'Good'; }
-      else if (dbm >= -95) { bars = 2; barColor = 'var(--amber)'; qual = 'Fair'; }
+      if (dbm >= -75) { bars = 4; barColor = '#22c55e'; qual = 'Excellent'; }
+      else if (dbm >= -85) { bars = 3; barColor = '#22c55e'; qual = 'Good'; }
+      else if (dbm >= -95) { bars = 2; barColor = '#f59e0b'; qual = 'Fair'; }
       
       const isRec = c.recommended;
+      const brand = carrierBranding[c.name] || { logo: '', color: '#888', bg: 'transparent' };
+      const btnStyle = isRec 
+        ? `background:${brand.color};color:#fff;border:none;` 
+        : `background:transparent;color:var(--text);border:1px solid var(--border);`;
+      const btnLabel = isRec ? '✅ Apply Recommended' : `Apply ${esc(c.name)}`;
       
       html += `
-        <div style="background:var(--bg);border:2px solid ${isRec ? 'var(--green)' : 'var(--border)'};border-radius:12px;padding:16px;position:relative;">
-          ${isRec ? '<div style="position:absolute;top:-10px;right:10px;background:var(--green);color:#fff;font-size:11px;font-weight:bold;padding:2px 8px;border-radius:10px;">★ Recommended</div>' : ''}
-          <h4 style="margin:0 0 12px 0;font-size:16px;">${esc(c.name)}</h4>
-          <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
-            <div style="display:flex;gap:3px;align-items:flex-end;height:24px;">
-              <div style="width:6px;height:25%;background:${bars >= 1 ? barColor : '#ddd'};border-radius:2px;"></div>
-              <div style="width:6px;height:50%;background:${bars >= 2 ? barColor : '#ddd'};border-radius:2px;"></div>
-              <div style="width:6px;height:75%;background:${bars >= 3 ? barColor : '#ddd'};border-radius:2px;"></div>
-              <div style="width:6px;height:100%;background:${bars >= 4 ? barColor : '#ddd'};border-radius:2px;"></div>
-            </div>
-            <div style="font-size:14px;font-weight:bold;">${dbm} dBm <span style="font-weight:normal;color:var(--muted);font-size:12px;">(${qual})</span></div>
+        <div style="background:${isRec ? brand.bg : 'var(--bg)'};border:2px solid ${isRec ? brand.color : 'var(--border)'};border-radius:12px;padding:18px;position:relative;transition:border-color 0.2s;">
+          ${isRec ? `<div style="position:absolute;top:-10px;right:10px;background:${brand.color};color:#fff;font-size:11px;font-weight:bold;padding:2px 10px;border-radius:10px;">★ Recommended</div>` : ''}
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+            <img src="${brand.logo}" alt="${esc(c.name)}" style="width:32px;height:32px;border-radius:6px;object-fit:contain;background:#fff;padding:2px;" onerror="this.style.display='none'">
+            <h4 style="margin:0;font-size:16px;font-weight:700;">${esc(c.name)}</h4>
           </div>
-          ${isRec ? `<button class="btn btn-primary btn-sm" style="width:100%;margin-top:8px;" onclick="window.applySiteCheckCarrier('${esc(c.name)}', '${c.planId}')">✅ Apply to All</button>` : ''}
+          <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px;">
+            <div style="display:flex;gap:3px;align-items:flex-end;height:28px;">
+              <div style="width:7px;height:25%;background:${bars >= 1 ? barColor : '#555'};border-radius:2px;"></div>
+              <div style="width:7px;height:50%;background:${bars >= 2 ? barColor : '#555'};border-radius:2px;"></div>
+              <div style="width:7px;height:75%;background:${bars >= 3 ? barColor : '#555'};border-radius:2px;"></div>
+              <div style="width:7px;height:100%;background:${bars >= 4 ? barColor : '#555'};border-radius:2px;"></div>
+            </div>
+            <div style="font-size:15px;font-weight:bold;">${dbm} dBm <span style="font-weight:normal;color:var(--muted);font-size:12px;">(${qual})</span></div>
+          </div>
+          ${c.tech5G ? `<div style="font-size:11px;color:var(--muted);margin-bottom:2px;">5G: ${c.tech5G.signal || '—'} dBm · ${c.tech5G.coverage || '—'}</div>` : ''}
+          ${c.tech4G ? `<div style="font-size:11px;color:var(--muted);margin-bottom:8px;">4G: ${c.tech4G.signal || '—'} dBm · ${c.tech4G.coverage || '—'}</div>` : '<div style="margin-bottom:8px;"></div>'}
+          <button class="btn btn-sm" style="width:100%;padding:8px;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer;${btnStyle}" onclick="window.applySiteCheckCarrier('${esc(c.name)}', '${c.planId}')">${btnLabel}</button>
         </div>
       `;
       
