@@ -98,10 +98,10 @@
       const data = await response.json();
       
       if (!data.found && data.found !== undefined) {
-        if (data.type === 'group') {
-          renderCreateOrder(query);
-        } else {
+        if (data.type === 'iccid' || data.type === 'imei') {
           renderError(`No results found for "${esc(query)}". Try a Group Number, Serial, or ICCID.`);
+        } else {
+          renderCreateOrder(query);
         }
       } else if (data.type === 'group') {
         renderGroupResults(data, query);
