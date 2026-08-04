@@ -3902,6 +3902,114 @@ app.get('/api/webbing/plans', async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════
+// ██  ORDER CREATION                                                   ██
+// ═══════════════════════════════════════════════════════════════════════
+
+app.post('/api/orders/create', async (req, res) => {
+  try {
+    const { orderName, account = 'fello', serials = [] } = req.body;
+    
+    if (!orderName || !orderName.trim()) {
+      return res.status(400).json({ error: 'Order name is required' });
+    }
+    
+    const acct = MDM_ACCOUNTS[account];
+    if (!acct) {
+      return res.status(400).json({ error: `Unknown MDM account: ${account}` });
+    }
+    
+    const apiKey = acct.getKey();
+    if (!apiKey) {
+      return res.status(400).json({ error: `No API key configured for ${acct.name}` });
+    }
+    
+    const cleanName = orderName.trim();
+    console.log(`[Order] Creating order "${cleanName}" in ${acct.name} with ${serials.length} serials`);
+    
+    // Step 1: Create assignment group in SimpleMDM
+    const groupResp = await smdmRequest(apiKey, '/assignment_groups', 'POST', {
+      name: cleanName,
+      auto_deploy: true
+    });
+    
+    const groupId = groupResp?.data?.id;
+    if (!groupId) {
+      console.error('[Order] Failed to create group:', JSON.stringify(groupResp));
+      return res.status(500).json({ error: 'Failed to create SimpleMDM group', details: groupResp });
+    }
+    
+    console.log(`[Order] Created group "${cleanName}" (ID: ${groupId})`);
+    
+    // Step 2: Resolve serials to SimpleMDM device IDs and assign
+    const results = [];
+    const cleanSerials = serials
+      .map(s => (s || '').trim().toUpperCase())
+      .filter(Boolean);
+    
+    for (const serial of cleanSerials) {
+      try {
+        // Search for the device by serial
+        const searchResp = await smdmRequest(apiKey, `/devices?search=${encodeURIComponent(serial)}`);
+        const devices = searchResp?.data || [];
+        
+        // Find exact serial match
+        const device = devices.find(d => 
+          (d.attributes?.serial_number || '').toUpperCase() === serial
+        );
+        
+        if (!device) {
+          results.push({ serial, status: 'not_found', error: 'Device not enrolled in SimpleMDM' });
+          continue;
+        }
+        
+        // Assign device to the group
+        const assignResp = await smdmRequest(
+          apiKey, 
+          `/assignment_groups/${groupId}/devices/${device.id}`,
+          'POST'
+        );
+        
+        results.push({
+          serial,
+          status: 'assigned',
+          deviceId: device.id,
+          deviceName: device.attributes?.name || ''
+        });
+        
+        console.log(`[Order] Assigned ${serial} (device ${device.id}) to group ${groupId}`);
+      } catch (err) {
+        console.error(`[Order] Error processing serial ${serial}:`, err.message);
+        results.push({ serial, status: 'error', error: err.message });
+      }
+    }
+    
+    const assigned = results.filter(r => r.status === 'assigned').length;
+    const failed = results.filter(r => r.status !== 'assigned').length;
+    
+    console.log(`[Order] Complete: ${assigned} assigned, ${failed} failed`);
+    
+    res.json({
+      success: true,
+      groupId,
+      orderName: cleanName,
+      account,
+      accountName: acct.name,
+      results,
+      summary: {
+        total: cleanSerials.length,
+        assigned,
+        notFound: results.filter(r => r.status === 'not_found').length,
+        errors: results.filter(r => r.status === 'error').length
+      }
+    });
+    
+  } catch (err) {
+    console.error('[Order] Creation failed:', err);
+    res.status(500).json({ error: `Order creation failed: ${err.message}` });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════
 // ██  FELLO CRM API ENDPOINTS                                         ██
 // ═══════════════════════════════════════════════════════════════════════
 

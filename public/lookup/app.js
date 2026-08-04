@@ -98,7 +98,11 @@
       const data = await response.json();
       
       if (!data.found && data.found !== undefined) {
-        renderError(`No results found for "${esc(query)}". Try a Group Number, Serial, or ICCID.`);
+        if (data.type === 'group') {
+          renderCreateOrder(query);
+        } else {
+          renderError(`No results found for "${esc(query)}". Try a Group Number, Serial, or ICCID.`);
+        }
       } else if (data.type === 'group') {
         renderGroupResults(data, query);
       } else if (data.type === 'iccid' || data.type === 'imei') {
@@ -204,6 +208,209 @@
         </div>
       </div>
     `;
+  }
+
+  // ── Create Order Form ─────────────────────────────────────────
+  function renderCreateOrder(query) {
+    resultsContainer.innerHTML = `
+      <div class="create-order-container">
+        <div class="create-order-header">
+          <div class="create-order-icon">📦</div>
+          <h2>No existing order found for <strong>"${esc(query)}"</strong></h2>
+          <p class="create-order-subtitle">Would you like to create a new order? This will set up a SimpleMDM group and assign your iPads to it.</p>
+        </div>
+
+        <div class="create-order-form">
+          <div class="create-order-fields">
+            <div class="create-order-field">
+              <label for="co-name">Order Name</label>
+              <input type="text" id="co-name" value="${esc(query)}" class="create-order-input" />
+            </div>
+            <div class="create-order-field">
+              <label for="co-account">MDM Account</label>
+              <select id="co-account" class="create-order-select">
+                <option value="fello" selected>Fello</option>
+                <option value="alamo">Alamo Fireworks</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="create-order-serials-section">
+            <label>iPad Serial Numbers</label>
+            <p class="create-order-hint">Paste multiple serials (one per line or comma-separated), or type one at a time.</p>
+            <div class="create-order-serial-input-row">
+              <input type="text" id="co-serial-input" class="create-order-input" placeholder="e.g. DMPXXXXXXX" />
+              <button id="co-add-serial-btn" class="create-order-add-btn">+ Add</button>
+            </div>
+            <textarea id="co-serial-paste" class="create-order-textarea" placeholder="Or paste multiple serials here (one per line or comma-separated)..." rows="3"></textarea>
+            <div id="co-serial-list" class="create-order-serial-list"></div>
+          </div>
+
+          <div id="co-progress" class="create-order-progress" style="display:none;">
+            <div class="create-order-progress-bar">
+              <div id="co-progress-fill" class="create-order-progress-fill"></div>
+            </div>
+            <div id="co-progress-text" class="create-order-progress-text">Creating order...</div>
+          </div>
+
+          <div id="co-results" class="create-order-results" style="display:none;"></div>
+
+          <div class="create-order-actions">
+            <button id="co-submit-btn" class="create-order-submit">
+              <span>📦</span> Create Order
+            </button>
+          </div>
+        </div>
+      </div>
+    `;
+    resultsContainer.classList.add('visible');
+
+    // Serial management state
+    const serialSet = new Set();
+    const serialListEl = document.getElementById('co-serial-list');
+    const serialInput = document.getElementById('co-serial-input');
+    const serialPaste = document.getElementById('co-serial-paste');
+    const addBtn = document.getElementById('co-add-serial-btn');
+    const submitBtn = document.getElementById('co-submit-btn');
+
+    function renderSerialChips() {
+      const arr = [...serialSet];
+      serialListEl.innerHTML = arr.length === 0 ? '' : arr.map(s => `
+        <div class="serial-chip">
+          <span class="serial-chip-text">${esc(s)}</span>
+          <button class="serial-chip-remove" data-serial="${esc(s)}">✕</button>
+        </div>
+      `).join('') + `<div class="serial-chip-count">${arr.length} device${arr.length !== 1 ? 's' : ''}</div>`;
+
+      serialListEl.querySelectorAll('.serial-chip-remove').forEach(btn => {
+        btn.addEventListener('click', () => {
+          serialSet.delete(btn.dataset.serial);
+          renderSerialChips();
+        });
+      });
+    }
+
+    function addSerials(text) {
+      const cleaned = text.replace(/,/g, '\n').split('\n')
+        .map(s => s.trim().toUpperCase()).filter(Boolean);
+      cleaned.forEach(s => serialSet.add(s));
+      renderSerialChips();
+    }
+
+    addBtn.addEventListener('click', () => {
+      if (serialInput.value.trim()) {
+        addSerials(serialInput.value);
+        serialInput.value = '';
+        serialInput.focus();
+      }
+    });
+
+    serialInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        addBtn.click();
+      }
+    });
+
+    serialPaste.addEventListener('input', () => {
+      const val = serialPaste.value.trim();
+      if (val.includes('\n') || val.includes(',')) {
+        addSerials(val);
+        serialPaste.value = '';
+      }
+    });
+
+    serialPaste.addEventListener('paste', () => {
+      setTimeout(() => {
+        if (serialPaste.value.trim()) {
+          addSerials(serialPaste.value);
+          serialPaste.value = '';
+        }
+      }, 50);
+    });
+
+    // Submit handler
+    submitBtn.addEventListener('click', async () => {
+      const orderName = document.getElementById('co-name').value.trim();
+      const account = document.getElementById('co-account').value;
+      const serials = [...serialSet];
+
+      if (!orderName) return alert('Please enter an order name.');
+      if (serials.length === 0) return alert('Please add at least one iPad serial number.');
+
+      submitBtn.disabled = true;
+      submitBtn.innerHTML = '<span class="spinner-inline"></span> Creating...';
+
+      const progressEl = document.getElementById('co-progress');
+      const progressFill = document.getElementById('co-progress-fill');
+      const progressText = document.getElementById('co-progress-text');
+      const resultsEl = document.getElementById('co-results');
+
+      progressEl.style.display = 'block';
+      progressText.textContent = 'Creating SimpleMDM group...';
+      progressFill.style.width = '10%';
+
+      try {
+        const resp = await fetch('/api/orders/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orderName, account, serials })
+        });
+
+        const data = await resp.json();
+
+        if (!resp.ok) {
+          throw new Error(data.error || 'Order creation failed');
+        }
+
+        progressFill.style.width = '100%';
+        progressText.textContent = 'Complete!';
+
+        // Show per-serial results
+        const { results: serialResults, summary } = data;
+        resultsEl.style.display = 'block';
+        resultsEl.innerHTML = `
+          <div class="create-order-summary">
+            <div class="create-order-summary-stat success">
+              <span class="stat-num">${summary.assigned}</span>
+              <span class="stat-label">Assigned</span>
+            </div>
+            <div class="create-order-summary-stat ${summary.notFound > 0 ? 'warning' : ''}">
+              <span class="stat-num">${summary.notFound}</span>
+              <span class="stat-label">Not Found</span>
+            </div>
+            <div class="create-order-summary-stat ${summary.errors > 0 ? 'error' : ''}">
+              <span class="stat-num">${summary.errors}</span>
+              <span class="stat-label">Errors</span>
+            </div>
+          </div>
+          <div class="create-order-serial-results">
+            ${serialResults.map(r => `
+              <div class="serial-result ${r.status}">
+                <span class="serial-result-icon">${r.status === 'assigned' ? '✅' : r.status === 'not_found' ? '⚠️' : '❌'}</span>
+                <span class="serial-result-serial">${esc(r.serial)}</span>
+                <span class="serial-result-status">${r.status === 'assigned' 
+                  ? (r.deviceName ? esc(r.deviceName) : 'Assigned') 
+                  : esc(r.error || r.status)}</span>
+              </div>
+            `).join('')}
+          </div>
+          <button class="create-order-view-btn" onclick="document.getElementById('search-input').value='${esc(orderName)}';document.getElementById('search-btn').click();">
+            🔍 View Order "${esc(orderName)}"
+          </button>
+        `;
+
+      } catch (err) {
+        progressFill.style.width = '100%';
+        progressFill.style.background = 'var(--red)';
+        progressText.textContent = 'Failed';
+        resultsEl.style.display = 'block';
+        resultsEl.innerHTML = `<div class="create-order-error">❌ ${esc(err.message)}</div>`;
+      }
+
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = '<span>📦</span> Create Order';
+    });
   }
 
   // ── Group Results ────────────────────────────────────────────
