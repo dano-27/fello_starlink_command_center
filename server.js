@@ -3384,15 +3384,20 @@ app.post('/api/cobrowse/connect', async (req, res) => {
       console.log(`[Cobrowse]   Device ${i}: serial_number="${d.custom_data?.serial_number}", device_name="${d.custom_data?.device_name}", online=${d.online}`);
     });
 
-    // Match by serial_number
+    // Match by serial_number — prefer ONLINE device when duplicates exist
     if (serial) {
-      targetDevice = devices.find(d =>
+      const serialMatches = devices.filter(d =>
         d.custom_data && (
           d.custom_data.serial_number === serial ||
           d.custom_data.serial_number?.toUpperCase() === serial?.toUpperCase()
         )
       );
-      if (targetDevice) console.log(`[Cobrowse] Matched by serial: ${serial}`);
+      if (serialMatches.length > 0) {
+        // Prefer online device, then most recently active
+        targetDevice = serialMatches.find(d => d.online) 
+          || serialMatches.sort((a, b) => (b.last_active || '').localeCompare(a.last_active || ''))[0];
+        console.log(`[Cobrowse] Matched by serial: ${serial} (${serialMatches.length} matches, picked ${targetDevice.online ? 'online' : 'offline'} device ${targetDevice.id})`);
+      }
     }
 
     // Match by device name
