@@ -3378,10 +3378,19 @@ app.post('/api/cobrowse/connect', async (req, res) => {
     // Match device — try serial first, then name, then first online device
     let targetDevice = null;
 
-    // Match by serial_number (identifierForVendor UUID)
+    // Log all available device serials for debugging
+    console.log(`[Cobrowse] Looking for serial="${serial}", name="${deviceName}"`);
+    devices.forEach((d, i) => {
+      console.log(`[Cobrowse]   Device ${i}: serial_number="${d.custom_data?.serial_number}", device_name="${d.custom_data?.device_name}", online=${d.online}`);
+    });
+
+    // Match by serial_number
     if (serial) {
       targetDevice = devices.find(d =>
-        d.custom_data && d.custom_data.serial_number === serial
+        d.custom_data && (
+          d.custom_data.serial_number === serial ||
+          d.custom_data.serial_number?.toUpperCase() === serial?.toUpperCase()
+        )
       );
       if (targetDevice) console.log(`[Cobrowse] Matched by serial: ${serial}`);
     }
