@@ -5525,7 +5525,8 @@ app.get('/api/lookup', async (req, res) => {
             const nameMatch = deviceName.toLowerCase().startsWith(groupName.toLowerCase());
             
             // Also check assignment_group relationship
-            const groupIds = (d.relationships?.device_group?.data || []).map(g => g.id);
+            const dgData = d.relationships?.device_group?.data;
+            const groupIds = (Array.isArray(dgData) ? dgData : dgData ? [dgData] : []).map(g => g.id);
             const inGroup = groupIds.includes(groupId) || groupIds.includes(String(groupId));
             
             if (nameMatch || inGroup) {
