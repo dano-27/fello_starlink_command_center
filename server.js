@@ -5409,45 +5409,91 @@ app.get('/api/lookup', async (req, res) => {
       });
       
     } else {
-      // ── FALLBACK: Check SimpleMDM assignment groups by name ──────
-      // This catches orders created via "Create Order" that don't match prefix patterns
+      // ── FALLBACK: Check SimpleMDM groups by name ──────────────
+      // Checks both assignment_groups and device_groups (legacy)
       let foundGroup = null;
       let foundGroupAcctId = null;
+      let foundGroupType = null; // 'assignment' or 'device'
       
-      console.log(`[Lookup] Checking SimpleMDM assignment groups for name "${query}"...`);
+      console.log(`[Lookup] Checking SimpleMDM groups for name "${query}"...`);
       
       try {
         for (const [mdmAcctId, mdmAcct] of Object.entries(MDM_ACCOUNTS)) {
           const mdmKey = mdmAcct.getKey();
           if (!mdmKey) continue;
+          
+          // Check assignment groups
           try {
-            // Use search parameter to find group by name
-            const groupsResp = await smdmRequest(mdmKey, `/assignment_groups?search=${encodeURIComponent(query)}`);
-            const groups = groupsResp?.data || [];
+            let allGroups = [];
+            let hasMore = true;
+            let startingAfter = '';
+            while (hasMore) {
+              const url = `/assignment_groups?limit=100${startingAfter ? `&starting_after=${startingAfter}` : ''}`;
+              const resp = await smdmRequest(mdmKey, url);
+              const page = resp?.data || [];
+              allGroups = allGroups.concat(page);
+              hasMore = resp?.has_more === true;
+              startingAfter = page.length > 0 ? page[page.length - 1].id : '';
+              if (!startingAfter) break;
+            }
             
-            console.log(`[Lookup] ${mdmAcct.name}: search returned ${groups.length} groups for "${query}"`);
+            const names = allGroups.map(g => g.attributes?.name || '(unnamed)');
+            console.log(`[Lookup] ${mdmAcct.name} assignment_groups (${allGroups.length}): ${names.join(', ')}`);
             
-            // Exact name match
-            const match = groups.find(g => 
+            const match = allGroups.find(g => 
               (g.attributes?.name || '').toLowerCase() === query.toLowerCase()
             );
-            
             if (match) {
               foundGroup = match;
               foundGroupAcctId = mdmAcctId;
-              console.log(`[Lookup] Found group "${match.attributes?.name}" (ID: ${match.id}) in ${mdmAcct.name}`);
+              foundGroupType = 'assignment';
+              console.log(`[Lookup] Found assignment group "${match.attributes?.name}" (ID: ${match.id})`);
               break;
             }
           } catch (e) {
-            console.log(`[Lookup] Assignment group search error (${mdmAcct.name}):`, e.message);
+            console.log(`[Lookup] ${mdmAcct.name} assignment_groups error:`, e.message);
           }
+          
+          // Check legacy device groups
+          try {
+            let allDevGroups = [];
+            let hasMore = true;
+            let startingAfter = '';
+            while (hasMore) {
+              const url = `/device_groups?limit=100${startingAfter ? `&starting_after=${startingAfter}` : ''}`;
+              const resp = await smdmRequest(mdmKey, url);
+              const page = resp?.data || [];
+              allDevGroups = allDevGroups.concat(page);
+              hasMore = resp?.has_more === true;
+              startingAfter = page.length > 0 ? page[page.length - 1].id : '';
+              if (!startingAfter) break;
+            }
+            
+            const names = allDevGroups.map(g => g.attributes?.name || '(unnamed)');
+            console.log(`[Lookup] ${mdmAcct.name} device_groups (${allDevGroups.length}): ${names.join(', ')}`);
+            
+            const match = allDevGroups.find(g => 
+              (g.attributes?.name || '').toLowerCase() === query.toLowerCase()
+            );
+            if (match) {
+              foundGroup = match;
+              foundGroupAcctId = mdmAcctId;
+              foundGroupType = 'device';
+              console.log(`[Lookup] Found device group "${match.attributes?.name}" (ID: ${match.id})`);
+              break;
+            }
+          } catch (e) {
+            console.log(`[Lookup] ${mdmAcct.name} device_groups error:`, e.message);
+          }
+          
+          if (foundGroup) break;
         }
       } catch (outerErr) {
-        console.log(`[Lookup] Assignment group search failed:`, outerErr.message);
+        console.log(`[Lookup] Group search failed:`, outerErr.message);
       }
       
       if (!foundGroup) {
-        console.log(`[Lookup] No assignment group found matching "${query}"`);
+        console.log(`[Lookup] No group found matching "${query}" in any account`);
       }
       
       if (foundGroup) {
