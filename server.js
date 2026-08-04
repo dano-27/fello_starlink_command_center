@@ -3428,9 +3428,29 @@ app.post('/api/cobrowse/connect', async (req, res) => {
       return res.json({ error: 'No matching Fello Connect device found online. Make sure the app is open on the iPad.' });
     }
 
-    // Use CoBrowse's connect page filtered to the specific device ID
-    // This uses the Agent SDK's WebSocket negotiation (same as the CoBrowse dashboard)
-    // The connect page filtered by device_id shows only that one device with a Connect button
+    // Auto-cleanup: delete stale duplicate devices with the same serial
+    // (Each app reinstall / keychain clear creates a new CoBrowse device registration)
+    if (serial) {
+      const allSerialMatches = devices.filter(d =>
+        d.custom_data?.serial_number?.toUpperCase() === serial.toUpperCase()
+      );
+      if (allSerialMatches.length > 1) {
+        // Sort by last_active descending, keep the most recent
+        allSerialMatches.sort((a, b) => (b.last_active || '').localeCompare(a.last_active || ''));
+        const staleDevices = allSerialMatches.slice(1);
+        console.log(`[Cobrowse] Cleaning up ${staleDevices.length} stale device(s) with serial ${serial}`);
+        // Delete stale devices in background (don't await)
+        for (const stale of staleDevices) {
+          fetch(`https://cobrowse.io/api/1/devices/${stale.id}`, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${token}` }
+          }).then(() => console.log(`[Cobrowse] Deleted stale device ${stale.id}`))
+            .catch(err => console.warn(`[Cobrowse] Failed to delete ${stale.id}: ${err.message}`));
+        }
+      }
+    }
+
+    // Use CoBrowse's connect page filtered to this device's serial
     const connectUrl = `https://cobrowse.io/connect?token=${encodeURIComponent(token)}&filter_serial_number=${encodeURIComponent(serial || '')}&navigation=none`;
     
     console.log(`[Cobrowse] Returning connect URL for device ${targetDevice.id} (${targetDevice.custom_data?.device_name})`);
