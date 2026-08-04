@@ -3431,7 +3431,7 @@ app.post('/api/cobrowse/connect', async (req, res) => {
     // Use CoBrowse's connect page filtered to the specific device ID
     // This uses the Agent SDK's WebSocket negotiation (same as the CoBrowse dashboard)
     // The connect page filtered by device_id shows only that one device with a Connect button
-    const connectUrl = `https://cobrowse.io/connect?token=${encodeURIComponent(token)}&filter_device_id=${encodeURIComponent(targetDevice.id)}&navigation=none`;
+    const connectUrl = `https://cobrowse.io/connect?token=${encodeURIComponent(token)}&filter_serial_number=${encodeURIComponent(serial || '')}&navigation=none`;
     
     console.log(`[Cobrowse] Returning connect URL for device ${targetDevice.id} (${targetDevice.custom_data?.device_name})`);
     
