@@ -15,8 +15,15 @@ let users = new Map();
 function loadUsers() {
   try {
     if (!fs.existsSync(USERS_CSV)) {
-      console.log('[Auth] No users.csv found — auth disabled');
-      return;
+      // Auto-create default users.csv on first boot
+      console.log('[Auth] No users.csv found — creating default with admin user');
+      try {
+        if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+        fs.writeFileSync(USERS_CSV, 'username,password,name,role\nddomirok,fello2024,Dan Domirok,admin\n', 'utf-8');
+      } catch (e) {
+        console.error('[Auth] Failed to create default users.csv:', e.message);
+        return;
+      }
     }
     const raw = fs.readFileSync(USERS_CSV, 'utf-8');
     const lines = raw.trim().split('\n');
