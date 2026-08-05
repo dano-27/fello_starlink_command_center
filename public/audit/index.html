@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Audit Log - Fello Command Center</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #FFFFFF;
+      --surface: #F5F5F5;
+      --border: rgba(0,0,0,0.08);
+      --primary: #3166AE;
+      --text: #232428;
+      --muted: #636363;
+      --green: #05AC3F;
+      --red: #FF4D41;
+      --amber: #F59231;
+      --font: 'Montserrat', sans-serif;
+      --radius: 20px;
+    }
+    body {
+      margin: 0; font-family: var(--font); background: var(--bg); color: var(--text); min-height: 100vh;
+    }
+    .header {
+      background: var(--bg); border-bottom: 1px solid var(--border); padding: 16px 32px;
+      display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100;
+    }
+    .header-brand {
+      display: flex; align-items: center; gap: 16px; text-decoration: none; color: var(--text);
+    }
+    .logo { font-size: 20px; font-weight: 800; color: var(--primary); letter-spacing: -0.5px; }
+    .divider { width: 1px; height: 20px; background: var(--border); }
+    .title { font-size: 16px; font-weight: 600; }
+    .subtitle { font-size: 12px; color: var(--muted); margin-left: 8px; font-weight: 400; }
+    
+    .container { padding: 32px; max-width: 1400px; margin: 0 auto; }
+    
+    .filters {
+      background: var(--surface); padding: 16px; border-radius: 12px; border: 1px solid var(--border);
+      display: flex; gap: 16px; align-items: flex-end; margin-bottom: 24px; flex-wrap: wrap;
+    }
+    .filter-group { display: flex; flex-direction: column; gap: 6px; }
+    .filter-group label { font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--muted); letter-spacing: 0.5px; }
+    .filter-input {
+      padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; font-family: var(--font); font-size: 13px; outline: none; background: var(--bg);
+    }
+    .filter-input:focus { border-color: var(--primary); }
+    
+    .btn {
+      padding: 9px 16px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; font-family: var(--font);
+    }
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-outline { background: transparent; border: 1px solid var(--border); color: var(--text); }
+    
+    .table-container {
+      border: 1px solid var(--border); border-radius: 12px; overflow: hidden; background: var(--bg);
+    }
+    table { width: 100%; border-collapse: collapse; text-align: left; }
+    th { background: var(--surface); padding: 12px 16px; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border); }
+    td { padding: 12px 16px; font-size: 13px; border-bottom: 1px solid var(--border); color: var(--text); }
+    tr:last-child td { border-bottom: none; }
+    tr:hover { background: rgba(0,0,0,0.02); }
+    
+    .badge {
+      padding: 4px 8px; border-radius: 6px; font-size: 11px; font-weight: 700; text-transform: uppercase;
+    }
+    .badge-post { background: rgba(49,102,174,0.1); color: var(--primary); }
+    .badge-delete { background: rgba(255,77,65,0.1); color: var(--red); }
+    .badge-login { background: rgba(5,172,63,0.1); color: var(--green); }
+    .badge-logout { background: rgba(245,146,49,0.1); color: var(--amber); }
+    .badge-other { background: var(--surface); color: var(--muted); }
+    
+    .details {
+      max-width: 300px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; font-family: monospace; font-size: 12px; color: var(--muted);
+    }
+    .details.expanded { white-space: pre-wrap; word-break: break-all; background: var(--surface); padding: 8px; border-radius: 6px; }
+    
+    .empty-state { padding: 48px; text-align: center; color: var(--muted); font-size: 14px; }
+    
+    .footer-bar { display: flex; justify-content: space-between; align-items: center; margin-top: 16px; }
+    .auto-refresh { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <a href="/lookup/" class="header-brand">
+      <div class="logo">FELLO</div>
+      <div class="divider"></div>
+      <div class="title">📋 Audit Log<span class="subtitle">Track all agent actions</span></div>
+    </a>
+    <div id="user-badge" style="display:flex;align-items:center;gap:8px;font-size:13px;"></div>
+  </header>
+
+  <div class="container">
+    <div class="filters">
+      <div class="filter-group">
+        <label>User</label>
+        <select id="f-user" class="filter-input"><option value="">All Users</option></select>
+      </div>
+      <div class="filter-group">
+        <label>Action</label>
+        <select id="f-action" class="filter-input">
+          <option value="">All Actions</option>
+          <option value="LOGIN">LOGIN</option>
+          <option value="LOGOUT">LOGOUT</option>
+          <option value="POST">POST</option>
+          <option value="PUT">PUT</option>
+          <option value="DELETE">DELETE</option>
+          <option value="PATCH">PATCH</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>Search</label>
+        <input type="text" id="f-search" class="filter-input" placeholder="Search path or details...">
+      </div>
+      <div class="filter-group">
+        <label>Start Date</label>
+        <input type="date" id="f-start" class="filter-input">
+      </div>
+      <div class="filter-group">
+        <label>End Date</label>
+        <input type="date" id="f-end" class="filter-input">
+      </div>
+      <button class="btn btn-primary" onclick="loadData()">Filter</button>
+      <button class="btn btn-outline" style="margin-left:auto" onclick="exportCsv()">Export CSV</button>
+    </div>
+
+    <div class="table-container">
+      <table>
+        <thead>
+          <tr>
+            <th>Timestamp</th>
+            <th>User</th>
+            <th>Action</th>
+            <th>Path</th>
+            <th>Details</th>
+            <th>IP</th>
+          </tr>
+        </thead>
+        <tbody id="table-body">
+          <tr><td colspan="6" class="empty-state">Loading audit entries...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="footer-bar">
+      <div class="auto-refresh">
+        <input type="checkbox" id="auto-refresh" checked>
+        <label for="auto-refresh">Auto-refresh (30s)</label>
+        <span id="last-updated" style="margin-left:16px;font-size:11px;"></span>
+      </div>
+      <button class="btn btn-outline" onclick="loadMore()" id="load-more">Load More</button>
+    </div>
+  </div>
+
+  <script>
+    let offset = 0;
+    const limit = 100;
+    let autoRefreshInterval;
+
+    function getBadgeClass(method) {
+      if(method === 'POST') return 'badge-post';
+      if(method === 'DELETE') return 'badge-delete';
+      if(method === 'LOGIN') return 'badge-login';
+      if(method === 'LOGOUT') return 'badge-logout';
+      return 'badge-other';
+    }
+
+    function formatDate(iso) {
+      const d = new Date(iso);
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    }
+
+    async function loadData(append = false) {
+      if(!append) offset = 0;
+      
+      const u = document.getElementById('f-user').value;
+      const a = document.getElementById('f-action').value;
+      const s = document.getElementById('f-search').value;
+      
+      const query = new URLSearchParams({ limit, offset, user: u, method: a, search: s });
+      try {
+        const res = await fetch('/api/audit/log?' + query);
+        const data = await res.json();
+        
+        const tb = document.getElementById('table-body');
+        if(!append) tb.innerHTML = '';
+        
+        if(!data.entries || data.entries.length === 0) {
+          if(!append) tb.innerHTML = '<tr><td colspan="6" class="empty-state">No audit entries found</td></tr>';
+          document.getElementById('load-more').style.display = 'none';
+        } else {
+          data.entries.forEach(e => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = \`
+              <td>\${formatDate(e.timestamp)}</td>
+              <td style="font-weight:500">\${e.user}</td>
+              <td><span class="badge \${getBadgeClass(e.method || e.action)}">\${e.method || e.action}</span></td>
+              <td style="font-family:monospace;font-size:12px">\${e.path || '-'}</td>
+              <td><div class="details" onclick="this.classList.toggle('expanded')" title="Click to expand">\${e.details ? JSON.stringify(e.details) : '-'}</div></td>
+              <td style="color:var(--muted);font-size:11px">\${e.ip || '-'}</td>
+            \`;
+            tb.appendChild(tr);
+          });
+          document.getElementById('load-more').style.display = data.entries.length < limit ? 'none' : 'block';
+        }
+        document.getElementById('last-updated').textContent = 'Last updated: ' + new Date().toLocaleTimeString();
+        populateUsers(data.entries);
+      } catch(e) {
+        console.error(e);
+      }
+    }
+
+    function populateUsers(entries) {
+      const select = document.getElementById('f-user');
+      const existing = new Set([...select.options].map(o => o.value));
+      entries.forEach(e => {
+        if(e.user && !existing.has(e.user)) {
+          existing.add(e.user);
+          const opt = document.createElement('option');
+          opt.value = e.user;
+          opt.textContent = e.user;
+          select.appendChild(opt);
+        }
+      });
+    }
+
+    function loadMore() {
+      offset += limit;
+      loadData(true);
+    }
+
+    function exportCsv() {
+      window.location.href = '/api/audit/log/export';
+    }
+
+    document.getElementById('auto-refresh').addEventListener('change', (e) => {
+      if(e.target.checked) {
+        autoRefreshInterval = setInterval(() => loadData(), 30000);
+      } else {
+        clearInterval(autoRefreshInterval);
+      }
+    });
+
+    // Initial load
+    loadData();
+    autoRefreshInterval = setInterval(() => loadData(), 30000);
+
+    // User Badge script
+    fetch('/api/auth/me').then(r=>r.json()).then(u=>{
+      const b=document.getElementById('user-badge');
+      if(b&&u.username){
+        b.innerHTML='<span style="color:#636363;">'+u.name+'</span>'+
+          '<button onclick="fetch(\\'/api/auth/logout\\',{method:\\'POST\\'}).then(()=>location.href=\\'/login\\')" '+
+          'style="background:none;border:1px solid rgba(0,0,0,0.1);border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;color:#636363;">Sign Out</button>';
+        if(u.role==='admin')b.innerHTML='<a href="/audit/" style="color:#3166AE;font-size:12px;text-decoration:none;">📋 Audit</a>'+b.innerHTML;
+      }
+    }).catch(()=>{});
+  </script>
+</body>
+</html>

@@ -5,6 +5,83 @@ const fs = require('fs');
 const multer = require('multer');
 const { FelloCrmClient, CrmApiError } = require('./fello-crm-client');
 
+// ── Auth & Audit ──────────────────────────────────────────────────────
+const DATA_DIR = fs.existsSync('/data') ? '/data' : path.join(__dirname, 'data');
+const USERS_CSV = path.join(DATA_DIR, 'users.csv');
+const AUDIT_LOG = path.join(DATA_DIR, 'audit.jsonl');
+
+// In-memory user database (loaded from CSV)
+let users = new Map();
+function loadUsers() {
+  try {
+    if (!fs.existsSync(USERS_CSV)) {
+      console.log('[Auth] No users.csv found — auth disabled');
+      return;
+    }
+    const raw = fs.readFileSync(USERS_CSV, 'utf-8');
+    const lines = raw.trim().split('\n');
+    if (lines.length < 2) return;
+    const newUsers = new Map();
+    for (let i = 1; i < lines.length; i++) {
+      const parts = lines[i].split(',').map(s => s.trim());
+      if (parts.length >= 4) {
+        const [username, password, name, role] = parts;
+        newUsers.set(username.toLowerCase(), { username: username.toLowerCase(), password, name, role: role || 'agent' });
+      }
+    }
+    users = newUsers;
+    console.log(`[Auth] Loaded ${users.size} users from CSV`);
+  } catch (e) {
+    console.error('[Auth] Failed to load users:', e.message);
+  }
+}
+loadUsers();
+// Reload users when CSV changes
+try { fs.watch(USERS_CSV, () => { console.log('[Auth] Users CSV changed, reloading...'); loadUsers(); }); } catch(e) {}
+
+// Session store (in-memory)
+const sessions = new Map();
+const SESSION_COOKIE = 'fello_session';
+const SESSION_MAX_AGE = 24 * 60 * 60 * 1000; // 24 hours
+
+function createSession(user) {
+  const token = crypto.randomUUID();
+  sessions.set(token, {
+    username: user.username,
+    name: user.name,
+    role: user.role,
+    loginTime: new Date().toISOString()
+  });
+  return token;
+}
+
+function getSession(token) {
+  if (!token) return null;
+  const session = sessions.get(token);
+  if (!session) return null;
+  return session;
+}
+
+// Audit logger
+function auditLog(entry) {
+  const line = JSON.stringify({
+    timestamp: new Date().toISOString(),
+    ...entry
+  }) + '\n';
+  try { fs.appendFileSync(AUDIT_LOG, line); } catch(e) { console.error('[Audit] Write failed:', e.message); }
+}
+
+// Cookie parser helper
+function parseCookies(req) {
+  const cookies = {};
+  const header = req.headers.cookie || '';
+  header.split(';').forEach(c => {
+    const [k, ...v] = c.split('=');
+    if (k) cookies[k.trim()] = decodeURIComponent(v.join('=').trim());
+  });
+  return cookies;
+}
+
 // File upload config — uses /data for Railway volume persistence, falls back to ./data
 const UPLOAD_DIR = fs.existsSync('/data') ? '/data/uploads' : path.join(__dirname, 'data', 'uploads');
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -211,10 +288,191 @@ const PORT = process.env.PORT || 3456;
 
 app.use(express.json({ limit: '50mb' }));
 
+// ── Auth middleware ──────────────────────────────────────────────────
+const AUTH_WHITELIST = [
+  '/login', '/login.html',
+  '/api/auth/login', '/api/auth/logout',
+  '/favicon.ico'
+];
+
+app.use((req, res, next) => {
+  // Skip auth if no users loaded (auth disabled)
+  if (users.size === 0) { req.user = { username: 'system', name: 'System', role: 'admin' }; return next(); }
+
+  // Whitelist check
+  const p = req.path.toLowerCase();
+  if (AUTH_WHITELIST.some(w => p === w || p.startsWith(w + '/')) || p.startsWith('/login')) {
+    return next();
+  }
+
+  // Check session cookie
+  const cookies = parseCookies(req);
+  const session = getSession(cookies[SESSION_COOKIE]);
+
+  if (!session) {
+    // API calls get 401, page requests get redirected
+    if (req.path.startsWith('/api/')) {
+      return res.status(401).json({ error: 'Not authenticated' });
+    }
+    return res.redirect('/login');
+  }
+
+  req.user = session;
+  next();
+});
+
+// ── Audit middleware ────────────────────────────────────────────────
+app.use((req, res, next) => {
+  if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method) && req.user) {
+    // Don't log auth endpoints or health checks
+    if (!req.path.startsWith('/api/auth/')) {
+      auditLog({
+        user: req.user.username,
+        name: req.user.name,
+        method: req.method,
+        path: req.path,
+        body: req.body && Object.keys(req.body).length > 0 ? req.body : undefined,
+        ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress,
+        userAgent: req.headers['user-agent']
+      });
+    }
+  }
+  next();
+});
+
 // Root redirects to Command Center (before static so it overrides old index.html)
 app.get('/', (req, res) => res.redirect('/lookup/'));
 
 app.use(express.static(path.join(__dirname, 'public')));
+
+// ── Auth Endpoints ──────────────────────────────────────────────────
+app.post('/api/auth/login', (req, res) => {
+  const { username, password } = req.body || {};
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Username and password required' });
+  }
+
+  const user = users.get(username.toLowerCase());
+  if (!user || user.password !== password) {
+    auditLog({ user: username, name: 'Unknown', method: 'LOGIN', path: '/api/auth/login', body: { success: false }, ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress });
+    return res.status(401).json({ error: 'Invalid username or password' });
+  }
+
+  const token = createSession(user);
+  res.setHeader('Set-Cookie', `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_MAX_AGE / 1000}`);
+
+  auditLog({ user: user.username, name: user.name, method: 'LOGIN', path: '/api/auth/login', body: { success: true }, ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress });
+
+  res.json({ success: true, user: { username: user.username, name: user.name, role: user.role } });
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  const cookies = parseCookies(req);
+  const token = cookies[SESSION_COOKIE];
+  if (token) {
+    const session = sessions.get(token);
+    if (session) {
+      auditLog({ user: session.username, name: session.name, method: 'LOGOUT', path: '/api/auth/logout', ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress });
+    }
+    sessions.delete(token);
+  }
+  res.setHeader('Set-Cookie', `${SESSION_COOKIE}=; Path=/; HttpOnly; Max-Age=0`);
+  res.json({ success: true });
+});
+
+app.get('/api/auth/me', (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Not authenticated' });
+  res.json({ username: req.user.username, name: req.user.name, role: req.user.role });
+});
+
+// ── Audit Log Endpoints (admin only) ────────────────────────────────
+app.get('/api/audit/log', (req, res) => {
+  if (!req.user || req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  try {
+    if (!fs.existsSync(AUDIT_LOG)) return res.json([]);
+    const raw = fs.readFileSync(AUDIT_LOG, 'utf-8');
+    const lines = raw.trim().split('\n').filter(Boolean);
+
+    // Parse and apply filters
+    let entries = lines.map(l => { try { return JSON.parse(l); } catch(e) { return null; } }).filter(Boolean);
+
+    const { user, method, search, limit = 500, offset = 0 } = req.query;
+    if (user) entries = entries.filter(e => e.user === user);
+    if (method) entries = entries.filter(e => e.method === method.toUpperCase());
+    if (search) {
+      const q = search.toLowerCase();
+      entries = entries.filter(e => JSON.stringify(e).toLowerCase().includes(q));
+    }
+
+    // Return newest first
+    entries.reverse();
+    const total = entries.length;
+    entries = entries.slice(Number(offset), Number(offset) + Number(limit));
+
+    res.json({ total, entries });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/audit/log/export', (req, res) => {
+  if (!req.user || req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+
+  try {
+    if (!fs.existsSync(AUDIT_LOG)) return res.send('No audit log entries');
+    const raw = fs.readFileSync(AUDIT_LOG, 'utf-8');
+    const lines = raw.trim().split('\n').filter(Boolean);
+    const entries = lines.map(l => { try { return JSON.parse(l); } catch(e) { return null; } }).filter(Boolean);
+
+    // Build CSV
+    let csv = 'Timestamp,User,Name,Method,Path,Details,IP\n';
+    for (const e of entries) {
+      const details = e.body ? JSON.stringify(e.body).replace(/"/g, '""') : '';
+      csv += `"${e.timestamp}","${e.user}","${e.name || ''}","${e.method}","${e.path}","${details}","${e.ip || ''}"\n`;
+    }
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="audit_log.csv"');
+    res.send(csv);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Login page route ────────────────────────────────────────────────
+app.get('/login', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'login.html'));
+});
+
+// ── User management (admin only) ────────────────────────────────────
+app.get('/api/auth/users', (req, res) => {
+  if (!req.user || req.user.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
+  const list = [];
+  for (const [, u] of users) {
+    list.push({ username: u.username, name: u.name, role: u.role });
+  }
+  res.json({ users: list });
+});
+
+app.post('/api/auth/users', (req, res) => {
+  if (!req.user || req.user.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
+  const { csvContent } = req.body;
+  if (!csvContent) return res.status(400).json({ error: 'csvContent required' });
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.writeFileSync(USERS_CSV, csvContent, 'utf-8');
+    loadUsers();
+    auditLog({ user: req.user.username, name: req.user.name, method: 'UPDATE_USERS', path: '/api/auth/users', ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress });
+    res.json({ success: true, userCount: users.size });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // ── CoverageMap API Proxy (for Site Checker) ────────────────────────
 const COVERAGEMAP_KEY = process.env.COVERAGEMAP_KEY || 'e3f45af8095f4148998998511ad55754';

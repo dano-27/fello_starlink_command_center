@@ -73,6 +73,7 @@
           <button class="btn btn-secondary btn-sm" id="logout-btn" title="Disconnect" aria-label="Log out">
             ⏻
           </button>
+          <div id="user-badge" style="margin-left:16px;display:flex;align-items:center;gap:8px;font-size:13px;"></div>
         </div>
       </nav>
 
@@ -537,5 +538,16 @@
   </div>
 
   <script src="app.js" defer></script>
+<script>
+fetch('/api/auth/me').then(r=>r.json()).then(u=>{
+  const b=document.getElementById('user-badge');
+  if(b&&u.username){
+    b.innerHTML='<span style="color:#636363;">'+u.name+'</span>'+
+      '<button onclick="fetch(\\'/api/auth/logout\\',{method:\\'POST\\'}).then(()=>location.href=\\'/login\\')" '+
+      'style="background:none;border:1px solid rgba(0,0,0,0.1);border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;color:#636363;">Sign Out</button>';
+    if(u.role==='admin')b.innerHTML='<a href="/audit/" style="color:#3166AE;font-size:12px;text-decoration:none;margin-right:8px;">📋 Audit</a>'+b.innerHTML;
+  }
+}).catch(()=>{});
+</script>
 </body>
 </html>
