@@ -367,15 +367,27 @@
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="app.js"></script>
 <script>
-fetch('/api/auth/me').then(r=>r.json()).then(u=>{
-  const b=document.getElementById('user-badge');
+fetch("/api/auth/me").then(function(r){return r.json()}).then(function(u){
+  var b=document.getElementById("user-badge");
   if(b&&u.username){
-    b.innerHTML='<span style="color:#636363;">'+u.name+'</span>'+
-      '<button onclick="fetch('/api/auth/logout',{method:'POST'}).then(()=>location.href='/login')" '+
-      'style="background:none;border:1px solid rgba(0,0,0,0.1);border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;color:#636363;">Sign Out</button>';
-    if(u.role==='admin')b.innerHTML='<a href="/audit/" style="color:#3166AE;font-size:12px;text-decoration:none;margin-right:8px;">📋 Audit</a>'+b.innerHTML;
+    var signOutBtn=document.createElement("button");
+    signOutBtn.textContent="Sign Out";
+    signOutBtn.style.cssText="background:none;border:1px solid rgba(0,0,0,0.1);border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;color:#636363;";
+    signOutBtn.addEventListener("click",function(){fetch("/api/auth/logout",{method:"POST"}).then(function(){location.href="/login"})});
+    var nameSpan=document.createElement("span");
+    nameSpan.style.color="#636363";
+    nameSpan.textContent=u.name;
+    b.appendChild(nameSpan);
+    b.appendChild(signOutBtn);
+    if(u.role==="admin"){
+      var auditLink=document.createElement("a");
+      auditLink.href="/audit/";
+      auditLink.textContent="\ud83d\udccb Audit";
+      auditLink.style.cssText="color:#3166AE;font-size:12px;text-decoration:none;margin-right:8px;";
+      b.insertBefore(auditLink,b.firstChild);
+    }
   }
-}).catch(()=>{});
+}).catch(function(){});
 </script>
 </body>
 </html>
