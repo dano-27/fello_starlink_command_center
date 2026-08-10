@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IMS Order Lookup — Fello Command Center</title>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #FFFFFF;
+      --bg2: #FAFAFA;
+      --surface: #F5F5F5;
+      --border: rgba(0,0,0,0.08);
+      --primary: #3166AE;
+      --primary-dim: rgba(49,102,174,0.08);
+      --green: #05AC3F;
+      --green-bg: rgba(5,172,63,0.08);
+      --amber: #F59231;
+      --amber-bg: rgba(245,146,49,0.08);
+      --red: #FF4D41;
+      --red-bg: rgba(255,77,65,0.08);
+      --text: #232428;
+      --muted: #636363;
+      --dim: #A8A7A7;
+      --font: 'Montserrat', sans-serif;
+      --mono: 'JetBrains Mono', monospace;
+      --radius: 16px;
+    }
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:var(--font); background:var(--bg2); color:var(--text); min-height:100vh; }
+    
+    .header { background:var(--bg); border-bottom:1px solid var(--border); padding:12px 24px; display:flex; align-items:center; gap:16px; }
+    .header a.back { color:var(--primary); text-decoration:none; font-size:13px; font-weight:500; }
+    .header h1 { font-size:18px; font-weight:700; }
+    .header .subtitle { font-size:12px; color:var(--muted); }
+    .header .badge { margin-left:auto; }
+    #user-badge { display:flex; align-items:center; gap:8px; font-size:13px; }
+
+    .container { max-width:900px; margin:28px auto; padding:0 20px; }
+
+    /* Search */
+    .search-card { background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); padding:24px; margin-bottom:24px; }
+    .search-row { display:flex; gap:12px; }
+    .search-input { flex:1; padding:12px 18px; border:1px solid var(--border); border-radius:10px; font-size:14px; font-family:var(--font); background:var(--bg); color:var(--text); outline:none; transition:border 0.2s; }
+    .search-input:focus { border-color:var(--primary); box-shadow:0 0 0 3px var(--primary-dim); }
+    .search-input::placeholder { color:var(--dim); }
+    .btn { border:none; border-radius:10px; padding:12px 24px; font-size:14px; font-weight:600; cursor:pointer; font-family:var(--font); transition:all 0.2s; }
+    .btn-primary { background:var(--primary); color:#fff; }
+    .btn-primary:hover { background:#2856a0; }
+    .btn-primary:disabled { opacity:0.5; cursor:not-allowed; }
+    .search-hint { margin-top:10px; font-size:12px; color:var(--muted); }
+    .search-hint span { background:var(--surface); padding:2px 8px; border-radius:4px; font-family:var(--mono); font-size:11px; cursor:pointer; margin:0 2px; }
+    .search-hint span:hover { background:var(--primary-dim); color:var(--primary); }
+
+    /* Loading */
+    .loading { text-align:center; padding:48px; color:var(--muted); font-size:14px; }
+    .spinner { display:inline-block; width:28px; height:28px; border:3px solid var(--border); border-top-color:var(--primary); border-radius:50%; animation:spin 0.8s linear infinite; margin-bottom:12px; }
+    @keyframes spin { to { transform:rotate(360deg); } }
+
+    /* Error */
+    .error-msg { background:var(--red-bg); border:1px solid rgba(255,77,65,0.2); border-radius:12px; padding:16px 20px; color:var(--red); font-size:13px; font-weight:500; margin-bottom:20px; }
+
+    /* Cards */
+    .card { background:var(--bg); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; margin-bottom:20px; }
+    .card-header { padding:16px 20px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:space-between; }
+    .card-header h2 { font-size:15px; font-weight:700; }
+    .card-body { padding:16px 20px; }
+    .card-collapse .card-body { display:none; }
+    .card-collapse.open .card-body { display:block; }
+    .toggle-btn { background:none; border:none; cursor:pointer; font-size:16px; color:var(--muted); transition:transform 0.2s; }
+    .card-collapse.open .toggle-btn { transform:rotate(180deg); }
+
+    /* Info Grid */
+    .info-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:14px; }
+    .info-item { }
+    .info-label { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.8px; color:var(--muted); margin-bottom:3px; }
+    .info-value { font-size:13px; font-weight:500; word-break:break-word; }
+    .info-value.mono { font-family:var(--mono); font-size:12px; }
+    .info-value.empty { color:var(--dim); font-style:italic; }
+
+    /* Status Badge */
+    .status { display:inline-block; padding:3px 10px; border-radius:8px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; }
+    .status-confirmed { background:var(--green-bg); color:var(--green); }
+    .status-pending { background:var(--amber-bg); color:var(--amber); }
+    .status-cancelled { background:var(--red-bg); color:var(--red); }
+    .status-default { background:var(--surface); color:var(--muted); }
+
+    /* Table */
+    table { width:100%; border-collapse:collapse; font-size:13px; }
+    th { text-align:left; padding:10px 12px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.5px; color:var(--muted); border-bottom:2px solid var(--border); }
+    td { padding:10px 12px; border-bottom:1px solid var(--border); }
+    tr:last-child td { border-bottom:none; }
+    tr:hover td { background:rgba(0,0,0,0.015); }
+    .cat-badge { display:inline-block; padding:2px 8px; border-radius:6px; font-size:10px; font-weight:600; text-transform:uppercase; }
+    .cat-1 { background:var(--primary-dim); color:var(--primary); }
+    .cat-2 { background:var(--amber-bg); color:var(--amber); }
+    .cat-3 { background:var(--green-bg); color:var(--green); }
+    .cat-default { background:var(--surface); color:var(--muted); }
+
+    /* Address box */
+    .address-box { background:var(--bg2); border:1px solid var(--border); border-radius:10px; padding:14px 18px; }
+    .address-box .label { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.8px; color:var(--muted); margin-bottom:6px; }
+    .address-box .addr { font-size:13px; line-height:1.7; }
+    .address-empty { background:var(--bg2); border:1px dashed var(--border); border-radius:10px; padding:14px 18px; text-align:center; color:var(--dim); font-size:13px; }
+
+    /* Summary bar */
+    .summary-bar { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:20px; }
+    .summary-item { flex:1; min-width:140px; background:var(--bg); border:1px solid var(--border); border-radius:12px; padding:14px 16px; text-align:center; }
+    .summary-item .val { font-size:22px; font-weight:800; color:var(--primary); }
+    .summary-item .lbl { font-size:11px; color:var(--muted); font-weight:600; text-transform:uppercase; margin-top:4px; }
+
+    .raw-json { background:var(--bg2); border:1px solid var(--border); border-radius:10px; padding:16px; font-family:var(--mono); font-size:11px; color:var(--muted); max-height:400px; overflow:auto; white-space:pre-wrap; word-break:break-all; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <a href="/lookup/" class="back">← Command Center</a>
+    <h1>📦 IMS Order Lookup</h1>
+    <span class="subtitle">Search IMS NextGen by order ID</span>
+    <div class="badge">
+      <div id="user-badge"></div>
+    </div>
+  </div>
+
+  <div class="container">
+    <div class="search-card">
+      <div class="search-row">
+        <input type="text" id="order-input" class="search-input" placeholder="Enter order ID (e.g. OR161)" autocomplete="off" autofocus>
+        <button class="btn btn-primary" id="search-btn" onclick="searchOrder()">Search</button>
+      </div>
+      <div class="search-hint">
+        Try: <span onclick="trySearch('OR161')">OR161</span> <span onclick="trySearch('OR150')">OR150</span>
+      </div>
+    </div>
+
+    <div id="results"></div>
+  </div>
+
+  <script>
+    var input = document.getElementById('order-input');
+    input.addEventListener('keydown', function(e) { if (e.key === 'Enter') searchOrder(); });
+
+    function trySearch(q) {
+      input.value = q;
+      searchOrder();
+    }
+
+    function searchOrder() {
+      var q = input.value.trim();
+      if (!q) return;
+      var results = document.getElementById('results');
+      results.innerHTML = '<div class="loading"><div class="spinner"></div><br>Searching IMS NextGen for <strong>' + esc(q) + '</strong>...</div>';
+      document.getElementById('search-btn').disabled = true;
+
+      fetch('/api/crm/orders/' + encodeURIComponent(q))
+        .then(function(r) {
+          if (!r.ok) throw new Error('Order not found (HTTP ' + r.status + ')');
+          return r.json();
+        })
+        .then(function(data) {
+          document.getElementById('search-btn').disabled = false;
+          renderOrder(data);
+        })
+        .catch(function(err) {
+          document.getElementById('search-btn').disabled = false;
+          results.innerHTML = '<div class="error-msg">❌ ' + esc(err.message) + '</div>';
+        });
+    }
+
+    function esc(s) {
+      if (s === null || s === undefined) return '';
+      var d = document.createElement('div');
+      d.textContent = String(s);
+      return d.innerHTML;
+    }
+
+    function val(v, mono) {
+      if (v === null || v === undefined || v === '' || v === 0 || v === '0' || v === '0.00' || v === '0000-00-00 00:00:00') {
+        return '<span class="info-value empty">—</span>';
+      }
+      return '<span class="info-value' + (mono ? ' mono' : '') + '">' + esc(v) + '</span>';
+    }
+
+    function statusClass(s) {
+      if (!s) return 'status-default';
+      var sl = s.toLowerCase();
+      if (sl === 'confirmed') return 'status-confirmed';
+      if (sl === 'pending' || sl === 'draft') return 'status-pending';
+      if (sl === 'cancelled' || sl === 'canceled') return 'status-cancelled';
+      return 'status-default';
+    }
+
+    function catLabel(c) {
+      if (c === 1) return '<span class="cat-badge cat-1">Device</span>';
+      if (c === 2) return '<span class="cat-badge cat-2">Accessory</span>';
+      if (c === 3) return '<span class="cat-badge cat-3">Charger</span>';
+      return '<span class="cat-badge cat-default">Other</span>';
+    }
+
+    function formatDate(d) {
+      if (!d || d === '0000-00-00 00:00:00') return null;
+      try {
+        var dt = new Date(d);
+        return dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+      } catch(e) { return d; }
+    }
+
+    function buildAddress(ship) {
+      if (!ship) return null;
+      var parts = [];
+      var name = ship.name || ((ship.firstName || '') + ' ' + (ship.lastName || '')).trim();
+      if (name) parts.push(name);
+      if (ship.buildingName) parts.push(ship.buildingName);
+      if (ship.address1) parts.push(ship.address1);
+      if (ship.address2) parts.push(ship.address2);
+      var csz = [ship.city, ship.state].filter(Boolean).join(', ');
+      if (ship.zip) csz += ' ' + ship.zip;
+      if (csz.trim()) parts.push(csz.trim());
+      if (ship.country) parts.push(ship.country);
+      return parts.length > 0 ? parts : null;
+    }
+
+    function toggleCard(el) {
+      el.closest('.card-collapse').classList.toggle('open');
+    }
+
+    function renderOrder(d) {
+      var results = document.getElementById('results');
+      var rentals = d.rentals || [];
+      var totalQty = rentals.reduce(function(sum, r) { return sum + (r.amount || 0); }, 0);
+      var ship = d.shipping || {};
+      var ret = d.returnShipping || {};
+
+      var html = '';
+
+      // Summary bar
+      html += '<div class="summary-bar">' +
+        '<div class="summary-item"><div class="val">' + esc(d.flyOrderId) + '</div><div class="lbl">Order ID</div></div>' +
+        '<div class="summary-item"><div class="val">' + esc(d.customerName || '—') + '</div><div class="lbl">Customer</div></div>' +
+        '<div class="summary-item"><div class="val">' + rentals.length + '</div><div class="lbl">Line Items</div></div>' +
+        '<div class="summary-item"><div class="val">' + totalQty + '</div><div class="lbl">Total Units</div></div>' +
+        '<div class="summary-item"><div class="val"><span class="status ' + statusClass(d.status) + '">' + esc(d.status) + '</span></div><div class="lbl">Status</div></div>' +
+      '</div>';
+
+      // Order Details card
+      html += '<div class="card">' +
+        '<div class="card-header"><h2>📋 Order Details</h2></div>' +
+        '<div class="card-body"><div class="info-grid">' +
+          item('Order ID', d.flyOrderId, true) +
+          item('Internal ID', d.id, true) +
+          item('Customer', d.customerName) +
+          item('Status', d.status) +
+          item('Sequence', d.sequence, true) +
+          item('Site Source', d.siteSource) +
+          item('Deal Owner', d.dealOwner, true) +
+          item('Event Name', d.eventName) +
+          item('Event Type', d.eventType) +
+          item('Event Venue', d.eventVenue) +
+          item('PO Number', d.purchaseOrderNumber) +
+          item('Carrier', d.carrier) +
+          item('Shipping Speed', d.shippingSpeed) +
+          item('Created', formatDate(d.createdAt)) +
+          item('Updated', formatDate(d.updatedAt)) +
+        '</div>';
+
+      // Notes
+      if (d.notes) {
+        html += '<div style="margin-top:14px;padding:10px 14px;background:var(--bg2);border-radius:8px;font-size:13px;"><strong>Notes:</strong> ' + esc(d.notes) + '</div>';
+      }
+      if (d.salesNotes) {
+        html += '<div style="margin-top:8px;padding:10px 14px;background:var(--bg2);border-radius:8px;font-size:13px;"><strong>Sales Notes:</strong> ' + esc(d.salesNotes) + '</div>';
+      }
+      html += '</div></div>';
+
+      // Shipping & Return
+      var shipAddr = buildAddress(ship);
+      var retAddr = buildAddress(ret);
+
+      html += '<div class="card">' +
+        '<div class="card-header"><h2>📍 Shipping & Returns</h2></div>' +
+        '<div class="card-body">' +
+          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">';
+
+      // Ship To
+      if (shipAddr) {
+        html += '<div class="address-box"><div class="label">📦 Ship To</div><div class="addr">' + shipAddr.map(function(p){return esc(p)}).join('<br>') + '</div>';
+        if (ship.email) html += '<div style="margin-top:6px;font-size:12px;color:var(--muted);">✉️ ' + esc(ship.email) + '</div>';
+        if (ship.phone) html += '<div style="font-size:12px;color:var(--muted);">📞 ' + esc(ship.phone) + '</div>';
+        if (ship.siteCode) html += '<div style="margin-top:6px;font-size:12px;"><strong>Site Code:</strong> ' + esc(ship.siteCode) + '</div>';
+        if (ship.deliveryInstructions) html += '<div style="margin-top:6px;font-size:12px;color:var(--muted);">📝 ' + esc(ship.deliveryInstructions) + '</div>';
+        if (ship.tracking) html += '<div style="margin-top:6px;font-size:12px;"><strong>Tracking:</strong> <span style="font-family:var(--mono)">' + esc(ship.tracking) + '</span></div>';
+        html += '</div>';
+      } else {
+        html += '<div class="address-empty">📦 No shipping address on file</div>';
+      }
+
+      // Return
+      if (retAddr) {
+        html += '<div class="address-box"><div class="label">↩️ Return To</div><div class="addr">' + retAddr.map(function(p){return esc(p)}).join('<br>') + '</div></div>';
+      } else {
+        html += '<div class="address-empty">↩️ No return address on file</div>';
+      }
+
+      html += '</div></div></div>';
+
+      // Dates card
+      html += '<div class="card card-collapse open">' +
+        '<div class="card-header"><h2>📅 Dates</h2><button class="toggle-btn" onclick="toggleCard(this)">▼</button></div>' +
+        '<div class="card-body"><div class="info-grid">' +
+          item('Start Date', formatDate(d.startDate)) +
+          item('End Date', formatDate(d.endDate)) +
+          item('Outbound Date', formatDate(d.outboundDate)) +
+          item('Inbound Date', formatDate(d.inboundDate)) +
+          item('Prep Date', formatDate(d.prepDate)) +
+        '</div></div></div>';
+
+      // Rentals / Line Items
+      html += '<div class="card">' +
+        '<div class="card-header"><h2>📦 Line Items (' + rentals.length + ')</h2></div>';
+      if (rentals.length > 0) {
+        html += '<div style="overflow-x:auto;"><table>' +
+          '<thead><tr><th>Item</th><th>Part #</th><th style="text-align:center">Qty</th><th>Category</th><th>Network</th><th>Location</th><th>OS</th><th>Tracking</th></tr></thead>' +
+          '<tbody>';
+        rentals.forEach(function(r) {
+          html += '<tr>' +
+            '<td style="font-weight:600;">' + esc(r.modelName) + '</td>' +
+            '<td style="font-family:var(--mono);font-size:12px;">' + esc(r.partNumber || '—') + '</td>' +
+            '<td style="text-align:center;font-weight:700;">' + esc(r.amount) + '</td>' +
+            '<td>' + catLabel(r.category) + '</td>' +
+            '<td>' + esc(r.network || '—') + '</td>' +
+            '<td>' + esc(r.location || '—') + '</td>' +
+            '<td>' + esc(r.operatingSystem || '—') + '</td>' +
+            '<td style="font-size:12px;">' + esc(r.tracking || '—') + '</td>' +
+          '</tr>';
+        });
+        html += '</tbody></table></div>';
+      } else {
+        html += '<div class="card-body" style="text-align:center;color:var(--dim);padding:32px;">No line items</div>';
+      }
+      html += '</div>';
+
+      // Raw JSON (collapsed)
+      html += '<div class="card card-collapse">' +
+        '<div class="card-header"><h2>🔧 Raw API Response</h2><button class="toggle-btn" onclick="toggleCard(this)">▼</button></div>' +
+        '<div class="card-body"><div class="raw-json">' + esc(JSON.stringify(d.raw || d, null, 2)) + '</div></div></div>';
+
+      results.innerHTML = html;
+    }
+
+    function item(label, value, mono) {
+      return '<div class="info-item"><div class="info-label">' + esc(label) + '</div>' + val(value, mono) + '</div>';
+    }
+  </script>
+
+  <script>
+    fetch("/api/auth/me").then(function(r){return r.json()}).then(function(u){
+      var b=document.getElementById("user-badge");
+      if(b&&u.username){
+        var signOutBtn=document.createElement("button");
+        signOutBtn.textContent="Sign Out";
+        signOutBtn.style.cssText="background:none;border:1px solid rgba(0,0,0,0.1);border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;color:#636363;";
+        signOutBtn.addEventListener("click",function(){fetch("/api/auth/logout",{method:"POST"}).then(function(){location.href="/login"})});
+        var nameSpan=document.createElement("span");
+        nameSpan.style.color="#636363";
+        nameSpan.textContent=u.name;
+        b.appendChild(nameSpan);
+        b.appendChild(signOutBtn);
+      }
+    }).catch(function(){});
+  </script>
+</body>
+</html>
