@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>User Management — Fello Command Center</title>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body { font-family:'Montserrat',sans-serif; background:#f5f5f5; color:#232428; min-height:100vh; }
+    
+    .header { background:#fff; border-bottom:1px solid rgba(0,0,0,0.08); padding:12px 24px; display:flex; align-items:center; gap:16px; }
+    .header a { color:#3166AE; text-decoration:none; font-size:13px; }
+    .header h1 { font-size:18px; font-weight:700; }
+    .header .subtitle { font-size:12px; color:#636363; margin-left:8px; }
+    
+    .container { max-width:800px; margin:32px auto; padding:0 20px; }
+    
+    .card { background:#fff; border:1px solid rgba(0,0,0,0.08); border-radius:16px; overflow:hidden; margin-bottom:24px; }
+    .card-header { padding:20px 24px; border-bottom:1px solid rgba(0,0,0,0.06); display:flex; align-items:center; justify-content:space-between; }
+    .card-header h2 { font-size:16px; font-weight:700; }
+    .card-body { padding:20px 24px; }
+    
+    table { width:100%; border-collapse:collapse; font-size:13px; }
+    th { text-align:left; padding:10px 12px; color:#636363; font-weight:600; font-size:12px; text-transform:uppercase; letter-spacing:0.5px; border-bottom:2px solid rgba(0,0,0,0.08); }
+    td { padding:10px 12px; border-bottom:1px solid rgba(0,0,0,0.04); }
+    tr:hover td { background:rgba(0,0,0,0.02); }
+    
+    .role-badge { display:inline-block; padding:3px 10px; border-radius:12px; font-size:11px; font-weight:600; text-transform:uppercase; }
+    .role-admin { background:rgba(49,102,174,0.1); color:#3166AE; }
+    .role-agent { background:rgba(5,172,63,0.1); color:#05AC3F; }
+    
+    .btn { border:none; border-radius:8px; padding:8px 16px; font-size:13px; font-weight:600; cursor:pointer; font-family:inherit; transition:all 0.2s; }
+    .btn-primary { background:#3166AE; color:#fff; }
+    .btn-primary:hover { background:#2856a0; }
+    .btn-danger { background:none; color:#FF4D41; border:1px solid rgba(255,77,65,0.3); font-size:12px; padding:5px 12px; }
+    .btn-danger:hover { background:rgba(255,77,65,0.08); }
+    .btn-sm { font-size:12px; padding:5px 12px; }
+    
+    .form-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+    .form-group { display:flex; flex-direction:column; gap:5px; }
+    .form-group.full { grid-column: 1 / -1; }
+    .form-group label { font-size:12px; font-weight:600; color:#636363; }
+    .form-group input, .form-group select { padding:10px 14px; border:1px solid rgba(0,0,0,0.12); border-radius:8px; font-size:13px; font-family:inherit; background:#fff; color:#232428; }
+    .form-group input:focus, .form-group select:focus { outline:none; border-color:#3166AE; box-shadow:0 0 0 3px rgba(49,102,174,0.1); }
+    
+    .form-actions { margin-top:18px; display:flex; gap:10px; align-items:center; }
+    
+    .toast { position:fixed; bottom:24px; right:24px; padding:12px 20px; border-radius:10px; color:#fff; font-size:13px; font-weight:500; z-index:9999; opacity:0; transform:translateY(10px); transition:all 0.3s; pointer-events:none; }
+    .toast.show { opacity:1; transform:translateY(0); }
+    .toast-success { background:#05AC3F; }
+    .toast-error { background:#FF4D41; }
+    
+    .empty { text-align:center; padding:32px; color:#636363; font-size:14px; }
+    .password-field { font-family:'JetBrains Mono',monospace; letter-spacing:1px; }
+    .user-count { font-size:12px; color:#636363; font-weight:500; background:rgba(0,0,0,0.04); padding:4px 12px; border-radius:12px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <a href="/lookup/">← Command Center</a>
+    <h1>👥 User Management</h1>
+    <span class="subtitle">Admin only</span>
+  </div>
+
+  <div class="container">
+    <!-- Add User Card -->
+    <div class="card">
+      <div class="card-header">
+        <h2>➕ Add New User</h2>
+      </div>
+      <div class="card-body">
+        <div class="form-grid">
+          <div class="form-group">
+            <label>Username</label>
+            <input type="text" id="new-username" placeholder="e.g. jsmith" autocomplete="off">
+          </div>
+          <div class="form-group">
+            <label>Password</label>
+            <input type="text" id="new-password" placeholder="e.g. Welcome123!" class="password-field" autocomplete="off">
+          </div>
+          <div class="form-group">
+            <label>Full Name</label>
+            <input type="text" id="new-name" placeholder="e.g. John Smith">
+          </div>
+          <div class="form-group">
+            <label>Role</label>
+            <select id="new-role">
+              <option value="agent">Agent</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-actions">
+          <button class="btn btn-primary" onclick="addUser()">Add User</button>
+          <span id="add-status" style="font-size:12px;color:#636363;"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Current Users Card -->
+    <div class="card">
+      <div class="card-header">
+        <h2>Current Users</h2>
+        <span class="user-count" id="user-count">Loading...</span>
+      </div>
+      <div class="card-body" style="padding:0;">
+        <table>
+          <thead>
+            <tr>
+              <th>Username</th>
+              <th>Name</th>
+              <th>Role</th>
+              <th style="text-align:right">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="users-table">
+            <tr><td colspan="4" class="empty">Loading users...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    var allUsers = [];
+
+    function showToast(msg, type) {
+      var t = document.getElementById('toast');
+      t.textContent = msg;
+      t.className = 'toast show toast-' + (type || 'success');
+      setTimeout(function() { t.className = 'toast'; }, 3000);
+    }
+
+    function loadUsers() {
+      fetch('/api/auth/users').then(function(r) {
+        if (r.status === 403) { location.href = '/login'; return; }
+        return r.json();
+      }).then(function(data) {
+        if (!data) return;
+        allUsers = data.users || [];
+        renderUsers();
+      }).catch(function(err) {
+        document.getElementById('users-table').innerHTML = '<tr><td colspan="4" class="empty">Failed to load users</td></tr>';
+      });
+    }
+
+    function renderUsers() {
+      var tb = document.getElementById('users-table');
+      var count = document.getElementById('user-count');
+      count.textContent = allUsers.length + ' user' + (allUsers.length !== 1 ? 's' : '');
+
+      if (allUsers.length === 0) {
+        tb.innerHTML = '<tr><td colspan="4" class="empty">No users configured</td></tr>';
+        return;
+      }
+
+      var html = '';
+      allUsers.forEach(function(u) {
+        var roleClass = u.role === 'admin' ? 'role-admin' : 'role-agent';
+        html += '<tr>' +
+          '<td style="font-weight:600;">' + esc(u.username) + '</td>' +
+          '<td>' + esc(u.name) + '</td>' +
+          '<td><span class="role-badge ' + roleClass + '">' + esc(u.role) + '</span></td>' +
+          '<td style="text-align:right">' +
+            '<button class="btn btn-danger btn-sm" onclick="deleteUser(\'' + esc(u.username) + '\')">Remove</button>' +
+          '</td>' +
+        '</tr>';
+      });
+      tb.innerHTML = html;
+    }
+
+    function esc(s) {
+      if (!s) return '';
+      var d = document.createElement('div');
+      d.textContent = s;
+      return d.innerHTML;
+    }
+
+    function addUser() {
+      var username = document.getElementById('new-username').value.trim().toLowerCase();
+      var password = document.getElementById('new-password').value;
+      var name = document.getElementById('new-name').value.trim();
+      var role = document.getElementById('new-role').value;
+
+      if (!username || !password || !name) {
+        showToast('Please fill in all fields', 'error');
+        return;
+      }
+
+      // Check if username already exists
+      for (var i = 0; i < allUsers.length; i++) {
+        if (allUsers[i].username === username) {
+          showToast('Username "' + username + '" already exists', 'error');
+          return;
+        }
+      }
+
+      // Build new CSV with all existing users + new one
+      saveUsers(allUsers.concat([{ username: username, password: password, name: name, role: role }]), function() {
+        showToast('User "' + name + '" added successfully');
+        document.getElementById('new-username').value = '';
+        document.getElementById('new-password').value = '';
+        document.getElementById('new-name').value = '';
+        document.getElementById('new-role').value = 'agent';
+      });
+    }
+
+    function deleteUser(username) {
+      if (!confirm('Remove user "' + username + '"? They will no longer be able to log in.')) return;
+
+      var filtered = allUsers.filter(function(u) { return u.username !== username; });
+      if (filtered.length === 0) {
+        showToast('Cannot remove the last user', 'error');
+        return;
+      }
+
+      saveUsers(filtered, function() {
+        showToast('User "' + username + '" removed');
+      });
+    }
+
+    function saveUsers(userList, onSuccess) {
+      // We need passwords too — fetch them from the current CSV first, then rebuild
+      // For new users, password is in the userList object; for existing, we need to re-fetch
+      // Since GET /api/auth/users doesn't return passwords, we'll use a dedicated save endpoint
+      fetch('/api/auth/users/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ users: userList })
+      }).then(function(r) { return r.json(); }).then(function(data) {
+        if (data.success) {
+          loadUsers();
+          if (onSuccess) onSuccess();
+        } else {
+          showToast(data.error || 'Failed to save', 'error');
+        }
+      }).catch(function(err) {
+        showToast('Error: ' + err.message, 'error');
+      });
+    }
+
+    loadUsers();
+  </script>
+</body>
+</html>

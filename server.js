@@ -481,6 +481,49 @@ app.post('/api/auth/users', (req, res) => {
   }
 });
 
+// Save users from admin UI — merges new users with existing passwords
+app.post('/api/auth/users/save', (req, res) => {
+  if (!req.user || req.user.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
+  const { users: userList } = req.body;
+  if (!userList || !Array.isArray(userList)) return res.status(400).json({ error: 'users array required' });
+  if (userList.length === 0) return res.status(400).json({ error: 'Cannot save empty user list' });
+
+  try {
+    // Build CSV — for existing users without a password field, keep their current password
+    let csv = 'username,password,name,role\n';
+    for (const u of userList) {
+      const username = (u.username || '').trim().toLowerCase();
+      if (!username) continue;
+      // If password provided, use it; otherwise look up existing
+      let password = u.password;
+      if (!password) {
+        const existing = users.get(username);
+        password = existing ? existing.password : '';
+      }
+      const name = (u.name || '').trim();
+      const role = u.role || 'agent';
+      csv += username + ',' + password + ',' + name + ',' + role + '\n';
+    }
+
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.writeFileSync(USERS_CSV, csv, 'utf-8');
+    loadUsers();
+
+    const changeDesc = userList.map(u => u.username).join(', ');
+    auditLog({ user: req.user.username, name: req.user.name, method: 'UPDATE_USERS', path: '/api/auth/users/save', body: { users: changeDesc }, ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress });
+
+    res.json({ success: true, userCount: users.size });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Admin page route
+app.get('/admin/users', (req, res) => {
+  if (!req.user || req.user.role !== 'admin') return res.status(403).send('Admin access required');
+  res.sendFile(path.join(__dirname, 'public', 'admin', 'users.html'));
+});
+
 // ── CoverageMap API Proxy (for Site Checker) ────────────────────────
 const COVERAGEMAP_KEY = process.env.COVERAGEMAP_KEY || 'e3f45af8095f4148998998511ad55754';
 app.get('/api/coveragemap', async (req, res) => {

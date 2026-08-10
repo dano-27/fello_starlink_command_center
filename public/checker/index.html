@@ -2322,6 +2322,11 @@ fetch("/api/auth/me").then(function(r){return r.json()}).then(function(u){
       auditLink.textContent="\ud83d\udccb Audit";
       auditLink.style.cssText="color:#3166AE;font-size:12px;text-decoration:none;margin-right:8px;";
       b.insertBefore(auditLink,b.firstChild);
+      var usersLink=document.createElement("a");
+      usersLink.href="/admin/users";
+      usersLink.textContent="👥 Users";
+      usersLink.style.cssText="color:#3166AE;font-size:12px;text-decoration:none;margin-right:8px;";
+      b.insertBefore(usersLink,auditLink.nextSibling);
     }
   }
 }).catch(function(){});
