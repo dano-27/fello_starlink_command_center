@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Customer Verify — Fello Command Center</title>
+  <meta name="description" content="Fello Command Center — Automated customer verification for quote requests.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+  <link rel="icon" href="https://events.fello.com/favicon.ico">
+  <meta name="theme-color" content="#232428">
+</head>
+<body>
+  <!-- HEADER: Same as lookup page -->
+  <header class="header">
+    <div class="header-top">
+      <div class="header-brand">
+        <a href="/lookup/" class="brand-link">
+          <img src="/lookup/fello-logo.png" alt="Fello" class="brand-logo-img">
+          <span class="brand-divider"></span>
+          <span class="brand-chip">Command Center</span>
+        </a>
+      </div>
+      <div class="tools-nav">
+        <button class="tools-toggle" id="tools-toggle">🧰 Tools <span class="tools-chevron">▼</span></button>
+        <div class="tools-dropdown" id="tools-dropdown">
+          <a href="/lookup/" class="tools-link"><span>🔍</span> Lookup Hub</a>
+          <a href="/checker/" class="tools-link"><span>🛰️</span> Site Checker</a>
+          <a href="/simplemdm/" class="tools-link"><span>📱</span> SimpleMDM</a>
+          <a href="/webbing/" class="tools-link"><span>📶</span> Webbing IoT</a>
+          <a href="/starlink/" class="tools-link"><span>📡</span> Starlink</a>
+          <a href="/hexnode/" class="tools-link"><span>🔒</span> Hexnode UEM</a>
+        </div>
+      </div>
+      <div id="user-badge" style="margin-left:auto;display:flex;align-items:center;gap:8px;font-size:13px;padding-left:16px;"></div>
+    </div>
+  </header>
+
+  <main>
+    <!-- Verification Input Section -->
+    <div class="verify-hero">
+      <div class="verify-hero-inner">
+        <h1 class="verify-title">🛡️ Customer Verification</h1>
+        <p class="verify-subtitle">Verify customer email addresses and company legitimacy for quote requests</p>
+        <div class="verify-input-box">
+          <span class="verify-input-icon">📧</span>
+          <input type="email" id="email-input" class="verify-input" placeholder="Enter customer email address..." autocomplete="off" autofocus>
+          <div class="spinner" id="verify-spinner"></div>
+          <button id="verify-btn" class="verify-btn">Verify</button>
+        </div>
+        <div id="mock-banner" class="mock-banner" style="display:none;">🧪 Running in mock mode — results are simulated. Set HUNTER_API_KEY for live verification.</div>
+      </div>
+    </div>
+
+    <!-- Results Section (hidden initially) -->
+    <div id="results-section" class="results-section" style="display:none;">
+      <!-- Trust Score Card -->
+      <div class="score-card" id="score-card">
+        <div class="score-gauge-container">
+          <div class="score-gauge" id="score-gauge">
+            <svg viewBox="0 0 120 120">
+              <circle class="score-bg" cx="60" cy="60" r="54"></circle>
+              <circle class="score-ring" id="score-ring" cx="60" cy="60" r="54"></circle>
+            </svg>
+            <div class="score-value" id="score-value">--</div>
+          </div>
+          <div class="score-label" id="score-label">Trust Score</div>
+        </div>
+        <div class="score-details">
+          <div class="score-email" id="score-email">--</div>
+          <div class="score-domain" id="score-domain">--</div>
+          <div class="score-decision" id="score-decision"></div>
+          <div class="score-timestamp" id="score-timestamp">--</div>
+        </div>
+      </div>
+
+      <!-- Check Results Grid -->
+      <div class="checks-grid" id="checks-grid">
+        <!-- Populated by JS -->
+      </div>
+
+      <!-- Company Enrichment Card -->
+      <div class="enrichment-card" id="enrichment-card" style="display:none;">
+        <!-- Populated by JS -->
+      </div>
+    </div>
+
+    <!-- History Section -->
+    <div class="history-section">
+      <div class="history-header">
+        <h2 class="history-title">Verification History</h2>
+        <span class="history-count" id="history-count">0 records</span>
+      </div>
+      <div class="history-table-container">
+        <table class="history-table">
+          <thead>
+            <tr>
+              <th>Email</th>
+              <th>Domain</th>
+              <th>Score</th>
+              <th>Decision</th>
+              <th>Verified</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="history-body">
+            <tr><td colspan="6" class="history-empty">No verifications yet</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <!-- Toast -->
+  <div class="toast" id="toast"></div>
+
+  <script src="app.js"></script>
+  <!-- User badge script (same as other pages) -->
+  <script>
+  fetch("/api/auth/me").then(function(r){return r.json()}).then(function(u){
+    var b=document.getElementById("user-badge");
+    if(b&&u.username){
+      var signOutBtn=document.createElement("button");
+      signOutBtn.textContent="Sign Out";
+      signOutBtn.style.cssText="background:none;border:1px solid rgba(0,0,0,0.1);border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;color:#636363;";
+      signOutBtn.addEventListener("click",function(){fetch("/api/auth/logout",{method:"POST"}).then(function(){location.href="/login"})});
+      var nameSpan=document.createElement("span");
+      nameSpan.style.color="#636363";
+      nameSpan.textContent=u.name;
+      b.appendChild(nameSpan);
+      b.appendChild(signOutBtn);
+    }
+  }).catch(function(){});
+  </script>
+</body>
+</html>

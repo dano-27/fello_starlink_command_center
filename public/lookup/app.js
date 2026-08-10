@@ -176,6 +176,89 @@
       .replace(/'/g, '&#039;');
   }
 
+  function renderCrmOrderSection(crm) {
+    if (!crm || !crm.flyOrderId) return '';
+    
+    var ship = crm.shipping || {};
+    var hasAddress = ship.address1 || ship.city || ship.state || ship.zip;
+    var statusColor = crm.status === 'confirmed' ? 'var(--green)' : 
+                      crm.status === 'pending' ? 'var(--amber)' : 'var(--muted)';
+    
+    // Build address string
+    var addressParts = [];
+    if (ship.name || ship.firstName) addressParts.push(ship.name || (ship.firstName + ' ' + (ship.lastName || '')).trim());
+    if (ship.buildingName) addressParts.push(ship.buildingName);
+    if (ship.address1) addressParts.push(ship.address1);
+    if (ship.address2) addressParts.push(ship.address2);
+    var cityStateZip = [ship.city, ship.state].filter(Boolean).join(', ');
+    if (ship.zip) cityStateZip += ' ' + ship.zip;
+    if (cityStateZip.trim()) addressParts.push(cityStateZip.trim());
+    
+    // Build rentals table
+    var rentalsHtml = '';
+    if (crm.rentals && crm.rentals.length > 0) {
+      rentalsHtml = '<table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:12px;">' +
+        '<thead><tr>' +
+        '<th style="text-align:left;padding:8px 10px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);border-bottom:2px solid var(--border);">Item</th>' +
+        '<th style="text-align:left;padding:8px 10px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);border-bottom:2px solid var(--border);">Part #</th>' +
+        '<th style="text-align:center;padding:8px 10px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);border-bottom:2px solid var(--border);">Qty</th>' +
+        '<th style="text-align:left;padding:8px 10px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);border-bottom:2px solid var(--border);">Network</th>' +
+        '<th style="text-align:left;padding:8px 10px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;color:var(--muted);border-bottom:2px solid var(--border);">Type</th>' +
+        '</tr></thead><tbody>';
+      
+      crm.rentals.forEach(function(r) {
+        var typeLabel = r.isIpad ? '<span style="color:var(--primary);font-weight:600;">iPad</span>' : 
+                        r.category === 2 ? 'Accessory' : r.category === 3 ? 'Charger' : 'Other';
+        rentalsHtml += '<tr>' +
+          '<td style="padding:8px 10px;border-bottom:1px solid var(--border);font-weight:500;">' + esc(r.modelName) + '</td>' +
+          '<td style="padding:8px 10px;border-bottom:1px solid var(--border);font-family:monospace;font-size:12px;color:var(--muted);">' + esc(r.partNumber || '-') + '</td>' +
+          '<td style="padding:8px 10px;border-bottom:1px solid var(--border);text-align:center;font-weight:600;">' + esc(r.amount) + '</td>' +
+          '<td style="padding:8px 10px;border-bottom:1px solid var(--border);">' + esc(r.network || '-') + '</td>' +
+          '<td style="padding:8px 10px;border-bottom:1px solid var(--border);">' + typeLabel + '</td>' +
+          '</tr>';
+      });
+      rentalsHtml += '</tbody></table>';
+    }
+    
+    return '<div class="section" style="background:var(--surface);border:1px solid var(--border);border-radius:12px;margin-bottom:20px;overflow:hidden;">' +
+      '<div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">' +
+        '<h3 style="margin:0;font-size:15px;font-weight:700;color:var(--text);">📦 IMS Order Details</h3>' +
+        '<span style="font-size:12px;font-weight:600;color:' + statusColor + ';background:' + statusColor + '15;padding:3px 10px;border-radius:8px;text-transform:uppercase;">' + esc(crm.status) + '</span>' +
+      '</div>' +
+      '<div style="padding:16px 20px;">' +
+        '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:12px;">' +
+          '<div>' +
+            '<div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;margin-bottom:4px;">Order ID</div>' +
+            '<div style="font-size:14px;font-weight:600;">' + esc(crm.flyOrderId) + '</div>' +
+          '</div>' +
+          '<div>' +
+            '<div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;margin-bottom:4px;">Customer</div>' +
+            '<div style="font-size:14px;font-weight:600;">' + esc(crm.customerName) + '</div>' +
+          '</div>' +
+          (crm.eventName ? '<div>' +
+            '<div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;margin-bottom:4px;">Event</div>' +
+            '<div style="font-size:14px;">' + esc(crm.eventName) + '</div>' +
+          '</div>' : '') +
+          '<div>' +
+            '<div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;margin-bottom:4px;">Line Items</div>' +
+            '<div style="font-size:14px;font-weight:600;">' + esc(crm.rentalCount) + ' items</div>' +
+          '</div>' +
+        '</div>' +
+        (hasAddress ? 
+          '<div style="background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:12px 16px;margin-bottom:12px;">' +
+            '<div style="font-size:11px;color:var(--muted);font-weight:600;text-transform:uppercase;margin-bottom:6px;">📍 Shipping Address</div>' +
+            '<div style="font-size:13px;line-height:1.6;">' + addressParts.map(function(p){return esc(p)}).join('<br>') + '</div>' +
+            (ship.siteCode ? '<div style="margin-top:6px;font-size:12px;color:var(--muted);">Site Code: <strong>' + esc(ship.siteCode) + '</strong></div>' : '') +
+            (ship.deliveryInstructions ? '<div style="margin-top:6px;font-size:12px;color:var(--muted);">📝 ' + esc(ship.deliveryInstructions) + '</div>' : '') +
+          '</div>' 
+        : '<div style="background:var(--bg);border:1px dashed var(--border);border-radius:8px;padding:12px 16px;margin-bottom:12px;text-align:center;color:var(--muted);font-size:13px;">📍 No shipping address on file</div>') +
+        rentalsHtml +
+        (crm.notes ? '<div style="margin-top:12px;font-size:12px;color:var(--muted);"><strong>Notes:</strong> ' + esc(crm.notes) + '</div>' : '') +
+      '</div>' +
+    '</div>';
+  }
+
+
   function formatMB(mb) {
     if (mb == null) return '0 MB';
     const num = parseFloat(mb);
@@ -450,6 +533,8 @@
           <div class="stat-value">${nonMdmDevices > 0 ? '📶 ' + nonMdmDevices : '0'}</div>
         </div>
       </div>
+
+${data.crmOrder ? renderCrmOrderSection(data.crmOrder) : ''}
 
       <!-- Quick Actions -->
       <div class="actions-bar">

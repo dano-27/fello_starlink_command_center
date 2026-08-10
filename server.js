@@ -4,6 +4,7 @@ const crypto = require('crypto');
 const fs = require('fs');
 const multer = require('multer');
 const { FelloCrmClient, CrmApiError } = require('./fello-crm-client');
+const { CustomerVerifyService } = require('./customer-verify');
 
 // ── Auth & Audit ──────────────────────────────────────────────────────
 const DATA_DIR = fs.existsSync('/data') ? '/data' : path.join(__dirname, 'data');
@@ -1242,10 +1243,10 @@ const MDM_ACCOUNTS = {
   }
 };
 
-// ── Fello CRM Integration ─────────────────────────────────────────────
+// ── IMS NextGen CRM Integration ───────────────────────────────────────
 const crmClient = new FelloCrmClient({
-  baseUrl: process.env.FELLO_CRM_URL || '',
-  apiKey: process.env.FELLO_CRM_KEY || ''
+  baseUrl: process.env.IMS_NEXTGEN_URL || 'https://ims-v4-migration-prod-876702752852.us-east4.run.app',
+  apiKey: process.env.IMS_NEXTGEN_TOKEN || '2423|rydhEvIv6ZsEABia67jH5ffhMUJLthtu3YrfySpx93f5cc0e'
 });
 
 function getMdmAccountKey(accountId) {
@@ -5255,14 +5256,14 @@ app.get('/api/lookup', async (req, res) => {
     acct.name.toLowerCase() === query.toLowerCase() && acct.getKey()
   ) : null;
   
-  // Try CRM lookup for order numbers (only when real CRM is configured)
+  // Try IMS NextGen CRM lookup for order numbers
   let crmOrder = null;
   if (!isICCID && !isIMEI && !mdmAccountMatch && crmClient.isConfigured()) {
     try {
       const crmResult = await crmClient.getOrder(query);
-      if (crmResult && crmResult.devices && crmResult.devices.length > 0) {
+      if (crmResult && crmResult.flyOrderId) {
         crmOrder = crmResult;
-        console.log(`[Lookup] CRM order found: ${crmResult.orderNumber} (${crmResult.devices.length} devices)`);
+        console.log(`[Lookup] CRM order found: ${crmResult.flyOrderId} — ${crmResult.customerName} (${crmResult.rentalCount} line items)`);
       }
     } catch (crmErr) {
       // CRM not available or order not found — fall through to prefix search
@@ -5270,7 +5271,7 @@ app.get('/api/lookup', async (req, res) => {
     }
   }
   
-  const isGroupSearch = !isICCID && !isIMEI && !mdmAccountMatch && !crmOrder && (
+  const isGroupSearch = !isICCID && !isIMEI && !mdmAccountMatch && (
     /^(FE|SQ|EB|CB|MO|Z5|SH|LE|AR|OR|RS|MEAL|CAMO|CASQ|ALA)/i.test(query) || 
     (query.length >= 4 && /^\d+$/.test(query))
   );
@@ -5539,6 +5540,7 @@ app.get('/api/lookup', async (req, res) => {
       
       return res.json({
         type: 'group',
+        crmOrder: crmOrder || null,
         found: true,
         branchName: mdmAcct.name,
         branchId: branchId,
@@ -5772,6 +5774,7 @@ app.get('/api/lookup', async (req, res) => {
       
       return res.json({
         type: 'group',
+        crmOrder: crmOrder || null,
         found: true,
         source: 'crm',
         branchName: crmOrder.orderNumber,
@@ -5867,7 +5870,8 @@ app.get('/api/lookup', async (req, res) => {
               console.log(`[Lookup] Branch ${branchName} exists (ID=${branchId}) but has 0 devices in SOAP API`);
               // Return found=true with branchId so the user knows the branch exists
               return res.json({ 
-                type: 'group', branchName: branchName, branchId, found: true,
+                type: 'group',
+        crmOrder: crmOrder || null, branchName: branchName, branchId, found: true,
                 webbingDevices: [], simpleMdmDevices: [], 
                 note: 'Branch exists in Webbing but devices are not accessible via the SOAP API. Check the Webbing dashboard directly.',
                 stats: { webbingCount: 0, mdmCount: 0, countMatch: true } 
@@ -5880,7 +5884,8 @@ app.get('/api/lookup', async (req, res) => {
       }
       
       if (branchDevices.length === 0) {
-        return res.json({ type: 'group', branchName: query, found: false, 
+        return res.json({ type: 'group',
+        crmOrder: crmOrder || null, branchName: query, found: false, 
           webbingDevices: [], simpleMdmDevices: [], stats: { webbingCount: 0, mdmCount: 0, countMatch: true } });
       }
       
@@ -6042,6 +6047,7 @@ app.get('/api/lookup', async (req, res) => {
 
       return res.json({
         type: 'group',
+        crmOrder: crmOrder || null,
         found: true,
         branchName: branchName,
         branchId: branchId,
@@ -6298,6 +6304,7 @@ app.get('/api/lookup', async (req, res) => {
         
         return res.json({
           type: 'group',
+        crmOrder: crmOrder || null,
           found: true,
           source: 'assignment_group',
           branchName: groupName,
@@ -6425,6 +6432,41 @@ app.get('/api/lookup', async (req, res) => {
     console.error('[Lookup] Error:', error);
     res.status(500).json({ error: 'Lookup failed: ' + error.message });
   }
+});
+
+// ── Customer Verification Routes ────────────────────────────────────
+const customerVerify = new CustomerVerifyService();
+
+// Run full verification pipeline on a customer email
+app.post('/api/verify-customer', async (req, res) => {
+  try {
+    const { email } = req.body || {};
+    if (!email || !email.includes('@')) {
+      return res.status(400).json({ error: 'Valid email address required' });
+    }
+    const result = await customerVerify.verify(email);
+    res.json(result);
+  } catch (error) {
+    console.error('[CustomerVerify] Error:', error);
+    res.status(500).json({ error: 'Verification failed: ' + error.message });
+  }
+});
+
+// Get all past verification results
+app.get('/api/verify-customer/results', (req, res) => {
+  res.json(customerVerify.getResults());
+});
+
+// Get a specific verification by email
+app.get('/api/verify-customer/:email', (req, res) => {
+  const result = customerVerify.getResult(req.params.email);
+  result ? res.json(result) : res.status(404).json({ error: 'No verification found for this email' });
+});
+
+// Delete a verification result
+app.delete('/api/verify-customer/:email', (req, res) => {
+  const deleted = customerVerify.deleteResult(req.params.email);
+  deleted ? res.json({ success: true }) : res.status(404).json({ error: 'Not found' });
 });
 
 // Hub landing page
