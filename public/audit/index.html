@@ -191,16 +191,16 @@
           if(!append) tb.innerHTML = '<tr><td colspan="6" class="empty-state">No audit entries found</td></tr>';
           document.getElementById('load-more').style.display = 'none';
         } else {
-          data.entries.forEach(e => {
-            const tr = document.createElement('tr');
-            tr.innerHTML = \`
-              <td>\${formatDate(e.timestamp)}</td>
-              <td style="font-weight:500">\${e.user}</td>
-              <td><span class="badge \${getBadgeClass(e.method || e.action)}">\${e.method || e.action}</span></td>
-              <td style="font-family:monospace;font-size:12px">\${e.path || '-'}</td>
-              <td><div class="details" onclick="this.classList.toggle('expanded')" title="Click to expand">\${e.details ? JSON.stringify(e.details) : '-'}</div></td>
-              <td style="color:var(--muted);font-size:11px">\${e.ip || '-'}</td>
-            \`;
+          data.entries.forEach(function(e) {
+            var tr = document.createElement('tr');
+            var detailText = e.body ? JSON.stringify(e.body) : (e.details ? JSON.stringify(e.details) : '-');
+            tr.innerHTML =
+              '<td>' + formatDate(e.timestamp) + '</td>' +
+              '<td style="font-weight:500">' + (e.user || '-') + '</td>' +
+              '<td><span class="badge ' + getBadgeClass(e.method || e.action) + '">' + (e.method || e.action || '-') + '</span></td>' +
+              '<td style="font-family:monospace;font-size:12px">' + (e.path || '-') + '</td>' +
+              '<td><div class="details" onclick="this.classList.toggle(\'expanded\')" title="Click to expand">' + detailText + '</div></td>' +
+              '<td style="color:var(--muted);font-size:11px">' + (e.ip || '-') + '</td>';
             tb.appendChild(tr);
           });
           document.getElementById('load-more').style.display = data.entries.length < limit ? 'none' : 'block';
