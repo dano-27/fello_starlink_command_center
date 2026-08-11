@@ -100,6 +100,9 @@
       if (!data.found && data.found !== undefined) {
         if (data.type === 'iccid' || data.type === 'imei') {
           renderError(`No results found for "${esc(query)}". Try a Group Number, Serial, or ICCID.`);
+        } else if (data.crmOrder) {
+          // IMS has the order even though no devices in MDM/Webbing yet
+          renderGroupResults(data, query);
         } else {
           renderCreateOrder(query);
         }
@@ -536,13 +539,18 @@
 
 ${data.crmOrder ? renderCrmOrderSection(data.crmOrder) : ''}
 
+${(mdm.length > 0 || web.length > 0) ? `
       <!-- Quick Actions -->
       <div class="actions-bar">
         <button class="btn btn-warning" onclick="window.bulkAction('${esc(branchId)}', 'suspend')">⏸ Bulk Suspend SIMs</button>
         <button class="btn btn-success" onclick="window.bulkAction('${esc(branchId)}', 'activate')">▶ Bulk Activate SIMs</button>
         <button class="btn btn-outline" style="border-color:var(--red);color:var(--red);" onclick="window.bulkLostMode('enable')">🔴 Enable Lost Mode All</button>
         <button class="btn btn-outline" style="border-color:var(--green);color:var(--green);" onclick="window.bulkLostMode('disable')">🟢 Disable Lost Mode All</button>
-      </div>
+      </div>` : (data.crmOrder ? `
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:20px;text-align:center;">
+        <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:6px;">📋 IMS Order Found — No Devices Deployed Yet</div>
+        <div style="font-size:13px;color:var(--muted);">This order exists in IMS NextGen but has no devices assigned in SimpleMDM or Webbing. Devices will appear here once deployed.</div>
+      </div>` : '')}
 
       <!-- Site Checker & Carrier Assignment -->
       <div class="site-checker-panel" style="background:var(--surface);border:1px solid var(--border);border-radius:12px;margin-bottom:20px;overflow:hidden;">
