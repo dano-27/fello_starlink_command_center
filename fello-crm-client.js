@@ -155,10 +155,7 @@ class FelloCrmClient {
 
       // Line items (rentals)
       rentals: (raw.rentals || []).map(r => this._normalizeRental(r)),
-      rentalCount: (raw.rentals || []).length,
-
-      // Raw response for debugging
-      raw
+      rentalCount: (raw.rentals || []).length
     };
   }
 
