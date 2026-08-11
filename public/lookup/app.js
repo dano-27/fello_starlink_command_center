@@ -255,7 +255,14 @@
             (ship.deliveryInstructions ? '<div style="margin-top:6px;font-size:12px;color:var(--muted);">📝 ' + esc(ship.deliveryInstructions) + '</div>' : '') +
           '</div>' 
         : '<div style="background:var(--bg);border:1px dashed var(--border);border-radius:8px;padding:12px 16px;margin-bottom:12px;text-align:center;color:var(--muted);font-size:13px;">📍 No shipping address on file</div>') +
-        rentalsHtml +
+        (crm.rentals && crm.rentals.length > 0 ?
+          '<div style="border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-top:12px;">' +
+            '<div onclick="var b=this.nextElementSibling;var a=this.querySelector(\'span.arrow\');if(b.style.display===\'none\'){b.style.display=\'block\';a.textContent=\'▼\'}else{b.style.display=\'none\';a.textContent=\'▶\'}" style="padding:10px 14px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;background:var(--bg);user-select:none;">' +
+              '<span style="font-size:13px;font-weight:600;">📦 Line Items (' + esc(crm.rentalCount) + ')</span>' +
+              '<span class="arrow" style="font-size:11px;color:var(--muted);">▶</span>' +
+            '</div>' +
+            '<div style="display:none;">' + rentalsHtml + '</div>' +
+          '</div>' : '') +
         (crm.notes ? '<div style="margin-top:12px;font-size:12px;color:var(--muted);"><strong>Notes:</strong> ' + esc(crm.notes) + '</div>' : '') +
       '</div>' +
     '</div>';
