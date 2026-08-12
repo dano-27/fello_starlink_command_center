@@ -5679,9 +5679,12 @@ app.get('/api/lookup', async (req, res) => {
     }
   }
   
-  // Try fetching Starlink fleet data (non-blocking)
+  // Try fetching Starlink fleet data (only if order has Starlink line items)
   let starlinkFleet = null;
-  if (!isICCID && !isIMEI) {
+  const hasStarlinkRentals = crmOrder && crmOrder.rentals && crmOrder.rentals.some(function(r) {
+    return r.modelName && r.modelName.toLowerCase().includes('starlink');
+  });
+  if (!isICCID && !isIMEI && hasStarlinkRentals) {
    try {
       const slToken = await getStarlinkServerToken();
       if (slToken) {
