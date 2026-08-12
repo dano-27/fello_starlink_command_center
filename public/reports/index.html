@@ -351,11 +351,11 @@
         totalUsageGb += order.totalUsageGB || 0;
         if (order.overageGB > 0) overageCount++;
 
-        var alloc = order.totalGbAllocation || 1;
-        var percent = Math.min(100, ((order.totalUsageGB || 0) / alloc) * 100);
+        var hasAllocation = order.totalGbAllocation > 0;
+        var percent = hasAllocation ? Math.min(100, ((order.totalUsageGB || 0) / order.totalGbAllocation) * 100) : 0;
         var colorClass = 'usage-green';
-        if (percent >= 100) colorClass = 'usage-red';
-        else if (percent >= 80) colorClass = 'usage-yellow';
+        if (hasAllocation && percent >= 100) colorClass = 'usage-red';
+        else if (hasAllocation && percent >= 80) colorClass = 'usage-yellow';
 
         var card = document.createElement('div');
         card.className = 'order-card';
@@ -390,12 +390,10 @@
             '</div>' +
             '<div class="usage-bar-container">' +
               '<div class="usage-stats">' +
-                '<span>' + (order.totalUsageGB || 0).toFixed(2) + ' GB / ' + (order.totalGbAllocation || 0) + ' GB</span>' +
-                '<span>' + percent.toFixed(1) + '%</span>' +
+                '<span>' + (order.totalUsageGB || 0).toFixed(2) + ' GB' + (hasAllocation ? ' / ' + order.totalGbAllocation + ' GB' : ' used') + '</span>' +
+                '<span>' + (hasAllocation ? percent.toFixed(1) + '%' : '<span style="color:#9ca3af;font-weight:400;">No data plan set</span>') + '</span>' +
               '</div>' +
-              '<div class="usage-track">' +
-                '<div class="usage-fill ' + colorClass + '" style="width:' + percent + '%"></div>' +
-              '</div>' +
+              (hasAllocation ? '<div class="usage-track"><div class="usage-fill ' + colorClass + '" style="width:' + percent + '%"></div></div>' : '') +
             '</div>' +
           '</div>' +
           '<div class="order-devices">' +
