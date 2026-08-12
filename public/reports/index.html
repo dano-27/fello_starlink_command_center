@@ -23,11 +23,12 @@
     }
     .header-info h1 {
       font-size: 24px;
-      font-weight: 600;
+      font-weight: 700;
       margin-bottom: 8px;
+      color: #111827;
     }
     .header-info p {
-      color: #9ca3af;
+      color: #6b7280;
       font-size: 14px;
     }
     .controls {
@@ -56,10 +57,11 @@
       background: #3b82f6;
       color: white;
       border: none;
-      padding: 8px 16px;
+      padding: 10px 20px;
       border-radius: 8px;
       cursor: pointer;
-      font-weight: 500;
+      font-weight: 600;
+      font-size: 14px;
       transition: background 0.2s;
     }
     .btn:hover {
@@ -77,29 +79,33 @@
       margin-bottom: 32px;
     }
     .summary-card {
-      background: rgba(255, 255, 255, 0.03);
-      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
       border-radius: 12px;
       padding: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
     }
     .summary-label {
       font-size: 13px;
-      color: #9ca3af;
+      color: #6b7280;
       margin-bottom: 8px;
       font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
     }
     .summary-value {
       font-size: 28px;
       font-weight: 700;
-      color: white;
+      color: #111827;
     }
 
     .order-card {
-      background: rgba(255, 255, 255, 0.03);
-      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
       border-radius: 12px;
       margin-bottom: 16px;
       overflow: hidden;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
     }
     .order-header {
       padding: 20px;
@@ -107,25 +113,29 @@
       justify-content: space-between;
       align-items: center;
       cursor: pointer;
+      transition: background 0.15s;
     }
     .order-header:hover {
-      background: rgba(255, 255, 255, 0.05);
+      background: #f9fafb;
     }
     .order-info h3 {
-      font-size: 18px;
-      font-weight: 600;
+      font-size: 17px;
+      font-weight: 700;
+      color: #111827;
       margin-bottom: 4px;
       display: flex;
       align-items: center;
       gap: 12px;
+      flex-wrap: wrap;
     }
     .order-info p {
-      color: #9ca3af;
-      font-size: 14px;
+      color: #6b7280;
+      font-size: 13px;
     }
     
     .usage-bar-container {
       width: 300px;
+      flex-shrink: 0;
       display: flex;
       flex-direction: column;
       gap: 6px;
@@ -134,11 +144,13 @@
       display: flex;
       justify-content: space-between;
       font-size: 13px;
+      font-weight: 600;
+      color: #374151;
     }
     .usage-track {
       width: 100%;
       height: 8px;
-      background: rgba(255, 255, 255, 0.1);
+      background: #e5e7eb;
       border-radius: 4px;
       overflow: hidden;
     }
@@ -154,7 +166,7 @@
     .order-devices {
       display: none;
       padding: 0 20px 20px;
-      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      border-top: 1px solid #e5e7eb;
     }
     .order-card.expanded .order-devices {
       display: block;
@@ -164,29 +176,35 @@
       width: 100%;
       border-collapse: collapse;
       margin-top: 16px;
-      font-size: 14px;
+      font-size: 13px;
     }
     th {
       text-align: left;
-      padding: 12px 8px;
-      color: #9ca3af;
-      font-weight: 500;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      padding: 10px 8px;
+      color: #6b7280;
+      font-weight: 600;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border-bottom: 2px solid #e5e7eb;
     }
     td {
-      padding: 12px 8px;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-      color: #e5e7eb;
+      padding: 10px 8px;
+      border-bottom: 1px solid #f3f4f6;
+      color: #1f2937;
     }
     tr:last-child td {
       border-bottom: none;
+    }
+    tr:hover td {
+      background: #f9fafb;
     }
 
     .loader {
       display: none;
       width: 24px;
       height: 24px;
-      border: 3px solid rgba(255, 255, 255, 0.1);
+      border: 3px solid #e5e7eb;
       border-top-color: #3b82f6;
       border-radius: 50%;
       animation: spin 1s linear infinite;
