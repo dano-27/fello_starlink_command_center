@@ -69,7 +69,41 @@
     .badge-delete { background: rgba(255,77,65,0.1); color: var(--red); }
     .badge-login { background: rgba(5,172,63,0.1); color: var(--green); }
     .badge-logout { background: rgba(245,146,49,0.1); color: var(--amber); }
+    .badge-view { background: rgba(139,92,246,0.1); color: #8b5cf6; }
     .badge-other { background: var(--surface); color: var(--muted); }
+    
+    .tabs { display: flex; gap: 4px; margin-bottom: 24px; background: var(--surface); padding: 4px; border-radius: 12px; border: 1px solid var(--border); }
+    .tab { padding: 10px 24px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; border: none; font-family: var(--font); background: none; color: var(--muted); transition: all 0.2s; }
+    .tab.active { background: var(--primary); color: white; }
+    .tab:hover:not(.active) { background: rgba(0,0,0,0.04); color: var(--text); }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+    
+    .session-card { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; margin-bottom: 16px; overflow: hidden; }
+    .session-header { padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; transition: background 0.15s; }
+    .session-header:hover { background: var(--surface); }
+    .session-user { font-weight: 700; font-size: 15px; }
+    .session-meta { font-size: 12px; color: var(--muted); margin-top: 4px; }
+    .session-stats { display: flex; gap: 16px; align-items: center; }
+    .session-stat { text-align: center; }
+    .session-stat-value { font-size: 18px; font-weight: 700; color: var(--primary); }
+    .session-stat-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+    .session-body { display: none; border-top: 1px solid var(--border); padding: 16px 20px; }
+    .session-card.expanded .session-body { display: block; }
+    
+    .task-item { display: flex; gap: 16px; align-items: flex-start; padding: 12px 0; border-bottom: 1px solid var(--border); }
+    .task-item:last-child { border-bottom: none; }
+    .task-dot { width: 12px; height: 12px; border-radius: 50%; background: var(--primary); margin-top: 4px; flex-shrink: 0; }
+    .task-info { flex: 1; }
+    .task-order { font-weight: 700; font-size: 14px; }
+    .task-time { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .task-actions { font-size: 11px; color: var(--muted); margin-top: 6px; display: flex; flex-wrap: wrap; gap: 4px; }
+    .task-duration { font-weight: 700; font-size: 14px; color: var(--primary); white-space: nowrap; }
+    
+    .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+    .stat-card { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+    .stat-card-value { font-size: 28px; font-weight: 700; color: var(--text); }
+    .stat-card-label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px; }
     
     .details {
       max-width: 300px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; font-family: monospace; font-size: 12px; color: var(--muted);
@@ -93,6 +127,13 @@
   </header>
 
   <div class="container">
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('log')">📋 Audit Log</button>
+      <button class="tab" onclick="switchTab('sessions')">🕐 Sessions</button>
+      <button class="tab" onclick="switchTab('stats')">📊 Agent Stats</button>
+    </div>
+
+    <div id="panel-log" class="tab-panel active">
     <div class="filters">
       <div class="filter-group">
         <label>User</label>
@@ -152,6 +193,32 @@
       </div>
       <button class="btn btn-outline" onclick="loadMore()" id="load-more">Load More</button>
     </div>
+    </div>
+    </div><!-- end panel-log -->
+
+    <div id="panel-sessions" class="tab-panel">
+      <div class="filters">
+        <div class="filter-group">
+          <label>Agent</label>
+          <select id="s-user" class="filter-input"><option value="">All Agents</option></select>
+        </div>
+        <div class="filter-group">
+          <label>From</label>
+          <input type="date" id="s-from" class="filter-input">
+        </div>
+        <div class="filter-group">
+          <label>To</label>
+          <input type="date" id="s-to" class="filter-input">
+        </div>
+        <button class="btn btn-primary" onclick="loadSessions()">Load Sessions</button>
+      </div>
+      <div id="sessions-container"></div>
+    </div>
+
+    <div id="panel-stats" class="tab-panel">
+      <div class="stats-grid" id="stats-grid"></div>
+      <div id="stats-table-container"></div>
+    </div>
   </div>
 
   <script>
@@ -164,40 +231,55 @@
       if(method === 'DELETE') return 'badge-delete';
       if(method === 'LOGIN') return 'badge-login';
       if(method === 'LOGOUT') return 'badge-logout';
+      if(method === 'VIEW') return 'badge-view';
       return 'badge-other';
     }
 
     function formatDate(iso) {
-      const d = new Date(iso);
+      var d = new Date(iso);
       return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
     }
 
-    async function loadData(append = false) {
+    function formatTime(iso) {
+      if (!iso) return '-';
+      var d = new Date(iso);
+      return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    }
+
+    // Tab switching
+    function switchTab(tab) {
+      document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
+      document.querySelectorAll('.tab-panel').forEach(function(p) { p.classList.remove('active'); });
+      document.getElementById('panel-' + tab).classList.add('active');
+      event.target.classList.add('active');
+      if (tab === 'sessions') loadSessions();
+      if (tab === 'stats') loadStats();
+    }
+
+    // ── Audit Log Tab ──
+    async function loadData(append) {
       if(!append) offset = 0;
-      
-      const u = document.getElementById('f-user').value;
-      const a = document.getElementById('f-action').value;
-      const s = document.getElementById('f-search').value;
-      
-      const query = new URLSearchParams({ limit, offset, user: u, method: a, search: s });
+      var u = document.getElementById('f-user').value;
+      var a = document.getElementById('f-action').value;
+      var s = document.getElementById('f-search').value;
+      var query = new URLSearchParams({ limit: limit, offset: offset, user: u, method: a, search: s });
       try {
-        const res = await fetch('/api/audit/log?' + query);
-        const data = await res.json();
-        
-        const tb = document.getElementById('table-body');
+        var res = await fetch('/api/audit/log?' + query);
+        var data = await res.json();
+        var tb = document.getElementById('table-body');
         if(!append) tb.innerHTML = '';
-        
         if(!data.entries || data.entries.length === 0) {
-          if(!append) tb.innerHTML = '<tr><td colspan="6" class="empty-state">No audit entries found</td></tr>';
+          if(!append) tb.innerHTML = '<tr><td colspan="7" class="empty-state">No audit entries found</td></tr>';
           document.getElementById('load-more').style.display = 'none';
         } else {
           data.entries.forEach(function(e) {
             var tr = document.createElement('tr');
-            var detailText = e.body ? JSON.stringify(e.body) : (e.details ? JSON.stringify(e.details) : '-');
+            var detailText = e.body ? JSON.stringify(e.body) : '-';
+            var statusBadge = e.status ? '<span style="font-size:11px;color:' + (e.status < 400 ? 'var(--green)' : 'var(--red)') + '">' + e.status + '</span>' : '';
             tr.innerHTML =
               '<td>' + formatDate(e.timestamp) + '</td>' +
-              '<td style="font-weight:500">' + (e.user || '-') + '</td>' +
-              '<td><span class="badge ' + getBadgeClass(e.method || e.action) + '">' + (e.method || e.action || '-') + '</span></td>' +
+              '<td style="font-weight:500">' + (e.user || '-') + '<br><span style="font-size:10px;color:var(--muted)">' + (e.role || '') + '</span></td>' +
+              '<td><span class="badge ' + getBadgeClass(e.method) + '">' + (e.method || '-') + '</span> ' + statusBadge + '</td>' +
               '<td style="font-family:monospace;font-size:12px">' + (e.path || '-') + '</td>' +
               '<td><div class="details" onclick="this.classList.toggle(\'expanded\')" title="Click to expand">' + detailText + '</div></td>' +
               '<td style="color:var(--muted);font-size:11px">' + (e.ip || '-') + '</td>';
@@ -207,45 +289,169 @@
         }
         document.getElementById('last-updated').textContent = 'Last updated: ' + new Date().toLocaleTimeString();
         populateUsers(data.entries);
-      } catch(e) {
-        console.error(e);
-      }
+      } catch(e) { console.error(e); }
     }
 
     function populateUsers(entries) {
-      const select = document.getElementById('f-user');
-      const existing = new Set([...select.options].map(o => o.value));
-      entries.forEach(e => {
-        if(e.user && !existing.has(e.user)) {
-          existing.add(e.user);
-          const opt = document.createElement('option');
-          opt.value = e.user;
-          opt.textContent = e.user;
-          select.appendChild(opt);
-        }
+      var selects = [document.getElementById('f-user'), document.getElementById('s-user')];
+      selects.forEach(function(select) {
+        if (!select) return;
+        var existing = new Set([].map.call(select.options, function(o) { return o.value; }));
+        entries.forEach(function(e) {
+          if(e.user && !existing.has(e.user)) {
+            existing.add(e.user);
+            var opt = document.createElement('option');
+            opt.value = e.user;
+            opt.textContent = e.user;
+            select.appendChild(opt);
+          }
+        });
       });
     }
 
-    function loadMore() {
-      offset += limit;
-      loadData(true);
-    }
+    function loadMore() { offset += limit; loadData(true); }
+    function exportCsv() { window.location.href = '/api/audit/log/export'; }
 
-    function exportCsv() {
-      window.location.href = '/api/audit/log/export';
-    }
-
-    document.getElementById('auto-refresh').addEventListener('change', (e) => {
-      if(e.target.checked) {
-        autoRefreshInterval = setInterval(() => loadData(), 30000);
-      } else {
-        clearInterval(autoRefreshInterval);
-      }
+    document.getElementById('auto-refresh').addEventListener('change', function(e) {
+      if(e.target.checked) { autoRefreshInterval = setInterval(function() { loadData(); }, 30000); }
+      else { clearInterval(autoRefreshInterval); }
     });
+
+    // ── Sessions Tab ──
+    async function loadSessions() {
+      var container = document.getElementById('sessions-container');
+      container.innerHTML = '<div class="empty-state">Loading sessions...</div>';
+      var u = document.getElementById('s-user').value;
+      var from = document.getElementById('s-from').value;
+      var to = document.getElementById('s-to').value;
+      var params = new URLSearchParams({ limit: 30 });
+      if (u) params.set('user', u);
+      if (from) params.set('from', from);
+      if (to) params.set('to', to);
+
+      try {
+        var res = await fetch('/api/audit/sessions?' + params);
+        var data = await res.json();
+        container.innerHTML = '';
+
+        if (!data.sessions || data.sessions.length === 0) {
+          container.innerHTML = '<div class="empty-state">No sessions found for this period</div>';
+          return;
+        }
+
+        // Populate user dropdown
+        var userSet = new Set();
+        data.sessions.forEach(function(s) { userSet.add(s.user); });
+        var select = document.getElementById('s-user');
+        var existing = new Set([].map.call(select.options, function(o) { return o.value; }));
+        userSet.forEach(function(u) {
+          if (!existing.has(u)) {
+            var opt = document.createElement('option');
+            opt.value = u; opt.textContent = u;
+            select.appendChild(opt);
+          }
+        });
+
+        data.sessions.forEach(function(session) {
+          var card = document.createElement('div');
+          card.className = 'session-card';
+
+          var tasksHtml = '';
+          (session.tasks || []).forEach(function(task) {
+            var actionBadges = (task.actions || []).slice(0, 8).map(function(a) {
+              return '<span class="badge ' + getBadgeClass(a.method) + '" style="font-size:10px;padding:2px 5px;">' + a.method + ' ' + (a.path || '').split('/').pop() + '</span>';
+            }).join('');
+            if (task.actions && task.actions.length > 8) actionBadges += '<span style="font-size:10px;color:var(--muted)">+' + (task.actions.length - 8) + ' more</span>';
+
+            tasksHtml +=
+              '<div class="task-item">' +
+                '<div class="task-dot"></div>' +
+                '<div class="task-info">' +
+                  '<div class="task-order">' + (task.orderId || 'General') + '</div>' +
+                  '<div class="task-time">' + formatTime(task.startTime) + ' → ' + formatTime(task.endTime) + ' &bull; ' + (task.actionCount || 0) + ' actions</div>' +
+                  '<div class="task-actions">' + actionBadges + '</div>' +
+                '</div>' +
+                '<div class="task-duration">' + (task.durationFormatted || '-') + '</div>' +
+              '</div>';
+          });
+
+          card.innerHTML =
+            '<div class="session-header">' +
+              '<div>' +
+                '<div class="session-user">' + (session.name || session.user) + ' <span style="font-weight:400;font-size:12px;color:var(--muted)">(' + session.user + ')</span></div>' +
+                '<div class="session-meta">' +
+                  formatDate(session.loginTime || '') + (session.logoutTime ? ' → ' + formatTime(session.logoutTime) : ' (active)') +
+                  ' &bull; ' + session.durationFormatted +
+                  ' &bull; IP: ' + (session.ip || '-') +
+                '</div>' +
+              '</div>' +
+              '<div class="session-stats">' +
+                '<div class="session-stat"><div class="session-stat-value">' + (session.taskCount || 0) + '</div><div class="session-stat-label">Tasks</div></div>' +
+                '<div class="session-stat"><div class="session-stat-value">' + (session.totalActions || 0) + '</div><div class="session-stat-label">Actions</div></div>' +
+              '</div>' +
+            '</div>' +
+            '<div class="session-body">' + (tasksHtml || '<div class="empty-state" style="padding:16px">No task activity recorded</div>') + '</div>';
+
+          card.querySelector('.session-header').addEventListener('click', function() { card.classList.toggle('expanded'); });
+          container.appendChild(card);
+        });
+      } catch(e) {
+        container.innerHTML = '<div class="empty-state" style="color:var(--red)">Error loading sessions: ' + e.message + '</div>';
+      }
+    }
+
+    // ── Agent Stats Tab ──
+    async function loadStats() {
+      try {
+        var res = await fetch('/api/audit/agent-stats');
+        var data = await res.json();
+        var grid = document.getElementById('stats-grid');
+        var tableContainer = document.getElementById('stats-table-container');
+
+        if (!data.agents || data.agents.length === 0) {
+          grid.innerHTML = '<div class="empty-state" style="grid-column:1/-1">No agent data yet</div>';
+          return;
+        }
+
+        var totalActions = 0, totalLogins = 0, totalLookups = 0;
+        data.agents.forEach(function(a) { totalActions += a.totalActions; totalLogins += a.logins; totalLookups += a.lookups; });
+
+        grid.innerHTML =
+          '<div class="stat-card"><div class="stat-card-value">' + data.agents.length + '</div><div class="stat-card-label">Active Agents</div></div>' +
+          '<div class="stat-card"><div class="stat-card-value">' + totalActions + '</div><div class="stat-card-label">Total Actions</div></div>' +
+          '<div class="stat-card"><div class="stat-card-value">' + totalLogins + '</div><div class="stat-card-label">Total Logins</div></div>' +
+          '<div class="stat-card"><div class="stat-card-value">' + totalLookups + '</div><div class="stat-card-label">Order Lookups</div></div>';
+
+        var rows = data.agents.map(function(a) {
+          return '<tr>' +
+            '<td style="font-weight:600">' + a.user + '</td>' +
+            '<td>' + (a.name || '-') + '</td>' +
+            '<td>' + (a.role || '-') + '</td>' +
+            '<td style="font-weight:700;color:var(--primary)">' + a.totalActions + '</td>' +
+            '<td>' + a.logins + '</td>' +
+            '<td>' + a.lookups + '</td>' +
+            '<td>' + a.writes + '</td>' +
+            '<td>' + a.activeDays + '</td>' +
+            '<td>' + a.avgActionsPerDay + '</td>' +
+            '<td style="font-size:11px;color:var(--muted)">' + formatDate(a.lastSeen) + '</td>' +
+          '</tr>';
+        }).join('');
+
+        tableContainer.innerHTML =
+          '<div class="table-container"><table>' +
+            '<thead><tr>' +
+              '<th>Username</th><th>Name</th><th>Role</th><th>Total Actions</th><th>Logins</th><th>Lookups</th><th>Writes</th><th>Active Days</th><th>Avg/Day</th><th>Last Seen</th>' +
+            '</tr></thead>' +
+            '<tbody>' + rows + '</tbody>' +
+          '</table></div>';
+      } catch(e) {
+        document.getElementById('stats-grid').innerHTML = '<div class="empty-state" style="color:var(--red);grid-column:1/-1">Error: ' + e.message + '</div>';
+      }
+    }
 
     // Initial load
     loadData();
-    autoRefreshInterval = setInterval(() => loadData(), 30000);
+    autoRefreshInterval = setInterval(function() { loadData(); }, 30000);
 
     // User Badge script
     fetch("/api/auth/me").then(function(r){return r.json()}).then(function(u){

@@ -58,6 +58,7 @@ function createSession(user) {
     username: user.username,
     name: user.name,
     role: user.role,
+    sessionToken: token,
     loginTime: new Date().toISOString()
   });
   return token;
@@ -77,6 +78,26 @@ function auditLog(entry) {
     ...entry
   }) + '\n';
   try { fs.appendFileSync(AUDIT_LOG, line); } catch(e) { console.error('[Audit] Write failed:', e.message); }
+}
+
+// Extract task context from a request (order ID, branch ID, customer)
+function extractTaskContext(req) {
+  const ctx = {};
+  // From query params (lookup)
+  if (req.query.q) ctx.query = req.query.q;
+  // From URL path params
+  if (req.params.branchId) ctx.branchId = req.params.branchId;
+  if (req.params.userTerminalId) ctx.terminalId = req.params.userTerminalId;
+  if (req.params.id) ctx.resourceId = req.params.id;
+  if (req.params.deviceId) ctx.deviceId = req.params.deviceId;
+  if (req.params.groupId) ctx.groupId = req.params.groupId;
+  // From body
+  if (req.body) {
+    if (req.body.branchId) ctx.branchId = req.body.branchId;
+    if (req.body.orderId) ctx.orderId = req.body.orderId;
+    if (req.body.flyOrderId) ctx.orderId = req.body.flyOrderId;
+  }
+  return Object.keys(ctx).length > 0 ? ctx : undefined;
 }
 
 // Cookie parser helper
@@ -330,20 +351,49 @@ app.use((req, res, next) => {
 });
 
 // ── Audit middleware ────────────────────────────────────────────────
+// Tracked GET endpoints for session/task tracking
+const TRACKED_GET_PATHS = ['/api/lookup', '/api/reports/overage', '/api/webbing/branches'];
+
 app.use((req, res, next) => {
-  if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method) && req.user) {
-    // Don't log auth endpoints or health checks
-    if (!req.path.startsWith('/api/auth/')) {
+  if (!req.user) return next();
+  
+  const isWrite = ['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method);
+  const isTrackedGet = req.method === 'GET' && TRACKED_GET_PATHS.some(p => req.path.startsWith(p));
+  
+  if (isWrite || isTrackedGet) {
+    // Don't log auth endpoints (except login/logout which are logged manually)
+    if (req.path.startsWith('/api/auth/')) return next();
+    
+    // Build the audit body — redact passwords
+    let auditBody = undefined;
+    if (isWrite && req.body && Object.keys(req.body).length > 0) {
+      auditBody = { ...req.body };
+      if (auditBody.password) auditBody.password = '***REDACTED***';
+    }
+    
+    // For GET requests, log query params instead of body
+    if (isTrackedGet && req.query && Object.keys(req.query).length > 0) {
+      auditBody = { ...req.query };
+    }
+    
+    // Capture response status after handler completes
+    const startTime = Date.now();
+    res.on('finish', () => {
       auditLog({
         user: req.user.username,
         name: req.user.name,
-        method: req.method,
+        role: req.user.role,
+        sessionId: req.user.sessionToken || req.headers['x-session-id'] || undefined,
+        method: isTrackedGet ? 'VIEW' : req.method,
         path: req.path,
-        body: req.body && Object.keys(req.body).length > 0 ? req.body : undefined,
+        body: auditBody,
+        taskContext: extractTaskContext(req),
+        status: res.statusCode,
+        durationMs: Date.now() - startTime,
         ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress,
         userAgent: req.headers['user-agent']
       });
-    }
+    });
   }
   next();
 });
@@ -363,14 +413,14 @@ app.post('/api/auth/login', (req, res) => {
 
   const user = users.get(username.toLowerCase());
   if (!user || user.password !== password) {
-    auditLog({ user: username, name: 'Unknown', method: 'LOGIN', path: '/api/auth/login', body: { success: false }, ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress });
+    auditLog({ user: username, name: 'Unknown', method: 'LOGIN', path: '/api/auth/login', body: { success: false }, ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress, userAgent: req.headers['user-agent'] });
     return res.status(401).json({ error: 'Invalid username or password' });
   }
 
   const token = createSession(user);
   res.setHeader('Set-Cookie', `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_MAX_AGE / 1000}`);
 
-  auditLog({ user: user.username, name: user.name, method: 'LOGIN', path: '/api/auth/login', body: { success: true }, ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress });
+  auditLog({ user: user.username, name: user.name, role: user.role, sessionId: token, method: 'LOGIN', path: '/api/auth/login', body: { success: true }, ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress, userAgent: req.headers['user-agent'] });
 
   res.json({ success: true, user: { username: user.username, name: user.name, role: user.role } });
 });
@@ -381,7 +431,7 @@ app.post('/api/auth/logout', (req, res) => {
   if (token) {
     const session = sessions.get(token);
     if (session) {
-      auditLog({ user: session.username, name: session.name, method: 'LOGOUT', path: '/api/auth/logout', ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress });
+      auditLog({ user: session.username, name: session.name, role: session.role, sessionId: token, method: 'LOGOUT', path: '/api/auth/logout', ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress, userAgent: req.headers['user-agent'] });
     }
     sessions.delete(token);
   }
@@ -431,7 +481,6 @@ app.get('/api/audit/log/export', (req, res) => {
   if (!req.user || req.user.role !== 'admin') {
     return res.status(403).json({ error: 'Admin access required' });
   }
-
   try {
     if (!fs.existsSync(AUDIT_LOG)) return res.send('No audit log entries');
     const raw = fs.readFileSync(AUDIT_LOG, 'utf-8');
