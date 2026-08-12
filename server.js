@@ -352,6 +352,7 @@ app.use((req, res, next) => {
 app.get('/', (req, res) => res.redirect('/lookup/'));
 
 app.use(express.static(path.join(__dirname, 'public')));
+app.use('/reports', express.static(path.join(__dirname, 'public', 'reports')));
 
 // ── Auth Endpoints ──────────────────────────────────────────────────
 app.post('/api/auth/login', (req, res) => {
@@ -5125,6 +5126,238 @@ app.get('/api/webbing/branches/:branchId/usage', async (req, res) => {
   } catch (error) {
     console.error('Error generating branch usage report:', error);
     res.status(500).json({ error: 'Failed to generate report' });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════
+//  AUTOMATED DATA OVERAGE REPORTS
+// ══════════════════════════════════════════════════════════════════════
+
+// GET /api/reports/overage?date=YYYY-MM-DD
+// Default date = today → reports on orders that ended YESTERDAY
+// The rental start→end dates are used as the usage query window
+app.get('/api/reports/overage', async (req, res) => {
+  try {
+    const reportDate = req.query.date || new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    // Orders that ended yesterday relative to report date
+    const rd = new Date(reportDate + 'T12:00:00Z');
+    const yesterday = new Date(rd);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const targetEnd = yesterday.toISOString().split('T')[0]; // YYYY-MM-DD
+    
+    console.log('[OverageReport] Report date: ' + reportDate + ', looking for orders ending: ' + targetEnd);
+
+    // Step 1: Fetch all orders from IMS
+    const imsToken = process.env.IMS_TOKEN || '2423|rydhEvIv6ZsEABia67jH5ffhMUJLthtu3YrfySpx93f5cc0e';
+    const imsBase = process.env.IMS_BASE_URL || 'https://ims-v4-migration-prod-876702752852.us-east4.run.app';
+    
+    const ordersResp = await fetch(imsBase + '/api/orders', {
+      headers: { 'Authorization': 'Bearer ' + imsToken }
+    });
+    if (!ordersResp.ok) {
+      return res.status(502).json({ error: 'Failed to fetch orders from IMS' });
+    }
+    const allOrders = await ordersResp.json();
+    
+    // Step 2: Filter orders ending on target date
+    const endingOrders = allOrders.filter(function(o) {
+      return o.shipments_max_rental_end === targetEnd;
+    });
+    
+    console.log('[OverageReport] Found ' + endingOrders.length + ' orders ending on ' + targetEnd);
+    
+    if (endingOrders.length === 0) {
+      return res.json({
+        reportDate: reportDate,
+        targetEndDate: targetEnd,
+        orders: [],
+        message: 'No orders ended on ' + targetEnd
+      });
+    }
+
+    // Step 3: For each order, get full details from NextGen + branch usage from Webbing
+    const client = getWebbingClient();
+    const orderReports = [];
+
+    for (const order of endingOrders) {
+      const flyId = order.fly_order_id;
+      const rentalStart = order.shipments_min_rental_start;
+      const rentalEnd = order.shipments_max_rental_end;
+      const totalGbAllocation = parseFloat(order.total_gb_amount || 0);
+
+      // Get full order details from NextGen
+      let orderDetail = null;
+      try {
+        const detailResp = await fetch(imsBase + '/api/nextgen/v1/orders/' + flyId, {
+          headers: { 'Authorization': 'Bearer ' + imsToken }
+        });
+        if (detailResp.ok) {
+          orderDetail = await detailResp.json();
+        }
+      } catch (e) {
+        console.log('[OverageReport] Could not fetch order detail for ' + flyId + ': ' + e.message);
+      }
+
+      // Find Webbing branch for this order
+      const branchName = flyId.toUpperCase();
+      let branchDevices = webbingDeviceCache.filter(function(d) {
+        return d.BranchName && d.BranchName.toUpperCase() === branchName;
+      });
+      let branchId = branchDevices.length > 0 ? branchDevices[0].BranchID : null;
+
+      // If not in cache, try searching Webbing API
+      if (branchDevices.length === 0) {
+        try {
+          const searchResult = await client.searchBranches(flyId, 1, 100);
+          const branchesContainer = searchResult.Branches || {};
+          let branchRecords = branchesContainer.BranchRecord || [];
+          if (!Array.isArray(branchRecords)) branchRecords = branchRecords ? [branchRecords] : [];
+          
+          const foundBranch = branchRecords.find(function(b) {
+            return (b.BranchName || b.Name || '').toUpperCase() === branchName;
+          }) || (branchRecords.length === 1 ? branchRecords[0] : null);
+          
+          if (foundBranch) {
+            branchId = foundBranch.BranchID || foundBranch.ID;
+            const devResult = await client.getServiceDevices({ branchId: branchId, pageSize: 500 });
+            let devRecords = devResult.ServiceDevices?.ServiceDeviceRecord || devResult.ServiceDevices || [];
+            if (!Array.isArray(devRecords)) devRecords = devRecords ? [devRecords] : [];
+            branchDevices = devRecords;
+          }
+        } catch (e) {
+          console.log('[OverageReport] Webbing branch search failed for ' + flyId + ': ' + e.message);
+        }
+      }
+
+      // Skip orders with no SIM devices
+      if (branchDevices.length === 0) {
+        orderReports.push({
+          flyOrderId: flyId,
+          customerName: order.customer_name || '',
+          status: order.status || '',
+          rentalStart: rentalStart,
+          rentalEnd: rentalEnd,
+          totalGbAllocation: totalGbAllocation,
+          branchId: null,
+          totalDevices: 0,
+          totalUsageMB: 0,
+          totalUsageGB: 0,
+          overageGB: 0,
+          devices: [],
+          error: 'No Webbing branch found for this order'
+        });
+        continue;
+      }
+
+      // Convert rental dates to Webbing format (MM/dd/yyyy)
+      let startStr = rentalStart;
+      let endStr = rentalEnd;
+      if (rentalStart && rentalStart.includes('-')) {
+        const [sy, sm, sd] = rentalStart.split('-');
+        startStr = sm + '/' + sd + '/' + sy;
+      }
+      if (rentalEnd && rentalEnd.includes('-')) {
+        const [ey, em, ed] = rentalEnd.split('-');
+        endStr = em + '/' + ed + '/' + ey;
+      }
+
+      // Split into 31-day chunks (Webbing max)
+      const [sm2, sd2, sy2] = startStr.split('/').map(Number);
+      const [em2, ed2, ey2] = endStr.split('/').map(Number);
+      const startDt = new Date(sy2, sm2 - 1, sd2);
+      const endDt = new Date(ey2, em2 - 1, ed2);
+      const dateChunks = [];
+      let chunkStart = new Date(startDt);
+      while (chunkStart < endDt) {
+        let chunkEnd = new Date(chunkStart);
+        chunkEnd.setDate(chunkEnd.getDate() + 30);
+        if (chunkEnd > endDt) chunkEnd = new Date(endDt);
+        dateChunks.push({
+          start: String(chunkStart.getMonth()+1).padStart(2,'0') + '/' + String(chunkStart.getDate()).padStart(2,'0') + '/' + chunkStart.getFullYear(),
+          end: String(chunkEnd.getMonth()+1).padStart(2,'0') + '/' + String(chunkEnd.getDate()).padStart(2,'0') + '/' + chunkEnd.getFullYear()
+        });
+        chunkStart = new Date(chunkEnd);
+        chunkStart.setDate(chunkStart.getDate() + 1);
+      }
+      if (dateChunks.length === 0) dateChunks.push({ start: startStr, end: endStr });
+
+      // Fetch usage for each device
+      const deviceResults = [];
+      let totalUsageMB = 0;
+      const BATCH_SIZE = 15;
+
+      async function fetchDeviceUsage(device) {
+        let usageMB = 0;
+        let usageDays = 0;
+        for (const chunk of dateChunks) {
+          try {
+            const usageData = await client.getDeviceUsage(device.ServiceDeviceID, chunk.start, chunk.end, 'Unknown');
+            const usage = usageData?.Usage;
+            if (usage && usage.DeviceUsageRecord) {
+              const records = Array.isArray(usage.DeviceUsageRecord) ? usage.DeviceUsageRecord : [usage.DeviceUsageRecord];
+              for (const r of records) {
+                usageMB += parseFloat(r.TotalUsage || 0);
+                usageDays += parseInt(r.TotalUsageDays || 0, 10);
+              }
+            }
+          } catch (e) { /* skip chunk errors */ }
+        }
+        return {
+          ssid: device.SSID || device.Serial || '',
+          serial: device.Serial || '',
+          imei: String(device.IMEI || ''),
+          iccid: device.ICCID || '',
+          plan: device.ProductName || '',
+          status: device.StatusName || '',
+          usageMB: Math.round(usageMB * 100) / 100,
+          usageGB: Math.round((usageMB / 1024) * 1000) / 1000,
+          usageDays: usageDays
+        };
+      }
+
+      for (let i = 0; i < branchDevices.length; i += BATCH_SIZE) {
+        const batch = branchDevices.slice(i, i + BATCH_SIZE);
+        const batchResults = await Promise.all(batch.map(function(d) { return fetchDeviceUsage(d); }));
+        deviceResults.push(...batchResults);
+        for (const r of batchResults) { totalUsageMB += r.usageMB; }
+      }
+
+      deviceResults.sort(function(a, b) { return b.usageMB - a.usageMB; });
+
+      const totalUsageGB = Math.round((totalUsageMB / 1024) * 1000) / 1000;
+      const overageGB = totalGbAllocation > 0 ? Math.max(0, Math.round((totalUsageGB - totalGbAllocation) * 1000) / 1000) : 0;
+
+      orderReports.push({
+        flyOrderId: flyId,
+        customerName: order.customer_name || '',
+        status: order.status || '',
+        rentalStart: rentalStart,
+        rentalEnd: rentalEnd,
+        totalGbAllocation: totalGbAllocation,
+        branchId: branchId,
+        totalDevices: branchDevices.length,
+        devicesWithUsage: deviceResults.filter(function(d) { return d.usageMB > 0; }).length,
+        totalUsageMB: Math.round(totalUsageMB * 100) / 100,
+        totalUsageGB: totalUsageGB,
+        overageGB: overageGB,
+        usagePercent: totalGbAllocation > 0 ? Math.round((totalUsageGB / totalGbAllocation) * 1000) / 10 : null,
+        devices: deviceResults
+      });
+
+      console.log('[OverageReport] ' + flyId + ': ' + totalUsageGB + ' GB used / ' + totalGbAllocation + ' GB allocated (' + deviceResults.length + ' devices)');
+    }
+
+    res.json({
+      reportDate: reportDate,
+      targetEndDate: targetEnd,
+      generatedAt: new Date().toISOString(),
+      orderCount: orderReports.length,
+      orders: orderReports
+    });
+
+  } catch (error) {
+    console.error('[OverageReport] Error:', error);
+    res.status(500).json({ error: 'Failed to generate overage report: ' + error.message });
   }
 });
 

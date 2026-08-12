@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Data Overage Reports</title>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/lookup/styles.css">
+  <style>
+    .report-container {
+      max-width: 1200px;
+      margin: 32px auto;
+      padding: 0 24px;
+    }
+    .header-section {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 24px;
+    }
+    .header-info {
+      flex: 1;
+    }
+    .header-info h1 {
+      font-size: 24px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+    .header-info p {
+      color: #9ca3af;
+      font-size: 14px;
+    }
+    .controls {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+    .date-input {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: white;
+      padding: 8px 12px;
+      border-radius: 8px;
+      font-family: inherit;
+      outline: none;
+      color-scheme: dark;
+    }
+    .date-input:focus {
+      border-color: #3b82f6;
+    }
+    .btn {
+      background: #3b82f6;
+      color: white;
+      border: none;
+      padding: 8px 16px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: 500;
+      transition: background 0.2s;
+    }
+    .btn:hover {
+      background: #2563eb;
+    }
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+    .summary-card {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      padding: 20px;
+    }
+    .summary-label {
+      font-size: 13px;
+      color: #9ca3af;
+      margin-bottom: 8px;
+      font-weight: 500;
+    }
+    .summary-value {
+      font-size: 28px;
+      font-weight: 700;
+      color: white;
+    }
+
+    .order-card {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      margin-bottom: 16px;
+      overflow: hidden;
+    }
+    .order-header {
+      padding: 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+    }
+    .order-header:hover {
+      background: rgba(255, 255, 255, 0.05);
+    }
+    .order-info h3 {
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .order-info p {
+      color: #9ca3af;
+      font-size: 14px;
+    }
+    
+    .usage-bar-container {
+      width: 300px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .usage-stats {
+      display: flex;
+      justify-content: space-between;
+      font-size: 13px;
+    }
+    .usage-track {
+      width: 100%;
+      height: 8px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .usage-fill {
+      height: 100%;
+      border-radius: 4px;
+      transition: width 0.3s ease, background 0.3s ease;
+    }
+    .usage-green { background: #22c55e; }
+    .usage-yellow { background: #eab308; }
+    .usage-red { background: #ef4444; }
+
+    .order-devices {
+      display: none;
+      padding: 0 20px 20px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .order-card.expanded .order-devices {
+      display: block;
+    }
+    
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 16px;
+      font-size: 14px;
+    }
+    th {
+      text-align: left;
+      padding: 12px 8px;
+      color: #9ca3af;
+      font-weight: 500;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    td {
+      padding: 12px 8px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      color: #e5e7eb;
+    }
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    .loader {
+      display: none;
+      width: 24px;
+      height: 24px;
+      border: 3px solid rgba(255, 255, 255, 0.1);
+      border-top-color: #3b82f6;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin { 100% { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <header class="header">
+    <div class="header-top">
+      <div class="header-brand">
+        <a href="/lookup/" class="brand-link">
+          <img src="/lookup/fello-logo.png" alt="Fello" class="brand-logo-img">
+          <span class="brand-divider"></span>
+          <span class="brand-chip">Command Center</span>
+        </a>
+      </div>
+      <div class="tools-nav">
+        <button class="tools-toggle" id="tools-toggle">🧰 Tools <span class="tools-chevron">▼</span></button>
+        <div class="tools-dropdown" id="tools-dropdown">
+          <a href="/lookup/" class="tools-link"><span>🔍</span> Lookup</a>
+          <a href="/starlink/" class="tools-link"><span>📡</span> Starlink</a>
+          <a href="/reports/" class="tools-link"><span>📊</span> Reports</a>
+          <a href="#" class="tools-link" onclick="window.showEsimTool && window.showEsimTool()"><span>📲</span> eSIM</a>
+          <a href="/admin/users" class="tools-link"><span>👥</span> Admin</a>
+        </div>
+      </div>
+      <div id="user-badge" style="margin-left:auto;display:flex;align-items:center;gap:8px;font-size:13px;padding-left:16px;"></div>
+    </div>
+  </header>
+
+  <main class="report-container">
+    <div class="header-section">
+      <div class="header-info">
+        <h1>Data Overage Reports</h1>
+        <p>Reports show data usage for orders that ended the day before the selected date</p>
+      </div>
+      <div class="controls">
+        <input type="date" id="date-picker" class="date-input">
+        <button id="generate-btn" class="btn">Generate Report</button>
+        <button id="export-btn" class="btn" style="display:none; background: #10b981;">Export CSV</button>
+        <div class="loader" id="loader"></div>
+      </div>
+    </div>
+    
+    <div id="error-msg" style="color: #ef4444; margin-bottom: 16px; display: none;"></div>
+
+    <div class="summary-grid" id="summary-grid" style="display: none;">
+      <div class="summary-card">
+        <div class="summary-label">Orders Checked</div>
+        <div class="summary-value" id="stat-orders">0</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-label">Total Devices</div>
+        <div class="summary-value" id="stat-devices">0</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-label">Total Usage (GB)</div>
+        <div class="summary-value" id="stat-usage">0</div>
+      </div>
+      <div class="summary-card">
+        <div class="summary-label">Orders Over Limit</div>
+        <div class="summary-value" id="stat-overage">0</div>
+      </div>
+    </div>
+
+    <div id="results-container">
+      <!-- Results populated here -->
+    </div>
+  </main>
+
+  <script>
+    document.getElementById('tools-toggle')?.addEventListener('click', () => {
+      document.getElementById('tools-dropdown').classList.toggle('show');
+    });
+
+    const datePicker = document.getElementById('date-picker');
+    const today = new Date().toISOString().split('T')[0];
+    datePicker.value = today;
+
+    let currentReport = null;
+
+    document.getElementById('generate-btn').addEventListener('click', async () => {
+      const date = datePicker.value;
+      if (!date) return;
+      
+      const loader = document.getElementById('loader');
+      const errorMsg = document.getElementById('error-msg');
+      const resultsContainer = document.getElementById('results-container');
+      const summaryGrid = document.getElementById('summary-grid');
+      const exportBtn = document.getElementById('export-btn');
+      const generateBtn = document.getElementById('generate-btn');
+
+      loader.style.display = 'block';
+      generateBtn.disabled = true;
+      errorMsg.style.display = 'none';
+      resultsContainer.innerHTML = '';
+      summaryGrid.style.display = 'none';
+      exportBtn.style.display = 'none';
+
+      try {
+        const response = await fetch(\`/api/reports/overage?date=\${date}\`, {
+          credentials: 'same-origin'
+        });
+        
+        if (response.status === 401) {
+          window.location.href = '/login';
+          return;
+        }
+        
+        if (!response.ok) {
+          throw new Error('Failed to generate report');
+        }
+
+        const data = await response.json();
+        currentReport = data;
+        renderReport(data);
+      } catch (err) {
+        errorMsg.textContent = err.message;
+        errorMsg.style.display = 'block';
+      } finally {
+        loader.style.display = 'none';
+        generateBtn.disabled = false;
+      }
+    });
+
+    function renderReport(data) {
+      document.getElementById('summary-grid').style.display = 'grid';
+      document.getElementById('export-btn').style.display = 'block';
+      
+      document.getElementById('stat-orders').textContent = data.orderCount || 0;
+      
+      let totalDevices = 0;
+      let totalUsageGb = 0;
+      let overageCount = 0;
+
+      const container = document.getElementById('results-container');
+      
+      if (!data.orders || data.orders.length === 0) {
+        container.innerHTML = '<p style="color: #9ca3af; text-align: center; padding: 32px;">No orders found for this date.</p>';
+        return;
+      }
+
+      data.orders.forEach(order => {
+        totalDevices += order.totalDevices || 0;
+        totalUsageGb += order.totalUsageGB || 0;
+        if (order.overageGB > 0) overageCount++;
+
+        const alloc = order.totalGbAllocation || 1; // avoid div by 0
+        const percent = Math.min(100, ((order.totalUsageGB || 0) / alloc) * 100);
+        let colorClass = 'usage-green';
+        if (percent >= 100) colorClass = 'usage-red';
+        else if (percent >= 80) colorClass = 'usage-yellow';
+
+        const card = document.createElement('div');
+        card.className = 'order-card';
+        
+        const devicesHtml = (order.devices || []).sort((a,b) => (b.usageGB || 0) - (a.usageGB || 0)).map(d => \`
+          <tr>
+            <td>\${d.serial || ''}</td>
+            <td>\${d.imei || '-'}</td>
+            <td>\${d.plan || ''}</td>
+            <td>\${d.status || ''}</td>
+            <td>\${(d.usageMB || 0).toFixed(2)}</td>
+            <td>\${(d.usageGB || 0).toFixed(3)}</td>
+            <td>\${d.usageDays || 0}</td>
+          </tr>
+        \`).join('');
+
+        card.innerHTML = \`
+          <div class="order-header">
+            <div class="order-info">
+              <h3>\${order.flyOrderId || ''} - \${order.customerName || ''}</h3>
+              <p>\${order.rentalStart || ''} &rarr; \${order.rentalEnd || ''} &bull; \${order.totalDevices || 0} Devices</p>
+            </div>
+            <div class="usage-bar-container">
+              <div class="usage-stats">
+                <span>Usage: \${(order.totalUsageGB || 0).toFixed(2)} GB / \${order.totalGbAllocation || 0} GB</span>
+                <span>\${percent.toFixed(1)}%</span>
+              </div>
+              <div class="usage-track">
+                <div class="usage-fill \${colorClass}" style="width: \${percent}%"></div>
+              </div>
+            </div>
+          </div>
+          <div class="order-devices">
+            <table>
+              <thead>
+                <tr>
+                  <th>SIM Serial</th>
+                  <th>IMEI</th>
+                  <th>Plan</th>
+                  <th>Status</th>
+                  <th>Usage (MB)</th>
+                  <th>Usage (GB)</th>
+                  <th>Active Days</th>
+                </tr>
+              </thead>
+              <tbody>
+                \${devicesHtml}
+              </tbody>
+            </table>
+          </div>
+        \`;
+
+        card.querySelector('.order-header').addEventListener('click', () => {
+          card.classList.toggle('expanded');
+        });
+
+        container.appendChild(card);
+      });
+
+      document.getElementById('stat-devices').textContent = totalDevices;
+      document.getElementById('stat-usage').textContent = totalUsageGb.toFixed(2);
+      document.getElementById('stat-overage').textContent = overageCount;
+    }
+
+    document.getElementById('export-btn').addEventListener('click', () => {
+      if (!currentReport || !currentReport.orders) return;
+      
+      let csv = 'Order ID,Customer,Start Date,End Date,Allocated GB,Used GB,Overage GB,Device Serial,Device IMEI,Device Usage GB\\n';
+      
+      currentReport.orders.forEach(o => {
+        (o.devices || []).forEach(d => {
+          csv += \`"\${o.flyOrderId}","\${o.customerName}","\${o.rentalStart}","\${o.rentalEnd}",\${o.totalGbAllocation},\${o.totalUsageGB},\${o.overageGB},"\${d.serial}","\${d.imei || ''}",\${d.usageGB}\\n\`;
+        });
+      });
+
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = \`overage_report_\${currentReport.reportDate}.csv\`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    });
+
+    // Auth check
+    fetch("/api/auth/me").then(function(r){return r.json()}).then(function(u){
+      var b=document.getElementById("user-badge");
+      if(b&&u.username){
+        var signOutBtn=document.createElement("button");
+        signOutBtn.textContent="Sign Out";
+        signOutBtn.style.cssText="background:none;border:1px solid rgba(0,0,0,0.1);border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;color:#636363;";
+        signOutBtn.addEventListener("click",function(){fetch("/api/auth/logout",{method:"POST"}).then(function(){location.href="/login"})});
+        var nameSpan=document.createElement("span");
+        nameSpan.style.color="#636363";
+        nameSpan.textContent=u.name;
+        b.appendChild(nameSpan);
+        b.appendChild(signOutBtn);
+        if(u.role==="admin"){
+          var auditLink=document.createElement("a");
+          auditLink.href="/audit/";
+          auditLink.textContent="📋 Audit";
+          auditLink.style.cssText="color:#3166AE;font-size:12px;text-decoration:none;margin-right:8px;";
+          b.insertBefore(auditLink,b.firstChild);
+          var usersLink=document.createElement("a");
+          usersLink.href="/admin/users";
+          usersLink.textContent="👥 Users";
+          usersLink.style.cssText="color:#3166AE;font-size:12px;text-decoration:none;margin-right:8px;";
+          b.insertBefore(usersLink,auditLink.nextSibling);
+        }
+      }
+    }).catch(function(){});
+  </script>
+</body>
+</html>
