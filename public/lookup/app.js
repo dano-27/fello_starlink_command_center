@@ -268,9 +268,12 @@
     '</div>';
   }
 
-  function renderStarlinkFleetSection(terminals) {
+  function renderStarlinkFleetSection(fleet) {
+    var terminals = fleet.terminals || [];
     if (!terminals || terminals.length === 0) return '';
     var activeCount = terminals.filter(function(t) { return t.active; }).length;
+    var isFiltered = fleet.filteredByOrder === true;
+    var totalCount = fleet.totalCount || terminals.length;
     
     var cardsHtml = '';
     terminals.forEach(function(t, idx) {
@@ -301,8 +304,9 @@
 
     return '<div class="section" style="background:var(--surface);border:1px solid rgba(56,189,248,0.25);border-radius:12px;margin-bottom:20px;overflow:hidden;">' +
       '<div onclick="var b=this.nextElementSibling;var a=this.querySelector(\'span.sl-arrow\');if(b.style.display===\'none\'){b.style.display=\'block\';a.textContent=\'▼\'}else{b.style.display=\'none\';a.textContent=\'▶\'}" style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none;">' +
-        '<h3 style="margin:0;font-size:15px;font-weight:700;color:var(--text);">🛰️ Starlink Fleet (' + terminals.length + ')</h3>' +
+        '<h3 style="margin:0;font-size:15px;font-weight:700;color:var(--text);">🛰️ Starlink Fleet — ' + (isFiltered ? terminals.length + ' on this order' : terminals.length + ' total') + '</h3>' +
         '<div style="display:flex;align-items:center;gap:10px;">' +
+          (isFiltered ? '<span style="font-size:11px;color:var(--muted);">of ' + totalCount + ' in fleet</span>' : '') +
           '<span style="font-size:12px;font-weight:600;color:#10b981;background:rgba(16,185,129,0.1);padding:3px 10px;border-radius:8px;">' + activeCount + ' Online</span>' +
           '<span class="sl-arrow" style="font-size:11px;color:var(--muted);">▼</span>' +
         '</div>' +
@@ -598,7 +602,7 @@
 
 ${data.crmOrder ? renderCrmOrderSection(data.crmOrder) : ''}
 
-${slTerminals.length > 0 ? renderStarlinkFleetSection(slTerminals) : ''}
+${slFleet && slTerminals.length > 0 ? renderStarlinkFleetSection(slFleet) : ''}
 
 ${(mdm.length > 0 || web.length > 0) ? `
       <!-- Quick Actions -->

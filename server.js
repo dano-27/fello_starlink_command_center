@@ -5453,7 +5453,7 @@ app.get('/api/lookup', async (req, res) => {
   // Try fetching Starlink fleet data (non-blocking)
   let starlinkFleet = null;
   if (!isICCID && !isIMEI) {
-    try {
+   try {
       const slToken = await getStarlinkServerToken();
       if (slToken) {
         const slResp = await fetch('https://starlink.com/api/public/v2/user-terminals', {
@@ -5462,21 +5462,46 @@ app.get('/api/lookup', async (req, res) => {
         if (slResp.ok) {
           const slData = await slResp.json();
           const termResults = slData.content?.results || slData.results || [];
+          let allTerminals = termResults.map(t => ({
+            userTerminalId: t.userTerminalId || t.id || '',
+            kitSerialNumber: t.kitSerialNumber || '',
+            dishSerialNumber: t.dishSerialNumber || '',
+            serviceLineNumber: t.serviceLineNumber || '',
+            nickname: t.nickname || t.userTerminalId || '',
+            active: t.active !== false,
+            hardwareVersion: t.hardwareVersion || '',
+            softwareVersion: t.softwareVersion || '',
+            routerId: t.routerId || ''
+          }));
+
+          // If we have a CRM order, filter terminals by matching barcode nicknames
+          // Terminal nicknames are Fello barcodes (e.g., I00912518) 
+          // IMS part numbers are prefixes (e.g., I009 for Starlink Receiver)
+          let matchedTerminals = [];
+          let matchedByOrder = false;
+          if (crmOrder && crmOrder.rentals && crmOrder.rentals.length > 0) {
+            const slPartNumbers = crmOrder.rentals
+              .filter(r => r.modelName && r.modelName.toLowerCase().includes('starlink') && r.partNumber)
+              .map(r => r.partNumber.toUpperCase());
+            
+            if (slPartNumbers.length > 0) {
+              matchedTerminals = allTerminals.filter(t => {
+                const nick = (t.nickname || '').toUpperCase();
+                return slPartNumbers.some(pn => nick.startsWith(pn));
+              });
+              matchedByOrder = matchedTerminals.length > 0;
+              console.log('[Lookup] Starlink: Matched ' + matchedTerminals.length + '/' + allTerminals.length + ' terminals by barcode prefix (' + slPartNumbers.join(', ') + ')');
+            }
+          }
+
           starlinkFleet = {
-            terminals: termResults.map(t => ({
-              userTerminalId: t.userTerminalId || t.id || '',
-              kitSerialNumber: t.kitSerialNumber || '',
-              dishSerialNumber: t.dishSerialNumber || '',
-              serviceLineNumber: t.serviceLineNumber || '',
-              nickname: t.nickname || t.userTerminalId || '',
-              active: t.active !== false,
-              hardwareVersion: t.hardwareVersion || '',
-              softwareVersion: t.softwareVersion || '',
-              routerId: t.routerId || ''
-            })),
-            configured: true
+            terminals: matchedByOrder ? matchedTerminals : allTerminals,
+            allTerminals: allTerminals,
+            configured: true,
+            filteredByOrder: matchedByOrder,
+            totalCount: allTerminals.length
           };
-          console.log('[Lookup] Starlink: ' + starlinkFleet.terminals.length + ' terminals');
+          console.log('[Lookup] Starlink: showing ' + starlinkFleet.terminals.length + ' of ' + allTerminals.length + ' terminals');
         }
       }
     } catch (slErr) {
