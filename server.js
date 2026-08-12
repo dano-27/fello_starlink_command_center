@@ -5139,13 +5139,9 @@ app.get('/api/webbing/branches/:branchId/usage', async (req, res) => {
 app.get('/api/reports/overage', async (req, res) => {
   try {
     const reportDate = req.query.date || new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-    // Orders that ended yesterday relative to report date
-    const rd = new Date(reportDate + 'T12:00:00Z');
-    const yesterday = new Date(rd);
-    yesterday.setDate(yesterday.getDate() - 1);
-    const targetEnd = yesterday.toISOString().split('T')[0]; // YYYY-MM-DD
+    const targetEnd = reportDate;
     
-    console.log('[OverageReport] Report date: ' + reportDate + ', looking for orders ending: ' + targetEnd);
+    console.log('[OverageReport] Looking for orders ending: ' + targetEnd);
 
     // Step 1: Fetch all orders from IMS
     const imsToken = process.env.IMS_TOKEN || '2423|rydhEvIv6ZsEABia67jH5ffhMUJLthtu3YrfySpx93f5cc0e';
