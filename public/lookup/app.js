@@ -268,6 +268,51 @@
     '</div>';
   }
 
+  function renderStarlinkFleetSection(terminals) {
+    if (!terminals || terminals.length === 0) return '';
+    var activeCount = terminals.filter(function(t) { return t.active; }).length;
+    
+    var cardsHtml = '';
+    terminals.forEach(function(t, idx) {
+      var statusColor = t.active ? '#10b981' : '#ef4444';
+      var statusText = t.active ? 'Online' : 'Offline';
+      var tid = esc(t.userTerminalId);
+      cardsHtml +=
+        '<div style="background:var(--bg);border:1px solid var(--border);border-radius:10px;padding:14px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px;">' +
+          '<div style="flex:1;min-width:0;">' +
+            '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">' +
+              '<span style="font-size:18px;">🛰️</span>' +
+              '<span style="font-weight:700;font-size:14px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">' + esc(t.nickname || t.kitSerialNumber || 'Terminal') + '</span>' +
+              '<span style="font-size:11px;font-weight:600;color:' + statusColor + ';background:' + statusColor + '15;padding:2px 8px;border-radius:6px;">' + statusText + '</span>' +
+            '</div>' +
+            '<div style="display:flex;gap:16px;font-size:12px;color:var(--muted);">' +
+              (t.hardwareVersion ? '<span>HW: <strong>' + esc(t.hardwareVersion) + '</strong></span>' : '') +
+              (t.serviceLineNumber ? '<span>SL: <strong>' + esc(t.serviceLineNumber) + '</strong></span>' : '') +
+              (t.kitSerialNumber ? '<span>Kit: <strong style="font-family:monospace;font-size:11px;">' + esc(t.kitSerialNumber) + '</strong></span>' : '') +
+            '</div>' +
+          '</div>' +
+          '<div style="display:flex;gap:6px;flex-shrink:0;">' +
+            '<button onclick="window.starlinkAction(\'' + tid + '\',\'reboot\',this)" title="Reboot" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer;font-size:12px;font-weight:600;transition:all .2s;">🔄 Reboot</button>' +
+            '<button onclick="window.starlinkAction(\'' + tid + '\',\'stow\',this)" title="Stow for transport" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer;font-size:12px;font-weight:600;transition:all .2s;">📥 Stow</button>' +
+            '<button onclick="window.starlinkAction(\'' + tid + '\',\'unstow\',this)" title="Unstow" style="padding:6px 10px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text);cursor:pointer;font-size:12px;font-weight:600;transition:all .2s;">📤 Unstow</button>' +
+          '</div>' +
+        '</div>';
+    });
+
+    return '<div class="section" style="background:var(--surface);border:1px solid rgba(56,189,248,0.25);border-radius:12px;margin-bottom:20px;overflow:hidden;">' +
+      '<div onclick="var b=this.nextElementSibling;var a=this.querySelector(\'span.sl-arrow\');if(b.style.display===\'none\'){b.style.display=\'block\';a.textContent=\'▼\'}else{b.style.display=\'none\';a.textContent=\'▶\'}" style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none;">' +
+        '<h3 style="margin:0;font-size:15px;font-weight:700;color:var(--text);">🛰️ Starlink Fleet (' + terminals.length + ')</h3>' +
+        '<div style="display:flex;align-items:center;gap:10px;">' +
+          '<span style="font-size:12px;font-weight:600;color:#10b981;background:rgba(16,185,129,0.1);padding:3px 10px;border-radius:8px;">' + activeCount + ' Online</span>' +
+          '<span class="sl-arrow" style="font-size:11px;color:var(--muted);">▼</span>' +
+        '</div>' +
+      '</div>' +
+      '<div style="padding:16px 20px;display:flex;flex-direction:column;gap:10px;">' +
+        cardsHtml +
+      '</div>' +
+    '</div>';
+  }
+
 
   function formatMB(mb) {
     if (mb == null) return '0 MB';
@@ -515,8 +560,11 @@
     const branchId = data.branchName || query;
     const numericBranchId = data.branchId || null;
     const siteCheck = data.siteCheck || null;
+    const slFleet = data.starlinkFleet || null;
+    const slTerminals = (slFleet && slFleet.terminals) || [];
     window._currentBranchId = numericBranchId;
     window._currentBranchName = branchId;
+    window._starlinkFleet = slFleet;
 
     const nonMdmDevices = web.filter(w => !w.matchedIpadName).length;
     const mdmMatched = stats.matchedCount || 0;
@@ -538,6 +586,10 @@
           <div class="stat-label">🔗 Matched</div>
           <div class="stat-value">${esc(mdmMatched)} / ${esc(Math.max(stats.mdmCount, stats.webbingCount) || 0)}</div>
         </div>
+        ${slTerminals.length > 0 ? `<div class="stat-card" style="background:rgba(56,189,248,0.08);border-color:rgba(56,189,248,0.2);">
+          <div class="stat-label">🛰️ Starlinks</div>
+          <div class="stat-value" style="color:#38bdf8;">${slTerminals.length}</div>
+        </div>` : ''}
         <div class="stat-card stat-amber">
           <div class="stat-label">Non-MDM Devices</div>
           <div class="stat-value">${nonMdmDevices > 0 ? '📶 ' + nonMdmDevices : '0'}</div>
@@ -545,6 +597,8 @@
       </div>
 
 ${data.crmOrder ? renderCrmOrderSection(data.crmOrder) : ''}
+
+${slTerminals.length > 0 ? renderStarlinkFleetSection(slTerminals) : ''}
 
 ${(mdm.length > 0 || web.length > 0) ? `
       <!-- Quick Actions -->
@@ -737,6 +791,39 @@ ${(mdm.length > 0 || web.length > 0) ? `
         simModel: w.model || '',
         vendor: w.vendor || '',
         barcode: ''
+      });
+    }
+
+    // Add Starlink terminals from SpaceX API (if available)
+    if (slTerminals.length > 0) {
+      slTerminals.forEach(function(t) {
+        window._fleetRows.push({
+          linked: false,
+          mdmId: null,
+          simDeviceId: null,
+          simStatusRaw: t.active ? 'active' : 'offline',
+          deviceType: 'starlink',
+          name: '🛰️ ' + (t.nickname || t.kitSerialNumber || 'Starlink Terminal'),
+          ipadSerial: t.kitSerialNumber || '',
+          model: t.hardwareVersion || 'Starlink',
+          os: t.softwareVersion || '',
+          battery: null,
+          capacity: '', lastSeenAt: '', enrolledAt: '',
+          phoneNumber: '', wifiMac: '', mdmImei: '',
+          imei: '',
+          eid: '',
+          simSerial: t.dishSerialNumber || '',
+          iccid: t.serviceLineNumber || '',
+          carrier: 'SpaceX',
+          simStatus: t.active ? 3 : 4,
+          plan: t.serviceLineNumber || '',
+          ip: '',
+          simModel: t.hardwareVersion || '',
+          vendor: 'SpaceX',
+          barcode: '',
+          starlinkTerminalId: t.userTerminalId || '',
+          starlinkRouterId: t.routerId || ''
+        });
       });
     }
 
@@ -1599,6 +1686,7 @@ ${(mdm.length > 0 || web.length > 0) ? `
 
     const hasIpad = !!row.mdmId;
     const hasSim = !!row.simDeviceId;
+    const isStarlink = row.deviceType === 'starlink';
     const isActive = String(row.simStatusRaw).toLowerCase().includes('active') || row.simStatus === 3;
 
     let html = '';
@@ -1788,6 +1876,46 @@ ${(mdm.length > 0 || web.length > 0) ? `
       `;
     }
 
+    // ── Starlink Controls ──
+    if (isStarlink) {
+      // Find matching terminal from fleet data
+      const slTerminal = (window._starlinkFleet && window._starlinkFleet.terminals || []).find(t =>
+        (row.simSerial && t.kitSerialNumber && row.simSerial.toUpperCase().includes(t.kitSerialNumber.toUpperCase())) ||
+        (row.name && row.name.toLowerCase().includes('starlink'))
+      );
+      const tid = slTerminal ? slTerminal.userTerminalId : '';
+
+      html += `
+        <div class="drawer-section">
+          <div class="drawer-section-header" onclick="this.parentElement.classList.toggle('collapsed')">
+            <span class="ds-icon">🛰️</span> Starlink Controls <span class="ds-chevron">▼</span>
+          </div>
+          <div class="drawer-section-body">
+            ${tid ? `
+            <div class="info-grid" style="margin-bottom:12px;">
+              <div class="info-item"><div class="info-label">Terminal ID</div><div class="info-value" style="font-size:11px;font-family:monospace;">${esc(tid)}</div></div>
+              ${slTerminal.hardwareVersion ? `<div class="info-item"><div class="info-label">Hardware</div><div class="info-value">${esc(slTerminal.hardwareVersion)}</div></div>` : ''}
+              ${slTerminal.softwareVersion ? `<div class="info-item"><div class="info-label">Software</div><div class="info-value">${esc(slTerminal.softwareVersion)}</div></div>` : ''}
+              ${slTerminal.serviceLineNumber ? `<div class="info-item"><div class="info-label">Service Line</div><div class="info-value">${esc(slTerminal.serviceLineNumber)}</div></div>` : ''}
+              <div class="info-item"><div class="info-label">Status</div><div class="info-value">${slTerminal.active ? '<span style="color:#10b981;font-weight:600;">Online</span>' : '<span style="color:#ef4444;font-weight:600;">Offline</span>'}</div></div>
+            </div>
+            <div class="action-grid">
+              <button class="action-btn" onclick="window.starlinkAction('${esc(tid)}', 'reboot', this)">
+                <span class="action-icon">🔄</span> Reboot
+              </button>
+              <button class="action-btn" onclick="window.starlinkAction('${esc(tid)}', 'stow', this)">
+                <span class="action-icon">📥</span> Stow
+              </button>
+              <button class="action-btn" onclick="window.starlinkAction('${esc(tid)}', 'unstow', this)">
+                <span class="action-icon">📤</span> Unstow
+              </button>
+            </div>
+            ` : '<div style="color:var(--muted);font-size:13px;text-align:center;padding:12px;">Starlink terminal not linked to server-side fleet. Use the 🛰️ Starlink Fleet section above for management.</div>'}
+          </div>
+        </div>
+      `;
+    }
+
     // ── Danger Zone ──
     if (hasIpad) {
       html += `
@@ -1810,6 +1938,28 @@ ${(mdm.length > 0 || web.length > 0) ? `
     // Auto-load telemetry if SIM exists
     if (hasSim) {
       window.loadTelemetry(row.simDeviceId);
+    }
+  };
+
+  // ── Starlink Device Actions ──
+  window.starlinkAction = async function(terminalId, action, btn) {
+    if (!terminalId) { alert('No terminal ID available'); return; }
+    var actionLabels = { reboot: 'Reboot', stow: 'Stow', unstow: 'Unstow' };
+    if (!confirm('Are you sure you want to ' + (actionLabels[action] || action) + ' this Starlink terminal?')) return;
+    if (btn) { btn.disabled = true; btn.style.opacity = '0.5'; }
+    try {
+      var resp = await fetch('/api/starlink/' + action + '/' + terminalId, { method: 'POST' });
+      var data = await resp.json();
+      if (resp.ok && data.success) {
+        if (btn) { btn.style.background = 'rgba(16,185,129,0.15)'; btn.style.color = '#10b981'; }
+        alert('✅ ' + (actionLabels[action] || action) + ' command sent successfully!');
+      } else {
+        alert('❌ ' + (actionLabels[action] || action) + ' failed: ' + (data.error || 'Unknown error'));
+      }
+    } catch (err) {
+      alert('❌ Network error: ' + err.message);
+    } finally {
+      if (btn) { btn.disabled = false; btn.style.opacity = '1'; }
     }
   };
 

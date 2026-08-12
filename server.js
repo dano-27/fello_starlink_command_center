@@ -569,6 +569,52 @@ function setCachedToken(clientId, accessToken, expiresIn) {
   });
 }
 
+// Server-side Starlink credentials (from env vars)
+const SL_CLIENT_ID = process.env.STARLINK_CLIENT_ID || '';
+const SL_CLIENT_SECRET = process.env.STARLINK_CLIENT_SECRET || '';
+let slServerToken = null;
+let slServerTokenExpiry = 0;
+
+async function getStarlinkServerToken() {
+  // Return cached token if still valid (30s buffer)
+  if (slServerToken && Date.now() < slServerTokenExpiry - 30000) {
+    return slServerToken;
+  }
+  if (!SL_CLIENT_ID || !SL_CLIENT_SECRET) {
+    return null; // Not configured
+  }
+  try {
+    const params = new URLSearchParams();
+    params.append('grant_type', 'client_credentials');
+    params.append('client_id', SL_CLIENT_ID);
+    params.append('client_secret', SL_CLIENT_SECRET);
+    const response = await fetch('https://starlink.com/api/auth/connect/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: params.toString(),
+    });
+    if (!response.ok) {
+      console.error('[Starlink] Token refresh failed:', response.status);
+      return null;
+    }
+    const data = await response.json();
+    slServerToken = data.access_token;
+    slServerTokenExpiry = Date.now() + (data.expires_in || 900) * 1000;
+    console.log('[Starlink] Server token refreshed, expires in ' + data.expires_in + ' seconds');
+    return slServerToken;
+  } catch (err) {
+    console.error('[Starlink] Token refresh error:', err.message);
+    return null;
+  }
+}
+
+if (SL_CLIENT_ID) {
+  console.log('[Starlink] Server-side auth configured');
+  getStarlinkServerToken(); // Pre-fetch on startup
+} else {
+  console.log('[Starlink] No server credentials — standalone page login only');
+}
+
 // ── OIDC Token Exchange ──────────────────────────────────────────────
 app.post('/api/auth/token', async (req, res) => {
   const { clientId, clientSecret } = req.body;
@@ -1195,6 +1241,139 @@ app.post('/api/unstow/:userTerminalId', async (req, res) => {
   } catch (err) {
     console.error('Unstow proxy error:', err.message);
     return res.status(500).json({ error: 'Failed to unstow user terminal' });
+  }
+});
+
+app.get('/api/starlink/fleet', async (req, res) => {
+  // Try server token first, then fall back to request header
+  let authHeader = req.headers.authorization;
+  if (!authHeader) {
+    const serverToken = await getStarlinkServerToken();
+    if (serverToken) {
+      authHeader = 'Bearer ' + serverToken;
+    } else {
+      return res.status(401).json({ error: 'Starlink not configured', configured: false });
+    }
+  }
+
+  try {
+    // Fetch terminals, service lines, and router configs in parallel
+    const [terminalsRes, serviceLinesRes, routerConfigsRes, alertsRes] = await Promise.all([
+      fetch('https://starlink.com/api/public/v2/user-terminals', {
+        headers: { 'Content-Type': 'application/json', Authorization: authHeader }
+      }),
+      fetch('https://starlink.com/api/public/v2/service-lines', {
+        headers: { 'Content-Type': 'application/json', Authorization: authHeader }
+      }),
+      fetch('https://starlink.com/api/public/v2/routers/configs', {
+        headers: { 'Content-Type': 'application/json', Authorization: authHeader }
+      }),
+      fetch('https://starlink.com/api/public/v2/alerts', {
+        headers: { 'Content-Type': 'application/json', Authorization: authHeader }
+      })
+    ]);
+
+    const terminals = terminalsRes.ok ? await terminalsRes.json() : { content: { results: [] } };
+    const serviceLines = serviceLinesRes.ok ? await serviceLinesRes.json() : { content: { results: [] } };
+    const routerConfigs = routerConfigsRes.ok ? await routerConfigsRes.json() : { content: { results: [] } };
+    const alerts = alertsRes.ok ? await alertsRes.json() : { content: { results: [] } };
+
+    // Build service line lookup
+    const slResults = serviceLines.content?.results || serviceLines.results || [];
+    const serviceLineMap = {};
+    for (const sl of slResults) {
+      serviceLineMap[sl.serviceLineNumber || sl.serviceLineId] = sl;
+    }
+
+    // Normalize terminal data
+    const termResults = terminals.content?.results || terminals.results || [];
+    const normalizedTerminals = termResults.map(t => ({
+      userTerminalId: t.userTerminalId || t.id || '',
+      kitSerialNumber: t.kitSerialNumber || '',
+      dishSerialNumber: t.dishSerialNumber || '',
+      serviceLineNumber: t.serviceLineNumber || '',
+      nickname: t.nickname || t.userTerminalId || '',
+      active: t.active !== false,
+      hardwareVersion: t.hardwareVersion || '',
+      softwareVersion: t.softwareVersion || '',
+      routerId: t.routerId || '',
+      serviceLine: serviceLineMap[t.serviceLineNumber] || null
+    }));
+
+    const alertResults = alerts.content?.results || alerts.results || [];
+
+    console.log('[Starlink] Fleet: ' + normalizedTerminals.length + ' terminals, ' + slResults.length + ' service lines, ' + alertResults.length + ' alerts');
+
+    res.json({
+      configured: true,
+      terminals: normalizedTerminals,
+      serviceLines: slResults,
+      routerConfigs: routerConfigs.content?.results || routerConfigs.results || [],
+      alerts: alertResults,
+      stats: {
+        terminalCount: normalizedTerminals.length,
+        activeCount: normalizedTerminals.filter(t => t.active).length,
+        alertCount: alertResults.length
+      }
+    });
+  } catch (err) {
+    console.error('[Starlink] Fleet fetch error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch Starlink fleet data', configured: true });
+  }
+});
+
+// Server-authed Starlink actions (for Command Center integration)
+app.post('/api/starlink/reboot/:userTerminalId', async (req, res) => {
+  const token = await getStarlinkServerToken();
+  if (!token) return res.status(401).json({ error: 'Starlink not configured' });
+  try {
+    const response = await fetch('https://starlink.com/api/public/v2/user-terminals/' + req.params.userTerminalId + '/reboot', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      return res.status(response.status).json({ error: text });
+    }
+    res.json({ success: true, action: 'reboot', terminalId: req.params.userTerminalId });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/starlink/stow/:userTerminalId', async (req, res) => {
+  const token = await getStarlinkServerToken();
+  if (!token) return res.status(401).json({ error: 'Starlink not configured' });
+  try {
+    const response = await fetch('https://starlink.com/api/public/v2/user-terminals/' + req.params.userTerminalId + '/stow', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      return res.status(response.status).json({ error: text });
+    }
+    res.json({ success: true, action: 'stow', terminalId: req.params.userTerminalId });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/starlink/unstow/:userTerminalId', async (req, res) => {
+  const token = await getStarlinkServerToken();
+  if (!token) return res.status(401).json({ error: 'Starlink not configured' });
+  try {
+    const response = await fetch('https://starlink.com/api/public/v2/user-terminals/' + req.params.userTerminalId + '/unstow', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token }
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      return res.status(response.status).json({ error: text });
+    }
+    res.json({ success: true, action: 'unstow', terminalId: req.params.userTerminalId });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -5271,6 +5450,40 @@ app.get('/api/lookup', async (req, res) => {
     }
   }
   
+  // Try fetching Starlink fleet data (non-blocking)
+  let starlinkFleet = null;
+  if (!isICCID && !isIMEI) {
+    try {
+      const slToken = await getStarlinkServerToken();
+      if (slToken) {
+        const slResp = await fetch('https://starlink.com/api/public/v2/user-terminals', {
+          headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + slToken }
+        });
+        if (slResp.ok) {
+          const slData = await slResp.json();
+          const termResults = slData.content?.results || slData.results || [];
+          starlinkFleet = {
+            terminals: termResults.map(t => ({
+              userTerminalId: t.userTerminalId || t.id || '',
+              kitSerialNumber: t.kitSerialNumber || '',
+              dishSerialNumber: t.dishSerialNumber || '',
+              serviceLineNumber: t.serviceLineNumber || '',
+              nickname: t.nickname || t.userTerminalId || '',
+              active: t.active !== false,
+              hardwareVersion: t.hardwareVersion || '',
+              softwareVersion: t.softwareVersion || '',
+              routerId: t.routerId || ''
+            })),
+            configured: true
+          };
+          console.log('[Lookup] Starlink: ' + starlinkFleet.terminals.length + ' terminals');
+        }
+      }
+    } catch (slErr) {
+      console.log('[Lookup] Starlink fleet fetch failed:', slErr.message);
+    }
+  }
+
   const isGroupSearch = !isICCID && !isIMEI && !mdmAccountMatch && (
     /^(FE|SQ|EB|CB|MO|Z5|SH|LE|AR|OR|RS|MEAL|CAMO|CASQ|ALA)/i.test(query) || 
     (query.length >= 4 && /^\d+$/.test(query))
@@ -5540,7 +5753,7 @@ app.get('/api/lookup', async (req, res) => {
       
       return res.json({
         type: 'group',
-        crmOrder: crmOrder || null,
+        crmOrder: crmOrder || null, starlinkFleet: starlinkFleet || null,
         found: true,
         branchName: mdmAcct.name,
         branchId: branchId,
@@ -5721,7 +5934,7 @@ app.get('/api/lookup', async (req, res) => {
               // Return found=true with branchId so the user knows the branch exists
               return res.json({ 
                 type: 'group',
-        crmOrder: crmOrder || null, branchName: branchName, branchId, found: true,
+        crmOrder: crmOrder || null, starlinkFleet: starlinkFleet || null, branchName: branchName, branchId, found: true,
                 webbingDevices: [], simpleMdmDevices: [], 
                 note: 'Branch exists in Webbing but devices are not accessible via the SOAP API. Check the Webbing dashboard directly.',
                 stats: { webbingCount: 0, mdmCount: 0, countMatch: true } 
@@ -5735,7 +5948,7 @@ app.get('/api/lookup', async (req, res) => {
       
       if (branchDevices.length === 0) {
         return res.json({ type: 'group',
-        crmOrder: crmOrder || null, branchName: query, found: false, 
+        crmOrder: crmOrder || null, starlinkFleet: starlinkFleet || null, branchName: query, found: false, 
           webbingDevices: [], simpleMdmDevices: [], stats: { webbingCount: 0, mdmCount: 0, countMatch: true } });
       }
       
@@ -5897,7 +6110,7 @@ app.get('/api/lookup', async (req, res) => {
 
       return res.json({
         type: 'group',
-        crmOrder: crmOrder || null,
+        crmOrder: crmOrder || null, starlinkFleet: starlinkFleet || null,
         found: true,
         branchName: branchName,
         branchId: branchId,
@@ -6154,7 +6367,7 @@ app.get('/api/lookup', async (req, res) => {
         
         return res.json({
           type: 'group',
-        crmOrder: crmOrder || null,
+        crmOrder: crmOrder || null, starlinkFleet: starlinkFleet || null,
           found: true,
           source: 'assignment_group',
           branchName: groupName,
