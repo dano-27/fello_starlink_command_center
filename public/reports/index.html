@@ -255,26 +255,26 @@
   </main>
 
   <script>
-    document.getElementById('tools-toggle')?.addEventListener('click', () => {
+    document.getElementById('tools-toggle')?.addEventListener('click', function() {
       document.getElementById('tools-dropdown').classList.toggle('show');
     });
 
-    const datePicker = document.getElementById('date-picker');
-    const today = new Date().toISOString().split('T')[0];
+    var datePicker = document.getElementById('date-picker');
+    var today = new Date().toISOString().split('T')[0];
     datePicker.value = today;
 
-    let currentReport = null;
+    var currentReport = null;
 
-    document.getElementById('generate-btn').addEventListener('click', async () => {
-      const date = datePicker.value;
+    document.getElementById('generate-btn').addEventListener('click', function() {
+      var date = datePicker.value;
       if (!date) return;
       
-      const loader = document.getElementById('loader');
-      const errorMsg = document.getElementById('error-msg');
-      const resultsContainer = document.getElementById('results-container');
-      const summaryGrid = document.getElementById('summary-grid');
-      const exportBtn = document.getElementById('export-btn');
-      const generateBtn = document.getElementById('generate-btn');
+      var loader = document.getElementById('loader');
+      var errorMsg = document.getElementById('error-msg');
+      var resultsContainer = document.getElementById('results-container');
+      var summaryGrid = document.getElementById('summary-grid');
+      var exportBtn = document.getElementById('export-btn');
+      var generateBtn = document.getElementById('generate-btn');
 
       loader.style.display = 'block';
       generateBtn.disabled = true;
@@ -283,112 +283,109 @@
       summaryGrid.style.display = 'none';
       exportBtn.style.display = 'none';
 
-      try {
-        const response = await fetch(\`/api/reports/overage?date=\${date}\`, {
-          credentials: 'same-origin'
-        });
-        
+      fetch('/api/reports/overage?date=' + date, {
+        credentials: 'same-origin'
+      }).then(function(response) {
         if (response.status === 401) {
           window.location.href = '/login';
-          return;
+          return null;
         }
-        
-        if (!response.ok) {
-          throw new Error('Failed to generate report');
-        }
-
-        const data = await response.json();
+        if (!response.ok) throw new Error('Failed to generate report (HTTP ' + response.status + ')');
+        return response.json();
+      }).then(function(data) {
+        if (!data) return;
         currentReport = data;
         renderReport(data);
-      } catch (err) {
+      }).catch(function(err) {
         errorMsg.textContent = err.message;
         errorMsg.style.display = 'block';
-      } finally {
+      }).finally(function() {
         loader.style.display = 'none';
         generateBtn.disabled = false;
-      }
+      });
     });
+
+    function esc(s) { var d = document.createElement('div'); d.textContent = s || ''; return d.innerHTML; }
 
     function renderReport(data) {
       document.getElementById('summary-grid').style.display = 'grid';
       document.getElementById('export-btn').style.display = 'block';
-      
       document.getElementById('stat-orders').textContent = data.orderCount || 0;
       
-      let totalDevices = 0;
-      let totalUsageGb = 0;
-      let overageCount = 0;
-
-      const container = document.getElementById('results-container');
+      var totalDevices = 0;
+      var totalUsageGb = 0;
+      var overageCount = 0;
+      var container = document.getElementById('results-container');
       
       if (!data.orders || data.orders.length === 0) {
-        container.innerHTML = '<p style="color: #9ca3af; text-align: center; padding: 32px;">No orders found for this date.</p>';
+        container.innerHTML = '<div style="color:#9ca3af;text-align:center;padding:48px 24px;font-size:15px;">' +
+          '<div style="font-size:40px;margin-bottom:12px;">📭</div>' +
+          'No orders ended on ' + esc(data.targetEndDate || '') + '</div>';
         return;
       }
 
-      data.orders.forEach(order => {
+      data.orders.forEach(function(order) {
         totalDevices += order.totalDevices || 0;
         totalUsageGb += order.totalUsageGB || 0;
         if (order.overageGB > 0) overageCount++;
 
-        const alloc = order.totalGbAllocation || 1; // avoid div by 0
-        const percent = Math.min(100, ((order.totalUsageGB || 0) / alloc) * 100);
-        let colorClass = 'usage-green';
+        var alloc = order.totalGbAllocation || 1;
+        var percent = Math.min(100, ((order.totalUsageGB || 0) / alloc) * 100);
+        var colorClass = 'usage-green';
         if (percent >= 100) colorClass = 'usage-red';
         else if (percent >= 80) colorClass = 'usage-yellow';
 
-        const card = document.createElement('div');
+        var card = document.createElement('div');
         card.className = 'order-card';
         
-        const devicesHtml = (order.devices || []).sort((a,b) => (b.usageGB || 0) - (a.usageGB || 0)).map(d => \`
-          <tr>
-            <td>\${d.serial || ''}</td>
-            <td>\${d.imei || '-'}</td>
-            <td>\${d.plan || ''}</td>
-            <td>\${d.status || ''}</td>
-            <td>\${(d.usageMB || 0).toFixed(2)}</td>
-            <td>\${(d.usageGB || 0).toFixed(3)}</td>
-            <td>\${d.usageDays || 0}</td>
-          </tr>
-        \`).join('');
+        var devicesHtml = '';
+        var sortedDevices = (order.devices || []).slice().sort(function(a, b) { return (b.usageGB || 0) - (a.usageGB || 0); });
+        sortedDevices.forEach(function(d) {
+          devicesHtml += '<tr>' +
+            '<td>' + esc(d.serial) + '</td>' +
+            '<td>' + esc(d.imei || '-') + '</td>' +
+            '<td>' + esc(d.plan) + '</td>' +
+            '<td>' + esc(d.status) + '</td>' +
+            '<td>' + (d.usageMB || 0).toFixed(2) + '</td>' +
+            '<td>' + (d.usageGB || 0).toFixed(3) + '</td>' +
+            '<td>' + (d.usageDays || 0) + '</td>' +
+          '</tr>';
+        });
 
-        card.innerHTML = \`
-          <div class="order-header">
-            <div class="order-info">
-              <h3>\${order.flyOrderId || ''} - \${order.customerName || ''}</h3>
-              <p>\${order.rentalStart || ''} &rarr; \${order.rentalEnd || ''} &bull; \${order.totalDevices || 0} Devices</p>
-            </div>
-            <div class="usage-bar-container">
-              <div class="usage-stats">
-                <span>Usage: \${(order.totalUsageGB || 0).toFixed(2)} GB / \${order.totalGbAllocation || 0} GB</span>
-                <span>\${percent.toFixed(1)}%</span>
-              </div>
-              <div class="usage-track">
-                <div class="usage-fill \${colorClass}" style="width: \${percent}%"></div>
-              </div>
-            </div>
-          </div>
-          <div class="order-devices">
-            <table>
-              <thead>
-                <tr>
-                  <th>SIM Serial</th>
-                  <th>IMEI</th>
-                  <th>Plan</th>
-                  <th>Status</th>
-                  <th>Usage (MB)</th>
-                  <th>Usage (GB)</th>
-                  <th>Active Days</th>
-                </tr>
-              </thead>
-              <tbody>
-                \${devicesHtml}
-              </tbody>
-            </table>
-          </div>
-        \`;
+        var overageBadge = order.overageGB > 0
+          ? '<span style="background:#ef4444;color:#fff;padding:2px 8px;border-radius:6px;font-size:11px;font-weight:600;margin-left:8px;">+' + order.overageGB.toFixed(2) + ' GB OVER</span>'
+          : '';
 
-        card.querySelector('.order-header').addEventListener('click', () => {
+        var errorBadge = order.error
+          ? '<span style="background:rgba(239,68,68,0.15);color:#ef4444;padding:2px 8px;border-radius:6px;font-size:11px;margin-left:8px;">' + esc(order.error) + '</span>'
+          : '';
+
+        card.innerHTML =
+          '<div class="order-header">' +
+            '<div class="order-info">' +
+              '<h3>' + esc(order.flyOrderId) + ' — ' + esc(order.customerName) + overageBadge + errorBadge + '</h3>' +
+              '<p>' + esc(order.rentalStart) + ' → ' + esc(order.rentalEnd) + ' &bull; ' + (order.totalDevices || 0) + ' Devices &bull; ' + (order.devicesWithUsage || 0) + ' active</p>' +
+            '</div>' +
+            '<div class="usage-bar-container">' +
+              '<div class="usage-stats">' +
+                '<span>' + (order.totalUsageGB || 0).toFixed(2) + ' GB / ' + (order.totalGbAllocation || 0) + ' GB</span>' +
+                '<span>' + percent.toFixed(1) + '%</span>' +
+              '</div>' +
+              '<div class="usage-track">' +
+                '<div class="usage-fill ' + colorClass + '" style="width:' + percent + '%"></div>' +
+              '</div>' +
+            '</div>' +
+          '</div>' +
+          '<div class="order-devices">' +
+            '<table>' +
+              '<thead><tr>' +
+                '<th>SIM Serial</th><th>IMEI</th><th>Plan</th><th>Status</th><th>Usage (MB)</th><th>Usage (GB)</th><th>Active Days</th>' +
+              '</tr></thead>' +
+              '<tbody>' + devicesHtml + '</tbody>' +
+            '</table>' +
+          '</div>';
+
+        card.querySelector('.order-header').addEventListener('click', function() {
           card.classList.toggle('expanded');
         });
 
@@ -400,22 +397,22 @@
       document.getElementById('stat-overage').textContent = overageCount;
     }
 
-    document.getElementById('export-btn').addEventListener('click', () => {
+    document.getElementById('export-btn').addEventListener('click', function() {
       if (!currentReport || !currentReport.orders) return;
       
-      let csv = 'Order ID,Customer,Start Date,End Date,Allocated GB,Used GB,Overage GB,Device Serial,Device IMEI,Device Usage GB\\n';
+      var csv = 'Order ID,Customer,Start Date,End Date,Allocated GB,Used GB,Overage GB,Device Serial,Device IMEI,Device Plan,Device Usage MB,Device Usage GB\n';
       
-      currentReport.orders.forEach(o => {
-        (o.devices || []).forEach(d => {
-          csv += \`"\${o.flyOrderId}","\${o.customerName}","\${o.rentalStart}","\${o.rentalEnd}",\${o.totalGbAllocation},\${o.totalUsageGB},\${o.overageGB},"\${d.serial}","\${d.imei || ''}",\${d.usageGB}\\n\`;
+      currentReport.orders.forEach(function(o) {
+        (o.devices || []).forEach(function(d) {
+          csv += '"' + o.flyOrderId + '","' + o.customerName + '","' + o.rentalStart + '","' + o.rentalEnd + '",' + o.totalGbAllocation + ',' + o.totalUsageGB + ',' + o.overageGB + ',"' + (d.serial || '') + '","' + (d.imei || '') + '","' + (d.plan || '') + '",' + d.usageMB + ',' + d.usageGB + '\n';
         });
       });
 
-      const blob = new Blob([csv], { type: 'text/csv' });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
+      var blob = new Blob([csv], { type: 'text/csv' });
+      var url = window.URL.createObjectURL(blob);
+      var a = document.createElement('a');
       a.href = url;
-      a.download = \`overage_report_\${currentReport.reportDate}.csv\`;
+      a.download = 'overage_report_' + currentReport.reportDate + '.csv';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -427,25 +424,13 @@
       if(b&&u.username){
         var signOutBtn=document.createElement("button");
         signOutBtn.textContent="Sign Out";
-        signOutBtn.style.cssText="background:none;border:1px solid rgba(0,0,0,0.1);border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;color:#636363;";
+        signOutBtn.style.cssText="background:none;border:1px solid rgba(255,255,255,0.15);border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer;color:#9ca3af;";
         signOutBtn.addEventListener("click",function(){fetch("/api/auth/logout",{method:"POST"}).then(function(){location.href="/login"})});
         var nameSpan=document.createElement("span");
-        nameSpan.style.color="#636363";
+        nameSpan.style.color="#9ca3af";
         nameSpan.textContent=u.name;
         b.appendChild(nameSpan);
         b.appendChild(signOutBtn);
-        if(u.role==="admin"){
-          var auditLink=document.createElement("a");
-          auditLink.href="/audit/";
-          auditLink.textContent="📋 Audit";
-          auditLink.style.cssText="color:#3166AE;font-size:12px;text-decoration:none;margin-right:8px;";
-          b.insertBefore(auditLink,b.firstChild);
-          var usersLink=document.createElement("a");
-          usersLink.href="/admin/users";
-          usersLink.textContent="👥 Users";
-          usersLink.style.cssText="color:#3166AE;font-size:12px;text-decoration:none;margin-right:8px;";
-          b.insertBefore(usersLink,auditLink.nextSibling);
-        }
       }
     }).catch(function(){});
   </script>
