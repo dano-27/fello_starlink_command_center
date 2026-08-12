@@ -5192,22 +5192,109 @@ app.get('/api/reports/overage', async (req, res) => {
     
     console.log('[OverageReport] Looking for orders ending: ' + targetEnd);
 
-    // Step 1: Fetch all orders from IMS
     const imsToken = process.env.IMS_TOKEN || '2423|rydhEvIv6ZsEABia67jH5ffhMUJLthtu3YrfySpx93f5cc0e';
     const imsBase = process.env.IMS_BASE_URL || 'https://ims-v4-migration-prod-876702752852.us-east4.run.app';
     
-    const ordersResp = await fetch(imsBase + '/api/orders', {
-      headers: { 'Authorization': 'Bearer ' + imsToken }
-    });
-    if (!ordersResp.ok) {
-      return res.status(502).json({ error: 'Failed to fetch orders from IMS' });
-    }
-    const allOrders = await ordersResp.json();
+    // Step 1: Gather candidate orders from BOTH /api/orders AND Webbing branches
+    const endingOrders = [];
+    const seenOrderIds = new Set();
     
-    // Step 2: Filter orders ending on target date
-    const endingOrders = allOrders.filter(function(o) {
-      return o.shipments_max_rental_end === targetEnd;
-    });
+    // Source A: /api/orders list (FE, OR, GSO, JP prefixes)
+    try {
+      const ordersResp = await fetch(imsBase + '/api/orders', {
+        headers: { 'Authorization': 'Bearer ' + imsToken }
+      });
+      if (ordersResp.ok) {
+        const allOrders = await ordersResp.json();
+        for (const o of allOrders) {
+          const endDate = o.shipments_max_rental_end || o.end_date;
+          if (endDate === targetEnd && !seenOrderIds.has(o.fly_order_id)) {
+            seenOrderIds.add(o.fly_order_id);
+            endingOrders.push({
+              fly_order_id: o.fly_order_id,
+              customer_name: o.customer_name || '',
+              status: o.status || '',
+              rentalStart: o.shipments_min_rental_start || o.start_date || '',
+              rentalEnd: endDate,
+              total_gb_amount: parseFloat(o.total_gb_amount || 0)
+            });
+          }
+        }
+      }
+    } catch (e) {
+      console.log('[OverageReport] /api/orders fetch failed: ' + e.message);
+    }
+    
+    // Source B: Webbing branches → look up each in NextGen for dates
+    // Webbing branch names match order IDs (e.g. "LE2103", "SQ15188")
+    const client = getWebbingClient();
+    try {
+      // Get all branch names from cache
+      const branchNames = new Set();
+      for (const d of webbingDeviceCache) {
+        if (d.BranchName) branchNames.add(d.BranchName.toUpperCase());
+      }
+      
+      // For each branch not already found, look up in NextGen
+      const branchesToCheck = [...branchNames].filter(bn => !seenOrderIds.has(bn));
+      console.log('[OverageReport] Checking ' + branchesToCheck.length + ' Webbing branches against NextGen');
+      
+      // Process in batches of 20 to avoid overloading
+      const BATCH = 20;
+      for (let i = 0; i < branchesToCheck.length; i += BATCH) {
+        const batch = branchesToCheck.slice(i, i + BATCH);
+        const results = await Promise.all(batch.map(async function(branchName) {
+          try {
+            const resp = await fetch(imsBase + '/api/nextgen/v1/orders/' + branchName, {
+              headers: { 'Authorization': 'Bearer ' + imsToken }
+            });
+            if (resp.ok) {
+              const detail = await resp.json();
+              // Determine end date: check multiple fields
+              let endDate = detail.shipments_max_rental_end || detail.end_date || null;
+              // Also check rental-level dates if order-level is empty
+              if ((!endDate || endDate === '0000-00-00') && detail.rentals && detail.rentals.length > 0) {
+                const rentalEnds = detail.rentals
+                  .map(r => r.end_time || r.end_date || '')
+                  .filter(d => d && d !== '0000-00-00')
+                  .sort();
+                if (rentalEnds.length > 0) endDate = rentalEnds[rentalEnds.length - 1]; // latest
+              }
+              
+              let startDate = detail.shipments_min_rental_start || detail.start_date || null;
+              if ((!startDate || startDate === '0000-00-00') && detail.rentals && detail.rentals.length > 0) {
+                const rentalStarts = detail.rentals
+                  .map(r => r.start_time || r.start_date || '')
+                  .filter(d => d && d !== '0000-00-00')
+                  .sort();
+                if (rentalStarts.length > 0) startDate = rentalStarts[0]; // earliest
+              }
+              
+              if (endDate === targetEnd) {
+                return {
+                  fly_order_id: detail.fly_order_id || branchName,
+                  customer_name: detail.customer_name || '',
+                  status: detail.status || '',
+                  rentalStart: startDate || '',
+                  rentalEnd: endDate,
+                  total_gb_amount: parseFloat(detail.total_gb_amount || 0)
+                };
+              }
+            }
+          } catch (e) { /* skip */ }
+          return null;
+        }));
+        
+        for (const r of results) {
+          if (r && !seenOrderIds.has(r.fly_order_id)) {
+            seenOrderIds.add(r.fly_order_id);
+            endingOrders.push(r);
+          }
+        }
+      }
+    } catch (e) {
+      console.log('[OverageReport] Webbing branch check failed: ' + e.message);
+    }
     
     console.log('[OverageReport] Found ' + endingOrders.length + ' orders ending on ' + targetEnd);
     
@@ -5220,15 +5307,14 @@ app.get('/api/reports/overage', async (req, res) => {
       });
     }
 
-    // Step 3: For each order, get full details from NextGen + branch usage from Webbing
-    const client = getWebbingClient();
+    // Step 2: For each order, get branch usage from Webbing
     const orderReports = [];
 
     for (const order of endingOrders) {
       const flyId = order.fly_order_id;
-      const rentalStart = order.shipments_min_rental_start;
-      const rentalEnd = order.shipments_max_rental_end;
-      const totalGbAllocation = parseFloat(order.total_gb_amount || 0);
+      const rentalStart = order.rentalStart;
+      const rentalEnd = order.rentalEnd;
+      const totalGbAllocation = order.total_gb_amount;
 
       // Get full order details from NextGen
       let orderDetail = null;
