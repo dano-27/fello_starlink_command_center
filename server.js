@@ -673,7 +673,10 @@ app.get('/api/audit/agent-stats', (req, res) => {
     });
 
     const agentMap = new Map();
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-/i;
     for (const e of filtered) {
+      // Skip non-human entries (system, API tokens, UUIDs)
+      if (!e.user || e.user === 'system' || UUID_RE.test(e.user)) continue;
       if (!agentMap.has(e.user)) {
         agentMap.set(e.user, {
           user: e.user,
