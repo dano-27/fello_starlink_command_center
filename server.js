@@ -502,6 +502,208 @@ app.get('/api/audit/log/export', (req, res) => {
   }
 });
 
+// ── Session Timeline & Agent Stats ──────────────────────────────────
+
+// GET /api/audit/sessions — group audit entries by session, with task breakdown
+app.get('/api/audit/sessions', (req, res) => {
+  if (!req.user || req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+  try {
+    if (!fs.existsSync(AUDIT_LOG)) return res.json({ sessions: [] });
+    const raw = fs.readFileSync(AUDIT_LOG, 'utf-8');
+    const lines = raw.trim().split('\n').filter(Boolean);
+    const entries = lines.map(l => { try { return JSON.parse(l); } catch(e) { return null; } }).filter(Boolean);
+
+    const { user: filterUser, from, to, limit = 50 } = req.query;
+
+    const sessionMap = new Map();
+
+    for (const e of entries) {
+      if (filterUser && e.user !== filterUser) continue;
+      if (from && e.timestamp < from) continue;
+      if (to && e.timestamp > to + 'T23:59:59Z') continue;
+
+      let sessionKey = e.sessionId;
+      if (!sessionKey) {
+        const dateStr = e.timestamp ? e.timestamp.split('T')[0] : 'unknown';
+        sessionKey = e.user + '_' + dateStr;
+      }
+
+      if (!sessionMap.has(sessionKey)) {
+        sessionMap.set(sessionKey, {
+          sessionId: sessionKey,
+          user: e.user,
+          name: e.name || '',
+          role: e.role || '',
+          loginTime: null,
+          logoutTime: null,
+          actions: [],
+          tasks: []
+        });
+      }
+
+      const session = sessionMap.get(sessionKey);
+      if (e.method === 'LOGIN' && e.body && e.body.success) {
+        session.loginTime = e.timestamp;
+        session.ip = e.ip;
+      } else if (e.method === 'LOGOUT') {
+        session.logoutTime = e.timestamp;
+      } else {
+        session.actions.push(e);
+      }
+    }
+
+    const results = [];
+    for (const [, session] of sessionMap) {
+      if (session.actions.length === 0 && !session.loginTime) continue;
+
+      let currentTask = null;
+      const tasks = [];
+
+      for (const action of session.actions) {
+        const query = action.taskContext?.query || action.body?.q;
+        const isLookup = action.method === 'VIEW' && action.path === '/api/lookup' && query;
+
+        if (isLookup) {
+          if (currentTask) {
+            currentTask.endTime = currentTask.actions.length > 0
+              ? currentTask.actions[currentTask.actions.length - 1].timestamp
+              : currentTask.startTime;
+            tasks.push(currentTask);
+          }
+          currentTask = {
+            orderId: query,
+            startTime: action.timestamp,
+            endTime: action.timestamp,
+            actions: [{ method: action.method, path: action.path, timestamp: action.timestamp, status: action.status }]
+          };
+        } else if (currentTask) {
+          currentTask.actions.push({ method: action.method, path: action.path, timestamp: action.timestamp, status: action.status, durationMs: action.durationMs });
+        } else {
+          currentTask = {
+            orderId: action.taskContext?.query || action.taskContext?.branchId || 'General',
+            startTime: action.timestamp,
+            endTime: action.timestamp,
+            actions: [{ method: action.method, path: action.path, timestamp: action.timestamp, status: action.status }]
+          };
+        }
+      }
+      if (currentTask) {
+        currentTask.endTime = currentTask.actions.length > 0
+          ? currentTask.actions[currentTask.actions.length - 1].timestamp
+          : currentTask.startTime;
+        tasks.push(currentTask);
+      }
+
+      for (const task of tasks) {
+        const start = new Date(task.startTime).getTime();
+        const end = new Date(task.endTime).getTime();
+        task.durationMs = end - start;
+        task.durationFormatted = formatDuration(end - start);
+        task.actionCount = task.actions.length;
+      }
+
+      const firstTime = session.loginTime || (session.actions[0] && session.actions[0].timestamp);
+      const lastTime = session.logoutTime || (session.actions.length > 0 ? session.actions[session.actions.length - 1].timestamp : firstTime);
+      const sessionDurationMs = firstTime && lastTime ? new Date(lastTime).getTime() - new Date(firstTime).getTime() : 0;
+
+      results.push({
+        sessionId: session.sessionId,
+        user: session.user,
+        name: session.name,
+        role: session.role,
+        ip: session.ip,
+        loginTime: session.loginTime || firstTime,
+        logoutTime: session.logoutTime,
+        durationMs: sessionDurationMs,
+        durationFormatted: formatDuration(sessionDurationMs),
+        totalActions: session.actions.length,
+        taskCount: tasks.length,
+        tasks: tasks
+      });
+    }
+
+    results.sort((a, b) => (b.loginTime || '').localeCompare(a.loginTime || ''));
+    const limited = results.slice(0, Number(limit));
+
+    res.json({ total: results.length, sessions: limited });
+  } catch (err) {
+    console.error('[Audit] Sessions error:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+function formatDuration(ms) {
+  if (ms < 1000) return '< 1s';
+  const secs = Math.floor(ms / 1000);
+  if (secs < 60) return secs + 's';
+  const mins = Math.floor(secs / 60);
+  const remSecs = secs % 60;
+  if (mins < 60) return mins + 'm ' + remSecs + 's';
+  const hours = Math.floor(mins / 60);
+  const remMins = mins % 60;
+  return hours + 'h ' + remMins + 'm';
+}
+
+// GET /api/audit/agent-stats — aggregate performance stats per agent
+app.get('/api/audit/agent-stats', (req, res) => {
+  if (!req.user || req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+  try {
+    if (!fs.existsSync(AUDIT_LOG)) return res.json({ agents: [] });
+    const raw = fs.readFileSync(AUDIT_LOG, 'utf-8');
+    const lines = raw.trim().split('\n').filter(Boolean);
+    const entries = lines.map(l => { try { return JSON.parse(l); } catch(e) { return null; } }).filter(Boolean);
+
+    const { from, to } = req.query;
+    const filtered = entries.filter(e => {
+      if (from && e.timestamp < from) return false;
+      if (to && e.timestamp > to + 'T23:59:59Z') return false;
+      return true;
+    });
+
+    const agentMap = new Map();
+    for (const e of filtered) {
+      if (!agentMap.has(e.user)) {
+        agentMap.set(e.user, {
+          user: e.user,
+          name: e.name || '',
+          role: e.role || '',
+          totalActions: 0,
+          logins: 0,
+          lookups: 0,
+          writes: 0,
+          activeDays: new Set(),
+          firstSeen: e.timestamp,
+          lastSeen: e.timestamp
+        });
+      }
+      const agent = agentMap.get(e.user);
+      agent.totalActions++;
+      if (e.timestamp > agent.lastSeen) agent.lastSeen = e.timestamp;
+      if (e.timestamp < agent.firstSeen) agent.firstSeen = e.timestamp;
+      if (e.method === 'LOGIN') agent.logins++;
+      if (e.method === 'VIEW') agent.lookups++;
+      if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(e.method)) agent.writes++;
+      const day = e.timestamp ? e.timestamp.split('T')[0] : '';
+      if (day) agent.activeDays.add(day);
+    }
+
+    const agents = Array.from(agentMap.values()).map(a => ({
+      ...a,
+      activeDays: a.activeDays.size,
+      avgActionsPerDay: a.activeDays.size > 0 ? Math.round(a.totalActions / a.activeDays.size) : 0
+    }));
+
+    agents.sort((a, b) => b.totalActions - a.totalActions);
+    res.json({ agents });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ── Login page route ────────────────────────────────────────────────
 app.get('/login', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'login.html'));
