@@ -444,6 +444,14 @@ app.get('/api/auth/me', (req, res) => {
   res.json({ username: req.user.username, name: req.user.name, role: req.user.role });
 });
 
+// ── Audit page access guard (admin only) ────────────────────────────
+app.use('/audit', (req, res, next) => {
+  if (!req.user || req.user.role !== 'admin') {
+    return res.redirect('/lookup/');
+  }
+  next();
+});
+
 // ── Audit Log Endpoints (admin only) ────────────────────────────────
 app.get('/api/audit/log', (req, res) => {
   if (!req.user || req.user.role !== 'admin') {
