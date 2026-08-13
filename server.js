@@ -20,7 +20,7 @@ function loadUsers() {
       console.log('[Auth] No users.csv found — creating default with admin user');
       try {
         if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
-        fs.writeFileSync(USERS_CSV, 'username,password,name,role\ndanodomirok,Odomirok23,Dan Domirok,admin\nmichele,Fello1234!,Michele,agent\n', 'utf-8');
+        fs.writeFileSync(USERS_CSV, 'username,password,name,role\ndanodomirok,Odomirok23,Dan Odomirok,admin\nmichele,Fello1234!,Michele,agent\n', 'utf-8');
       } catch (e) {
         console.error('[Auth] Failed to create default users.csv:', e.message);
         return;
