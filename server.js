@@ -1273,28 +1273,34 @@ app.get('/api/public/share/:token/usage', async (req, res) => {
       const startDate = data.startDate || new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
       const endDate = data.endDate || new Date().toISOString().split('T')[0];
       
-      // Fetch usage for each SIM
+      // Fetch usage for each SIM (using same pattern as /api/webbing/branches/:branchId/usage)
       for (const dev of branchDevices) {
         try {
-          const usage = await client.getDeviceUsage(dev.ServiceDeviceID, startDate, endDate, 'day');
-          const records = usage?.UsageRecords?.UsageRecord || [];
-          const totalMB = records.reduce((sum, r) => sum + parseFloat(r.TotalUsage || r.TotalMB || 0), 0);
+          const usageData = await client.getDeviceUsage(dev.ServiceDeviceID, startDate, endDate, 'Unknown');
+          let totalMB = 0;
+          const usage = usageData?.Usage;
+          if (usage && usage.DeviceUsageRecord) {
+            const records = Array.isArray(usage.DeviceUsageRecord) ? usage.DeviceUsageRecord : [usage.DeviceUsageRecord];
+            for (const r of records) {
+              totalMB += parseFloat(r.TotalUsage || 0);
+            }
+          }
+          
+          // Detect carrier from ProductName
+          const pn = dev.ProductName || '';
+          const carrier = pn.includes('VZ') || pn.includes('Verizon') ? 'Verizon' : 
+                          pn.includes('AT&T') || pn.includes('ATT') ? 'AT&T' : 
+                          pn.includes('T-Mobile') || pn.includes('TMO') ? 'T-Mobile' : 'Cellular';
           
           results.devices.push({
             type: 'sim',
             icon: '📶',
-            name: dev.ProductName || 'Cellular SIM',
+            name: pn || 'Cellular SIM',
             identifier: dev.ICCID || dev.Serial || '',
-            carrier: dev.ProductName?.includes('VZ') ? 'Verizon' : 
-                     dev.ProductName?.includes('AT&T') ? 'AT&T' : 
-                     dev.ProductName?.includes('T-Mobile') ? 'T-Mobile' : 'Cellular',
+            carrier: carrier,
             status: dev.StatusName || '',
             usageMB: Math.round(totalMB * 100) / 100,
-            usageGB: Math.round((totalMB / 1024) * 1000) / 1000,
-            dailyUsage: records.map(r => ({
-              date: r.Date || '',
-              mb: parseFloat(r.TotalUsage || r.TotalMB || 0)
-            }))
+            usageGB: Math.round((totalMB / 1024) * 1000) / 1000
           });
           results.totalUsageMB += totalMB;
         } catch (e) {
@@ -1304,6 +1310,7 @@ app.get('/api/public/share/:token/usage', async (req, res) => {
             icon: '📶',
             name: dev.ProductName || 'Cellular SIM',
             identifier: dev.ICCID || '',
+            carrier: 'Cellular',
             status: dev.StatusName || '',
             usageMB: 0,
             usageGB: 0,
