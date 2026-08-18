@@ -600,6 +600,7 @@
       .form-card { padding: 28px 20px; }
     }
   </style>
+  <link rel="stylesheet" href="/shared-header.css">
 </head>
 <body>
 
@@ -608,21 +609,8 @@
 
 <div class="app">
 
-  <!-- ═══ NAVBAR ═══ -->
-  <nav>
-    <a href="#" class="logo" onclick="resetForm(); return false;">
-      <img src="https://events.fello.com/_next/static/media/logo.3bfe7774.svg" alt="Fello" class="logo-img" />
-      <span class="logo-divider"></span>
-      <span class="logo-chip">Site Checker</span>
-    </a>
-    <div class="nav-links">
-      <a href="/lookup/" style="color:#3166AE; font-weight:600;">← Command Center</a>
-      <a href="#how-it-works">How It Works</a>
-      <a href="https://events.fello.com/about-us" target="_blank">About Fello</a>
-      <a href="#" class="nav-cta">Rent a Starlink →</a>
-      <div id="user-badge" style="margin-left:16px;display:flex;align-items:center;gap:8px;font-size:13px;"></div>
-    </div>
-  </nav>
+  <header class="fello-header"></header>
+  <script src="/shared-header.js"></script>
 
   <!-- ═══════════════════════════════════════════
        HOME SCREEN

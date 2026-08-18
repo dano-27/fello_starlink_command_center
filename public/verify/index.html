@@ -11,34 +11,12 @@
   <link rel="stylesheet" href="styles.css">
   <link rel="icon" href="https://events.fello.com/favicon.ico">
   <meta name="theme-color" content="#232428">
+  <link rel="stylesheet" href="/shared-header.css">
 </head>
 <body>
   <!-- HEADER: Same as lookup page -->
-  <header class="header">
-    <div class="header-top">
-      <div class="header-brand">
-        <a href="/lookup/" class="brand-link">
-          <img src="/lookup/fello-logo.png" alt="Fello" class="brand-logo-img">
-          <span class="brand-divider"></span>
-          <span class="brand-chip">Command Center</span>
-        </a>
-      </div>
-      <div class="tools-nav">
-        <button class="tools-toggle" id="tools-toggle">🧰 Tools <span class="tools-chevron">▼</span></button>
-        <div class="tools-dropdown" id="tools-dropdown">
-          <a href="/lookup/" class="tools-link"><span>🔍</span> Lookup Hub</a>
-          <a href="/checker/" class="tools-link"><span>🛰️</span> Site Checker</a>
-          <a href="/simplemdm/" class="tools-link"><span>📱</span> SimpleMDM</a>
-          <a href="/webbing/" class="tools-link"><span>📶</span> Webbing IoT</a>
-          <a href="/starlink/" class="tools-link"><span>📡</span> Starlink</a>
-          <a href="/hexnode/" class="tools-link"><span>🔒</span> Hexnode UEM</a>
-          <a href="/orders/" class="tools-link"><span>📦</span> IMS Orders</a>
-          <a href="/cradlepoint/" class="tools-link"><span>🌐</span> Cradlepoint</a>
-        </div>
-      </div>
-      <div id="user-badge" style="margin-left:auto;display:flex;align-items:center;gap:8px;font-size:13px;padding-left:16px;"></div>
-    </div>
-  </header>
+  <header class="fello-header"></header>
+  <script src="/shared-header.js"></script>
 
   <main>
     <!-- Verification Input Section -->

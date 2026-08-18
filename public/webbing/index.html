@@ -10,27 +10,13 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="/shared-header.css">
 </head>
 <body>
   <div class="app-container">
     <!-- Header -->
-    <header class="app-header">
-      <a href="/" class="back-link" id="back-to-hub">← Back to Command Center</a>
-      <div class="header-center">
-        <h1 class="app-title">📶 Webbing IoT Dashboard</h1>
-        <div class="header-tabs">
-          <button class="tab-btn active" data-tab="branches" id="tab-branches">Branches</button>
-          <button class="tab-btn" data-tab="all-devices" id="tab-all-devices">All Devices</button>
-          <button class="tab-btn" data-tab="map" id="tab-map">Map</button>
-          <button class="tab-btn" data-tab="reports" id="tab-reports">Reports</button>
-        </div>
-      </div>
-      <div class="header-right">
-        <span class="sync-info" id="sync-info">Syncing...</span>
-        <button class="btn-refresh" id="btn-refresh" title="Force sync">↻ Refresh</button>
-        <div id="user-badge" style="margin-left:16px;display:flex;align-items:center;gap:8px;font-size:13px;"></div>
-      </div>
-    </header>
+    <header class="fello-header"></header>
+  <script src="/shared-header.js"></script>
 
     <!-- Stats Bar -->
     <div class="stats-bar" id="stats-bar">

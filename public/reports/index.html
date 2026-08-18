@@ -211,30 +211,11 @@
     }
     @keyframes spin { 100% { transform: rotate(360deg); } }
   </style>
+  <link rel="stylesheet" href="/shared-header.css">
 </head>
 <body>
-  <header class="header">
-    <div class="header-top">
-      <div class="header-brand">
-        <a href="/lookup/" class="brand-link">
-          <img src="/lookup/fello-logo.png" alt="Fello" class="brand-logo-img">
-          <span class="brand-divider"></span>
-          <span class="brand-chip">Command Center</span>
-        </a>
-      </div>
-      <div class="tools-nav">
-        <button class="tools-toggle" id="tools-toggle">🧰 Tools <span class="tools-chevron">▼</span></button>
-        <div class="tools-dropdown" id="tools-dropdown">
-          <a href="/lookup/" class="tools-link"><span>🔍</span> Lookup</a>
-          <a href="/starlink/" class="tools-link"><span>📡</span> Starlink</a>
-          <a href="/reports/" class="tools-link"><span>📊</span> Reports</a>
-          <a href="#" class="tools-link" onclick="window.showEsimTool && window.showEsimTool()"><span>📲</span> eSIM</a>
-          <a href="/admin/users" class="tools-link"><span>👥</span> Admin</a>
-        </div>
-      </div>
-      <div id="user-badge" style="margin-left:auto;display:flex;align-items:center;gap:8px;font-size:13px;padding-left:16px;"></div>
-    </div>
-  </header>
+  <header class="fello-header"></header>
+  <script src="/shared-header.js"></script>
 
   <main class="report-container">
     <div class="header-section">

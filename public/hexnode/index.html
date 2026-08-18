@@ -9,6 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="index.css">
+  <link rel="stylesheet" href="/shared-header.css">
 </head>
 <body>
   <!-- ═══════════ LOGIN SCREEN ═══════════ -->
@@ -53,24 +54,8 @@
   <!-- ═══════════ MAIN DASHBOARD ═══════════ -->
   <div id="app" class="app hidden">
     <!-- Top Bar -->
-    <header class="topbar">
-      <div class="topbar-left">
-        <a href="/" class="back-to-hub">← Back to Command Center</a>
-        <div class="topbar-divider"></div>
-        <div class="topbar-brand">
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="2" y="3" width="20" height="14" rx="2"/>
-            <path d="M8 21h8M12 17v4"/>
-          </svg>
-          <span class="topbar-title">Hexnode UEM</span>
-        </div>
-      </div>
-      <div class="topbar-right">
-        <span class="topbar-portal">fello23.hexnodemdm.com</span>
-        <button class="btn btn-outline btn-sm" id="logout-btn">Disconnect</button>
-        <div id="user-badge" style="margin-left:16px;display:flex;align-items:center;gap:8px;font-size:13px;"></div>
-      </div>
-    </header>
+    <header class="fello-header"></header>
+  <script src="/shared-header.js"></script>
 
     <!-- Stats Row -->
     <section class="stats-row" id="stats-row">

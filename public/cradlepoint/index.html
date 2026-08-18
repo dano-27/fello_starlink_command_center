@@ -407,29 +407,14 @@
       }
     }
 
+  <link rel="stylesheet" href="/shared-header.css">
+  <link rel="icon" href="https://events.fello.com/favicon.ico">
   </style>
 </head>
 <body>
 
-  <header>
-    <div style="display:flex;align-items:center;">
-      <a href="/" class="brand">
-        <span style="font-size:20px;margin-right:4px;">✦</span> FELLO
-      </a>
-      <nav class="nav-links">
-        <a href="/">Command Center</a>
-        <a href="/lookup/">Lookup Hub</a>
-        <a href="/starlink/">Starlink</a>
-        <a href="/simplemdm/">SimpleMDM</a>
-        <a href="/webbing/">Webbing</a>
-        <a href="/cradlepoint/" class="active">Cradlepoint</a>
-        <a href="/reports/">Reports</a>
-      </nav>
-    </div>
-    <div class="header-right">
-      <div id="user-badge"></div>
-    </div>
-  </header>
+  <header class="fello-header"></header>
+  <script src="/shared-header.js"></script>
 
   <main>
     <div class="stats-row">
@@ -495,8 +480,15 @@
 
     // Initialize
     async function init() {
-      await checkAuth();
-      await loadData();
+      // Wait for shared header to load user
+      document.addEventListener('fello-user-loaded', (e) => {
+        currentUser = e.detail;
+      });
+      // Small delay for header to init, then load data
+      setTimeout(async () => {
+        currentUser = window._felloUser || null;
+        await loadData();
+      }, 100);
       
       // Auto-refresh every 60 seconds
       refreshInterval = setInterval(loadData, 60000);
@@ -505,59 +497,6 @@
       document.getElementById('refresh-btn').addEventListener('click', loadData);
       document.getElementById('search-input').addEventListener('input', renderRouters);
       document.getElementById('alerts-header').addEventListener('click', toggleAlerts);
-    }
-
-    async function checkAuth() {
-      try {
-        const res = await fetch('/api/auth/me');
-        if (!res.ok) {
-          window.location.href = '/login';
-          return;
-        }
-        currentUser = await res.json();
-        
-        const badge = document.getElementById('user-badge');
-        badge.innerHTML = '';
-        
-        if (currentUser.role === 'admin') {
-          const audit = document.createElement('a');
-          audit.href = '/audit/';
-          audit.textContent = '📋 Audit';
-          audit.style.cssText = 'color:#a0a0a0;text-decoration:none;margin-right:12px;font-size:12px;transition:color 0.2s;';
-          audit.onmouseover = () => audit.style.color = '#fff';
-          audit.onmouseout = () => audit.style.color = '#a0a0a0';
-          badge.appendChild(audit);
-          
-          const users = document.createElement('a');
-          users.href = '/admin/users';
-          users.textContent = '👥 Users';
-          users.style.cssText = 'color:#a0a0a0;text-decoration:none;margin-right:12px;font-size:12px;transition:color 0.2s;';
-          users.onmouseover = () => users.style.color = '#fff';
-          users.onmouseout = () => users.style.color = '#a0a0a0';
-          badge.appendChild(users);
-        }
-        
-        const nameSpan = document.createElement('span');
-        nameSpan.textContent = currentUser.name || currentUser.username;
-        nameSpan.style.fontWeight = '500';
-        badge.appendChild(nameSpan);
-        
-        const logoutBtn = document.createElement('button');
-        logoutBtn.textContent = 'Sign Out';
-        logoutBtn.style.cssText = 'background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);color:#fff;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:12px;margin-left:8px;font-weight:500;transition:all 0.2s;';
-        logoutBtn.onmouseover = () => logoutBtn.style.background = 'rgba(255,255,255,0.2)';
-        logoutBtn.onmouseout = () => logoutBtn.style.background = 'rgba(255,255,255,0.1)';
-        logoutBtn.onclick = async () => {
-          try {
-            await fetch('/api/auth/logout', { method: 'POST' });
-          } catch(e) {}
-          window.location.href = '/login';
-        };
-        badge.appendChild(logoutBtn);
-        
-      } catch (e) {
-        window.location.href = '/login';
-      }
     }
 
     async function loadData() {

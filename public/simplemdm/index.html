@@ -11,6 +11,7 @@
     <link rel="stylesheet" href="index.css">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <link rel="stylesheet" href="/shared-header.css">
 </head>
 <body>
     <!-- Toast Container -->
@@ -300,35 +301,8 @@ GG7YJ21SJF88"></textarea>
     <!-- DASHBOARD -->
     <div id="dashboard" class="dashboard hidden">
         <!-- Top Bar -->
-        <header class="topbar">
-            <div class="topbar-left">
-                <a href="/" class="back-to-hub">← Back to Command Center</a>
-            </div>
-            <div class="topbar-center">
-                <div class="topbar-brand">
-                    <svg width="28" height="28" viewBox="0 0 40 40" fill="none">
-                        <rect width="40" height="40" rx="10" fill="#3166ae"/>
-                        <path d="M12 20h4v8h-4zM18 14h4v14h-4zM24 17h4v11h-4z" fill="#fcd230"/>
-                    </svg>
-                    <span>SimpleMDM Dashboard</span>
-                </div>
-                <nav class="topbar-tabs" id="topbar-tabs">
-                    <button class="topbar-tab active" data-tab="groups" id="tab-groups">Groups</button>
-                    <button class="topbar-tab" data-tab="provisioning" id="tab-provisioning">Provisioning</button>
-                    <a class="nav-link" data-section="requests" id="nav-requests" style="cursor:pointer; display:flex; align-items:center; color:#8892b0; text-decoration:none; margin-left:12px; font-weight:500;">📋 Requests</a>
-                </nav>
-            </div>
-            <div class="topbar-right">
-                <button class="btn btn-outline btn-sm" id="refresh-btn" title="Refresh">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-                    Refresh
-                </button>
-                <button class="btn btn-outline btn-sm btn-logout" id="logout-btn" title="Disconnect">
-                    Logout
-                </button>
-                <div id="user-badge" style="margin-left:16px;display:flex;align-items:center;gap:8px;font-size:13px;"></div>
-            </div>
-        </header>
+        <header class="fello-header"></header>
+  <script src="/shared-header.js"></script>
 
         <!-- Stats Row -->
         <div class="stats-row" id="stats-row">
