@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cradlepoint Dashboard - Fello Command Center</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #0082F0;
+      --primary-hover: #006bbd;
+      --bg-color: #f5f7fa;
+      --card-bg: #ffffff;
+      --text-main: #333333;
+      --text-muted: #666666;
+      --border-color: #e0e0e0;
+      --success: #10b981;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+      --font-family: 'Montserrat', sans-serif;
+    }
+    
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: var(--font-family);
+      background-color: var(--bg-color);
+      color: var(--text-main);
+      line-height: 1.5;
+    }
+
+    /* Header & Nav */
+    header {
+      background: #232428;
+      color: white;
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 60px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 600;
+      text-decoration: none;
+      color: white;
+      font-size: 16px;
+    }
+
+    .brand-logo-img {
+      height: 24px;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 12px;
+      margin-left: 32px;
+    }
+
+    .nav-links a {
+      color: #a0a0a0;
+      text-decoration: none;
+      font-size: 14px;
+      font-weight: 500;
+      padding: 6px 12px;
+      border-radius: 6px;
+      transition: all 0.2s;
+    }
+
+    .nav-links a:hover {
+      color: white;
+      background: rgba(255,255,255,0.1);
+    }
+
+    .nav-links a.active {
+      color: white;
+      background: var(--primary);
+    }
+    
+    .header-right {
+      display: flex;
+      align-items: center;
+    }
+
+    #user-badge {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 13px;
+    }
+
+    #user-badge span {
+      color: #e0e0e0;
+    }
+
+    /* Main Container */
+    main {
+      max-width: 1200px;
+      margin: 32px auto;
+      padding: 0 16px;
+    }
+
+    /* Stats Row */
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .stat-card {
+      background: var(--card-bg);
+      padding: 24px;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+      border: 1px solid var(--border-color);
+    }
+
+    .stat-title {
+      font-size: 13px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .stat-value {
+      font-size: 32px;
+      font-weight: 700;
+    }
+    .stat-value.online { color: var(--success); }
+    .stat-value.offline { color: var(--danger); }
+    .stat-value.alerts { color: var(--warning); }
+
+    /* Controls Bar */
+    .controls-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    .search-input {
+      padding: 10px 16px;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      font-family: inherit;
+      width: 320px;
+      font-size: 14px;
+    }
+    
+    .search-input:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px rgba(0, 130, 240, 0.2);
+    }
+
+    .btn {
+      padding: 10px 16px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 14px;
+      font-weight: 500;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: background 0.2s;
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: white;
+    }
+    
+    .btn-primary:hover {
+      background: var(--primary-hover);
+    }
+
+    .btn-secondary {
+      background: white;
+      color: var(--text-main);
+      border: 1px solid var(--border-color);
+    }
+
+    .btn-secondary:hover {
+      background: #f0f0f0;
+    }
+    
+    .btn-danger {
+      background: white;
+      color: var(--danger);
+      border: 1px solid var(--danger);
+    }
+    
+    .btn-danger:hover {
+      background: #fee2e2;
+    }
+    
+    .btn-sm {
+      padding: 6px 12px;
+      font-size: 13px;
+    }
+
+    /* Table Styles */
+    .card {
+      background: var(--card-bg);
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+      border: 1px solid var(--border-color);
+      overflow: hidden;
+      margin-bottom: 24px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+    }
+
+    th, td {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border-color);
+    }
+
+    th {
+      background: #fafafa;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+    
+    .router-row {
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    
+    .router-row:hover {
+      background: #f9fafb;
+    }
+
+    .status-dot {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+    }
+    .status-dot.online { background-color: var(--success); }
+    .status-dot.offline { background-color: var(--danger); }
+
+    .badge {
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: capitalize;
+    }
+    .badge.online { background: #d1fae5; color: #065f46; }
+    .badge.offline { background: #fee2e2; color: #991b1b; }
+
+    /* Detail Row */
+    .detail-row {
+      display: none;
+      background: #f8fafc;
+    }
+    
+    .detail-row.open {
+      display: table-row;
+    }
+    
+    .detail-content {
+      padding: 20px;
+    }
+    
+    .detail-title {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 12px;
+      color: var(--text-main);
+    }
+    
+    .net-devices-table {
+      background: white;
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    
+    .net-devices-table th, .net-devices-table td {
+      padding: 10px 14px;
+      font-size: 13px;
+    }
+
+    /* Alerts Panel */
+    .collapsible-header {
+      padding: 16px 20px;
+      background: #fafafa;
+      border-bottom: 1px solid var(--border-color);
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .alerts-list {
+      padding: 0;
+      list-style: none;
+      display: none;
+    }
+    
+    .alerts-list.open {
+      display: block;
+    }
+    
+    .alert-item {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      gap: 20px;
+      align-items: flex-start;
+    }
+    
+    .alert-item:last-child {
+      border-bottom: none;
+    }
+    
+    .alert-time {
+      font-size: 13px;
+      color: var(--text-muted);
+      min-width: 140px;
+    }
+    
+    .alert-type {
+      font-weight: 600;
+      color: var(--warning);
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      min-width: 100px;
+    }
+    
+    .alert-router {
+      font-weight: 500;
+      color: var(--primary);
+      min-width: 160px;
+    }
+    
+    .alert-msg {
+      font-size: 14px;
+      flex: 1;
+    }
+
+    /* Responsive */
+    @media (max-width: 1024px) {
+      .stats-row {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+    
+    @media (max-width: 768px) {
+      header {
+        flex-direction: column;
+        height: auto;
+        padding: 16px;
+        gap: 16px;
+      }
+      .nav-links {
+        margin-left: 0;
+        flex-wrap: wrap;
+        justify-content: center;
+      }
+      .controls-bar {
+        flex-direction: column;
+        gap: 16px;
+        align-items: stretch;
+      }
+      .search-input {
+        width: 100%;
+      }
+      .stats-row {
+        grid-template-columns: 1fr;
+      }
+      .card {
+        overflow-x: auto;
+      }
+      .alert-item {
+        flex-direction: column;
+        gap: 8px;
+      }
+    }
+
+  </style>
+</head>
+<body>
+
+  <header>
+    <div style="display:flex;align-items:center;">
+      <a href="/" class="brand">
+        <span style="font-size:20px;margin-right:4px;">✦</span> FELLO
+      </a>
+      <nav class="nav-links">
+        <a href="/">Command Center</a>
+        <a href="/lookup/">Lookup Hub</a>
+        <a href="/starlink/">Starlink</a>
+        <a href="/simplemdm/">SimpleMDM</a>
+        <a href="/webbing/">Webbing</a>
+        <a href="/cradlepoint/" class="active">Cradlepoint</a>
+        <a href="/reports/">Reports</a>
+      </nav>
+    </div>
+    <div class="header-right">
+      <div id="user-badge"></div>
+    </div>
+  </header>
+
+  <main>
+    <div class="stats-row">
+      <div class="stat-card">
+        <div class="stat-title">Total Routers</div>
+        <div class="stat-value" id="stat-total">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-title">Online</div>
+        <div class="stat-value online" id="stat-online">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-title">Offline</div>
+        <div class="stat-value offline" id="stat-offline">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-title">Active Alerts</div>
+        <div class="stat-value alerts" id="stat-alerts">—</div>
+      </div>
+    </div>
+
+    <div class="controls-bar">
+      <input type="text" id="search-input" class="search-input" placeholder="Search routers by name, MAC, SN...">
+      <button class="btn btn-secondary" id="refresh-btn">
+        <span style="font-size:16px;">↻</span> Refresh Data
+      </button>
+    </div>
+
+    <div class="card">
+      <table id="routers-table">
+        <thead>
+          <tr>
+            <th style="width: 40px;"></th>
+            <th>Name</th>
+            <th>Serial Number</th>
+            <th>MAC Address</th>
+            <th>State</th>
+            <th>Group</th>
+            <th style="text-align: right;">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="routers-tbody">
+          <tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text-muted);">Loading routers...</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <div class="collapsible-header" id="alerts-header">
+        <span>Recent Alerts</span>
+        <span id="alerts-chevron" style="font-size:12px;">▼</span>
+      </div>
+      <ul class="alerts-list open" id="alerts-list">
+        <li style="padding:32px;text-align:center;color:var(--text-muted);">Loading alerts...</li>
+      </ul>
+    </div>
+  </main>
+
+  <script>
+    let currentUser = null;
+    let routersData = [];
+    let refreshInterval;
+
+    // Initialize
+    async function init() {
+      await checkAuth();
+      await loadData();
+      
+      // Auto-refresh every 60 seconds
+      refreshInterval = setInterval(loadData, 60000);
+      
+      // Event Listeners
+      document.getElementById('refresh-btn').addEventListener('click', loadData);
+      document.getElementById('search-input').addEventListener('input', renderRouters);
+      document.getElementById('alerts-header').addEventListener('click', toggleAlerts);
+    }
+
+    async function checkAuth() {
+      try {
+        const res = await fetch('/api/auth/me');
+        if (!res.ok) {
+          window.location.href = '/login';
+          return;
+        }
+        currentUser = await res.json();
+        
+        const badge = document.getElementById('user-badge');
+        badge.innerHTML = '';
+        
+        if (currentUser.role === 'admin') {
+          const audit = document.createElement('a');
+          audit.href = '/audit/';
+          audit.textContent = '📋 Audit';
+          audit.style.cssText = 'color:#a0a0a0;text-decoration:none;margin-right:12px;font-size:12px;transition:color 0.2s;';
+          audit.onmouseover = () => audit.style.color = '#fff';
+          audit.onmouseout = () => audit.style.color = '#a0a0a0';
+          badge.appendChild(audit);
+          
+          const users = document.createElement('a');
+          users.href = '/admin/users';
+          users.textContent = '👥 Users';
+          users.style.cssText = 'color:#a0a0a0;text-decoration:none;margin-right:12px;font-size:12px;transition:color 0.2s;';
+          users.onmouseover = () => users.style.color = '#fff';
+          users.onmouseout = () => users.style.color = '#a0a0a0';
+          badge.appendChild(users);
+        }
+        
+        const nameSpan = document.createElement('span');
+        nameSpan.textContent = currentUser.name || currentUser.username;
+        nameSpan.style.fontWeight = '500';
+        badge.appendChild(nameSpan);
+        
+        const logoutBtn = document.createElement('button');
+        logoutBtn.textContent = 'Sign Out';
+        logoutBtn.style.cssText = 'background:rgba(255,255,255,0.1);border:1px solid rgba(255,255,255,0.2);color:#fff;border-radius:6px;padding:6px 12px;cursor:pointer;font-size:12px;margin-left:8px;font-weight:500;transition:all 0.2s;';
+        logoutBtn.onmouseover = () => logoutBtn.style.background = 'rgba(255,255,255,0.2)';
+        logoutBtn.onmouseout = () => logoutBtn.style.background = 'rgba(255,255,255,0.1)';
+        logoutBtn.onclick = async () => {
+          try {
+            await fetch('/api/auth/logout', { method: 'POST' });
+          } catch(e) {}
+          window.location.href = '/login';
+        };
+        badge.appendChild(logoutBtn);
+        
+      } catch (e) {
+        window.location.href = '/login';
+      }
+    }
+
+    async function loadData() {
+      try {
+        const [routersRes, alertsRes] = await Promise.all([
+          fetch('/api/cradlepoint/routers'),
+          fetch('/api/cradlepoint/alerts')
+        ]);
+        
+        if (routersRes.ok) {
+          const data = await routersRes.json();
+          routersData = data.data || [];
+          renderRouters();
+          updateStats(routersData, data.meta?.total_count);
+        }
+        
+        if (alertsRes.ok) {
+          const data = await alertsRes.json();
+          renderAlerts(data.data || []);
+          document.getElementById('stat-alerts').textContent = data.meta?.total_count || (data.data ? data.data.length : 0);
+        }
+      } catch (err) {
+        console.error('Error loading data', err);
+      }
+    }
+
+    function updateStats(routers, total) {
+      document.getElementById('stat-total').textContent = total || routers.length;
+      
+      const online = routers.filter(r => r.state === 'online').length;
+      const offline = routers.filter(r => r.state === 'offline').length;
+      
+      document.getElementById('stat-online').textContent = online;
+      document.getElementById('stat-offline').textContent = offline;
+    }
+
+    function renderRouters() {
+      const tbody = document.getElementById('routers-tbody');
+      const query = document.getElementById('search-input').value.toLowerCase();
+      
+      let filtered = routersData;
+      if (query) {
+        filtered = routersData.filter(r => 
+          (r.name && r.name.toLowerCase().includes(query)) ||
+          (r.mac && r.mac.toLowerCase().includes(query)) ||
+          (r.serial_number && r.serial_number.toLowerCase().includes(query)) ||
+          (r.group && r.group.toLowerCase().includes(query))
+        );
+      }
+      
+      if (filtered.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text-muted);">No routers match your search.</td></tr>';
+        return;
+      }
+      
+      tbody.innerHTML = '';
+      
+      filtered.forEach(router => {
+        const isOnline = router.state === 'online';
+        const tr = document.createElement('tr');
+        tr.className = 'router-row';
+        tr.onclick = (e) => {
+          if(e.target.tagName === 'BUTTON') return;
+          toggleDetail(router.id, tr);
+        };
+        
+        const actionHtml = currentUser?.role === 'admin' ? 
+          `<button class="btn btn-danger btn-sm" onclick="rebootRouter(event, '${router.id}')">Reboot</button>` : '';
+          
+        tr.innerHTML = `
+          <td style="text-align:center;"><span class="status-dot ${isOnline ? 'online' : 'offline'}"></span></td>
+          <td style="font-weight:600;color:var(--text-main);">${router.name || 'Unknown'}</td>
+          <td style="font-family:monospace;color:var(--text-muted);">${router.serial_number || '-'}</td>
+          <td style="font-family:monospace;color:var(--text-muted);">${router.mac || '-'}</td>
+          <td><span class="badge ${isOnline ? 'online' : 'offline'}">${router.state || 'unknown'}</span></td>
+          <td>${router.group || '-'}</td>
+          <td style="text-align:right;">${actionHtml}</td>
+        `;
+        
+        // Detail row
+        const detailTr = document.createElement('tr');
+        detailTr.className = 'detail-row';
+        detailTr.id = `detail-${router.id}`;
+        detailTr.innerHTML = `
+          <td colspan="7" style="padding:0;border:none;">
+            <div class="detail-content" id="detail-content-${router.id}">
+              <div style="color:var(--text-muted);font-style:italic;">Loading net devices...</div>
+            </div>
+          </td>
+        `;
+        
+        tbody.appendChild(tr);
+        tbody.appendChild(detailTr);
+      });
+    }
+
+    async function toggleDetail(routerId, rowEl) {
+      const detailRow = document.getElementById(`detail-${routerId}`);
+      if (detailRow.classList.contains('open')) {
+        detailRow.classList.remove('open');
+        return;
+      }
+      
+      // Close all other details
+      document.querySelectorAll('.detail-row.open').forEach(el => el.classList.remove('open'));
+      detailRow.classList.add('open');
+      
+      const contentEl = document.getElementById(`detail-content-${routerId}`);
+      
+      try {
+        const res = await fetch(`/api/cradlepoint/net_devices?router=${routerId}`);
+        if (!res.ok) throw new Error('Failed to fetch net devices');
+        const data = await res.json();
+        
+        if (!data.data || data.data.length === 0) {
+          contentEl.innerHTML = '<div style="color:var(--text-muted);">No cellular modems or net devices found for this router.</div>';
+          return;
+        }
+        
+        let html = `
+          <div class="detail-title">Net Devices (Modems)</div>
+          <table class="net-devices-table">
+            <thead>
+              <tr>
+                <th>Device Name</th>
+                <th>Carrier</th>
+                <th>IP Address</th>
+                <th>Connection State</th>
+                <th>Signal (dBm)</th>
+              </tr>
+            </thead>
+            <tbody>
+        `;
+        
+        data.data.forEach(nd => {
+          const stateColor = nd.connection_state === 'connected' ? 'var(--success)' : (nd.connection_state === 'disconnected' ? 'var(--danger)' : 'var(--text-muted)');
+          html += `
+            <tr>
+              <td style="font-weight:500;">${nd.name || '-'}</td>
+              <td>${nd.carrier || '-'}</td>
+              <td style="font-family:monospace;">${nd.ip_address || '-'}</td>
+              <td style="color:${stateColor};font-weight:500;text-transform:capitalize;">${nd.connection_state || '-'}</td>
+              <td>${nd.signal_strength ? nd.signal_strength + ' dBm' : '-'}</td>
+            </tr>
+          `;
+        });
+        
+        html += `</tbody></table>`;
+        contentEl.innerHTML = html;
+        
+      } catch (err) {
+        contentEl.innerHTML = '<div style="color:var(--danger);">Error loading details: ' + err.message + '</div>';
+      }
+    }
+
+    async function rebootRouter(event, routerId) {
+      event.stopPropagation();
+      if (!confirm('Are you sure you want to reboot this router? This will temporarily interrupt connectivity.')) return;
+      
+      try {
+        const res = await fetch(`/api/cradlepoint/routers/${routerId}/reboot`, { method: 'POST' });
+        if (res.ok) {
+          alert('Reboot command sent successfully');
+        } else {
+          alert('Failed to send reboot command');
+        }
+      } catch (err) {
+        alert('Error: ' + err.message);
+      }
+    }
+
+    function renderAlerts(alerts) {
+      const list = document.getElementById('alerts-list');
+      if (!alerts || alerts.length === 0) {
+        list.innerHTML = '<li style="padding:32px;text-align:center;color:var(--text-muted);">No recent alerts.</li>';
+        return;
+      }
+      
+      list.innerHTML = '';
+      alerts.forEach(alert => {
+        const d = new Date(alert.created_at || Date.now());
+        const timeStr = d.toLocaleString();
+        
+        const li = document.createElement('li');
+        li.className = 'alert-item';
+        li.innerHTML = `
+          <div class="alert-time">${timeStr}</div>
+          <div class="alert-type">${alert.type || 'Alert'}</div>
+          <div class="alert-router">${alert.router_name || alert.router_id || 'Unknown Router'}</div>
+          <div class="alert-msg">${alert.message || ''}</div>
+        `;
+        list.appendChild(li);
+      });
+    }
+
+    function toggleAlerts() {
+      const list = document.getElementById('alerts-list');
+      const chev = document.getElementById('alerts-chevron');
+      if (list.classList.contains('open')) {
+        list.classList.remove('open');
+        chev.textContent = '▼';
+      } else {
+        list.classList.add('open');
+        chev.textContent = '▲';
+      }
+    }
+
+    // Start
+    document.addEventListener('DOMContentLoaded', init);
+  </script>
+</body>
+</html>

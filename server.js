@@ -788,6 +788,234 @@ app.get('/admin/users', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin', 'users.html'));
 });
 
+// ── Cradlepoint NetCloud Manager API ────────────────────────────────
+const CP_ECM_API_ID = process.env.CP_ECM_API_ID || '';
+const CP_ECM_API_KEY = process.env.CP_ECM_API_KEY || '';
+const CP_CP_API_ID = process.env.CP_CP_API_ID || '';
+const CP_CP_API_KEY = process.env.CP_CP_API_KEY || '';
+const CP_BASE_URL = process.env.CP_BASE_URL || 'https://www.us0.cradlepointecm.com/api/v2';
+
+if (CP_ECM_API_ID && CP_CP_API_ID) {
+  console.log('[Cradlepoint] API configured — ECM ID: ' + CP_ECM_API_ID.substring(0, 8) + '...');
+} else {
+  console.log('[Cradlepoint] Not configured — set CP_ECM_API_ID, CP_ECM_API_KEY, CP_CP_API_ID, CP_CP_API_KEY');
+}
+
+function cpHeaders() {
+  return {
+    'X-CP-API-ID': CP_CP_API_ID,
+    'X-CP-API-KEY': CP_CP_API_KEY,
+    'X-ECM-API-ID': CP_ECM_API_ID,
+    'X-ECM-API-KEY': CP_ECM_API_KEY,
+    'Content-Type': 'application/json'
+  };
+}
+
+async function cpFetch(endpoint, options) {
+  const url = endpoint.startsWith('http') ? endpoint : CP_BASE_URL + endpoint;
+  const resp = await fetch(url, { headers: cpHeaders(), ...options });
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error('Cradlepoint API ' + resp.status + ': ' + text.substring(0, 200));
+  }
+  return resp.json();
+}
+
+// Config check
+app.get('/api/cradlepoint/config', (req, res) => {
+  res.json({
+    configured: !!(CP_ECM_API_ID && CP_CP_API_ID),
+    baseUrl: CP_BASE_URL
+  });
+});
+
+// List all routers
+app.get('/api/cradlepoint/routers', async (req, res) => {
+  if (!CP_ECM_API_ID) return res.status(503).json({ error: 'Cradlepoint not configured' });
+  try {
+    const limit = req.query.limit || 100;
+    const offset = req.query.offset || 0;
+    const state = req.query.state; // online, offline
+    let url = '/routers/?limit=' + limit + '&offset=' + offset;
+    if (state) url += '&state=' + state;
+    const data = await cpFetch(url);
+    console.log('[Cradlepoint] Routers: ' + (data.data || []).length + ' of ' + (data.meta || {}).total_count);
+    res.json(data);
+  } catch (err) {
+    console.error('[Cradlepoint] Routers error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Single router detail
+app.get('/api/cradlepoint/routers/:id', async (req, res) => {
+  if (!CP_ECM_API_ID) return res.status(503).json({ error: 'Cradlepoint not configured' });
+  try {
+    const data = await cpFetch('/routers/' + req.params.id + '/');
+    res.json(data);
+  } catch (err) {
+    console.error('[Cradlepoint] Router detail error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Net devices (modems, WANs) — optionally filter by router
+app.get('/api/cradlepoint/net_devices', async (req, res) => {
+  if (!CP_ECM_API_ID) return res.status(503).json({ error: 'Cradlepoint not configured' });
+  try {
+    let url = '/net_devices/?limit=' + (req.query.limit || 100);
+    if (req.query.router) url += '&router=' + req.query.router;
+    if (req.query.type) url += '&type=' + req.query.type;
+    const data = await cpFetch(url);
+    res.json(data);
+  } catch (err) {
+    console.error('[Cradlepoint] Net devices error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Net device usage samples
+app.get('/api/cradlepoint/net_devices/:id/usage', async (req, res) => {
+  if (!CP_ECM_API_ID) return res.status(503).json({ error: 'Cradlepoint not configured' });
+  try {
+    let url = '/net_device_usage_samples/?net_device=' + req.params.id + '&limit=' + (req.query.limit || 100);
+    if (req.query.created_at__gt) url += '&created_at__gt=' + req.query.created_at__gt;
+    const data = await cpFetch(url);
+    res.json(data);
+  } catch (err) {
+    console.error('[Cradlepoint] Usage error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Net device signal samples
+app.get('/api/cradlepoint/net_devices/:id/signal', async (req, res) => {
+  if (!CP_ECM_API_ID) return res.status(503).json({ error: 'Cradlepoint not configured' });
+  try {
+    let url = '/net_device_signal_samples/?net_device=' + req.params.id + '&limit=' + (req.query.limit || 50);
+    if (req.query.created_at__gt) url += '&created_at__gt=' + req.query.created_at__gt;
+    const data = await cpFetch(url);
+    res.json(data);
+  } catch (err) {
+    console.error('[Cradlepoint] Signal error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Net device health
+app.get('/api/cradlepoint/net_device_health', async (req, res) => {
+  if (!CP_ECM_API_ID) return res.status(503).json({ error: 'Cradlepoint not configured' });
+  try {
+    let url = '/net_device_health/?limit=' + (req.query.limit || 100);
+    if (req.query.net_device) url += '&net_device=' + req.query.net_device;
+    const data = await cpFetch(url);
+    res.json(data);
+  } catch (err) {
+    console.error('[Cradlepoint] Health error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Groups
+app.get('/api/cradlepoint/groups', async (req, res) => {
+  if (!CP_ECM_API_ID) return res.status(503).json({ error: 'Cradlepoint not configured' });
+  try {
+    const data = await cpFetch('/groups/?limit=100');
+    res.json(data);
+  } catch (err) {
+    console.error('[Cradlepoint] Groups error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Alerts
+app.get('/api/cradlepoint/alerts', async (req, res) => {
+  if (!CP_ECM_API_ID) return res.status(503).json({ error: 'Cradlepoint not configured' });
+  try {
+    const limit = req.query.limit || 50;
+    let url = '/router_alerts/?limit=' + limit + '&order_by=-created_at';
+    if (req.query.router) url += '&router=' + req.query.router;
+    const data = await cpFetch(url);
+    res.json(data);
+  } catch (err) {
+    console.error('[Cradlepoint] Alerts error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Router locations
+app.get('/api/cradlepoint/locations', async (req, res) => {
+  if (!CP_ECM_API_ID) return res.status(503).json({ error: 'Cradlepoint not configured' });
+  try {
+    let url = '/locations/?limit=' + (req.query.limit || 50);
+    if (req.query.router) url += '&router=' + req.query.router;
+    const data = await cpFetch(url);
+    res.json(data);
+  } catch (err) {
+    console.error('[Cradlepoint] Locations error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Reboot a router (admin only)
+app.post('/api/cradlepoint/routers/:id/reboot', async (req, res) => {
+  if (!req.user || req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+  if (!CP_ECM_API_ID) return res.status(503).json({ error: 'Cradlepoint not configured' });
+  try {
+    const data = await cpFetch('/reboot_activity/', {
+      method: 'POST',
+      body: JSON.stringify({ router: CP_BASE_URL + '/routers/' + req.params.id + '/' })
+    });
+    auditLog({
+      user: req.user.username,
+      name: req.user.name,
+      method: 'REBOOT',
+      path: '/api/cradlepoint/routers/' + req.params.id + '/reboot',
+      body: { routerId: req.params.id },
+      ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress
+    });
+    console.log('[Cradlepoint] Reboot initiated for router ' + req.params.id + ' by ' + req.user.username);
+    res.json({ success: true, action: 'reboot', routerId: req.params.id, data: data });
+  } catch (err) {
+    console.error('[Cradlepoint] Reboot error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Unified fleet overview (parallel fetch)
+app.get('/api/cradlepoint/fleet', async (req, res) => {
+  if (!CP_ECM_API_ID) return res.status(503).json({ error: 'Cradlepoint not configured', configured: false });
+  try {
+    const [routersData, alertsData] = await Promise.all([
+      cpFetch('/routers/?limit=200'),
+      cpFetch('/router_alerts/?limit=20&order_by=-created_at')
+    ]);
+
+    const routers = routersData.data || [];
+    const alerts = alertsData.data || [];
+    const online = routers.filter(r => r.state === 'online').length;
+
+    console.log('[Cradlepoint] Fleet: ' + routers.length + ' routers (' + online + ' online), ' + alerts.length + ' alerts');
+
+    res.json({
+      configured: true,
+      routers: routers,
+      alerts: alerts,
+      stats: {
+        total: routers.length,
+        online: online,
+        offline: routers.length - online,
+        alertCount: (alertsData.meta || {}).total_count || alerts.length
+      }
+    });
+  } catch (err) {
+    console.error('[Cradlepoint] Fleet error:', err.message);
+    res.status(500).json({ error: err.message, configured: true });
+  }
+});
+
 // ── CoverageMap API Proxy (for Site Checker) ────────────────────────
 const COVERAGEMAP_KEY = process.env.COVERAGEMAP_KEY || 'e3f45af8095f4148998998511ad55754';
 app.get('/api/coveragemap', async (req, res) => {
