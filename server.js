@@ -1395,28 +1395,36 @@ app.get('/api/public/share/:token/usage', async (req, res) => {
       }
     }
     
-    // ─── Cradlepoint Routers (matched by Webbing ICCID) ───
+    // ─── Cradlepoint Routers: enrich matching SIM entries ───
+    // A Cradlepoint router uses a Webbing SIM — find which SIMs are in routers
+    // and upgrade their type/name instead of adding separate router entries
     if (CP_ECM_API_ID && branchDevices.length > 0) {
       try {
         const cpFleet = await cpFetch('/routers/?limit=200');
         const cpNetDevs = await cpFetch('/net_devices/?limit=500');
-        const branchIccids = new Set(branchDevices.map(d => String(d.ICCID || '').trim()).filter(Boolean));
         
         for (const nd of (cpNetDevs.data || [])) {
-          const iccid = String(nd.iccid || '').trim();
-          if (iccid && branchIccids.has(iccid)) {
+          const ndIccid = String(nd.iccid || '').trim();
+          if (!ndIccid) continue;
+          
+          // Find the SIM device entry we already added that matches this Cradlepoint net_device
+          const matchedDevice = results.devices.find(d => 
+            d.iccid && d.iccid.replace(/\s/g, '') === ndIccid.replace(/\s/g, '')
+          );
+          
+          if (matchedDevice) {
             const routerUrl = nd.router || '';
             const rid = routerUrl.replace(/\/$/, '').split('/').pop();
             const router = (cpFleet.data || []).find(r => String(r.id) === rid);
             if (router) {
-              results.devices.push({
-                type: 'router',
-                // icon handled by frontend SVG
-                name: router.name || 'Cradlepoint Router',
-                serialNumber: router.serial_number || '',
-                status: router.state || 'unknown',
-                model: router.full_product_name || 'IBR900'
-              });
+              // Upgrade this SIM entry to a router
+              matchedDevice.type = 'router';
+              matchedDevice.name = router.name || 'Cradlepoint Router';
+              matchedDevice.routerSerial = router.serial_number || '';
+              matchedDevice.model = router.full_product_name || '';
+              matchedDevice.routerStatus = router.state || 'unknown';
+              // Keep the SIM's usage data — it's the router's data usage
+              console.log('[Share] Matched Cradlepoint ' + (router.name || rid) + ' to SIM ' + matchedDevice.simSerial);
             }
           }
         }

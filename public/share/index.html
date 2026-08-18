@@ -441,9 +441,10 @@
           // Build device name — use iPad name if available
           const displayName = d.deviceName || d.name || (d.carrier || 'Cellular') + ' SIM';
           
-          // Build meta line: serial, carrier, SIM serial
+          // Build meta line: serial, carrier, SIM serial, router info
           const metaParts = [];
-          if (d.serialNumber) metaParts.push('S/N: ' + d.serialNumber);
+          if (d.routerSerial) metaParts.push('S/N: ' + d.routerSerial);
+          else if (d.serialNumber) metaParts.push('S/N: ' + d.serialNumber);
           if (d.carrier && d.carrier !== 'Cellular') metaParts.push(d.carrier);
           if (d.simSerial) metaParts.push('SIM: ' + d.simSerial);
           if (d.model) metaParts.push(d.model);
