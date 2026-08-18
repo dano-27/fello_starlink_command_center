@@ -1271,59 +1271,55 @@ app.get('/api/public/share/:token/usage', async (req, res) => {
     // ─── Fetch SimpleMDM devices to match iPad names ───
     let mdmMatches = {};  // iccid -> { name, serial, barcode }
     try {
-      // Get SimpleMDM devices whose name starts with the order ID
-      const mdmKey = process.env.SIMPLEMDM_API_KEY || process.env.MDM_API_KEY || '';
+      const mdmKey = getSimpleMdmKey();
       if (mdmKey) {
         const auth = 'Basic ' + Buffer.from(mdmKey + ':').toString('base64');
         let mdmDevices = [];
-        let hasMore = true;
-        let cursor = null;
         
-        // Paginate SimpleMDM to find devices matching this order
-        while (hasMore) {
-          const url = cursor 
-            ? `https://a.simplemdm.com/api/v1/devices?limit=100&starting_after=${cursor}`
-            : 'https://a.simplemdm.com/api/v1/devices?limit=100';
-          const mdmRes = await fetch(url, { headers: { 'Authorization': auth } });
-          if (!mdmRes.ok) break;
+        // Use SimpleMDM search to find devices matching this order name
+        const searchUrl = `https://a.simplemdm.com/api/v1/devices?search=${encodeURIComponent(data.orderId)}&limit=100`;
+        const mdmRes = await fetch(searchUrl, { headers: { 'Authorization': auth } });
+        
+        if (mdmRes.ok) {
           const mdmData = await mdmRes.json();
           const batch = mdmData.data || [];
-          if (batch.length === 0) break;
           
           for (const d of batch) {
             const name = d.attributes?.name || '';
-            if (name.toUpperCase().startsWith(branchName)) {
-              // Extract ICCID from service_subscriptions
-              const subs = d.attributes?.service_subscriptions || [];
-              const iccid = subs.length > 0 ? (subs[0].iccid || '') : '';
-              mdmDevices.push({
-                name: name,
-                serial: d.attributes?.serial_number || '',
-                barcode: '', // barcode not directly in SimpleMDM
-                model: d.attributes?.model_name || '',
-                iccid: iccid,
-                imei: d.attributes?.imei || ''
-              });
-            }
+            // Extract ICCID from service_subscriptions
+            const subs = d.attributes?.service_subscriptions || [];
+            const iccid = subs.length > 0 ? (subs[0].iccid || '') : '';
+            mdmDevices.push({
+              name: name,
+              serial: d.attributes?.serial_number || '',
+              barcode: '', // barcode stored in custom attributes
+              model: d.attributes?.model_name || '',
+              iccid: iccid,
+              imei: d.attributes?.imei || ''
+            });
           }
-          
-          cursor = batch[batch.length - 1]?.id;
-          hasMore = mdmData.has_more === true;
+        } else {
+          console.error('[Share] SimpleMDM search failed:', mdmRes.status);
         }
         
-        // Build ICCID -> iPad mapping
+        // Build ICCID -> iPad mapping  
         for (const d of mdmDevices) {
-          if (d.iccid) mdmMatches[d.iccid] = d;
+          if (d.iccid) {
+            const cleanIccid = d.iccid.replace(/\s/g, '');
+            mdmMatches[cleanIccid] = d;
+          }
+          // Also match by IMEI — SIM and iPad share the same IMEI
           if (d.imei) {
-            // Also try matching by IMEI to Webbing
-            const simByImei = branchDevices.find(s => s.IMEI === d.imei);
+            const simByImei = branchDevices.find(s => (s.IMEI || '') === d.imei);
             if (simByImei && simByImei.ICCID) {
-              mdmMatches[simByImei.ICCID] = d;
+              mdmMatches[simByImei.ICCID.replace(/\s/g, '')] = d;
             }
           }
         }
         
-        console.log('[Share] Found ' + mdmDevices.length + ' SimpleMDM devices for ' + branchName + ', matched ' + Object.keys(mdmMatches).length + ' by ICCID/IMEI');
+        console.log('[Share] SimpleMDM search for "' + data.orderId + '": found ' + mdmDevices.length + ' devices, matched ' + Object.keys(mdmMatches).length + ' to SIMs');
+      } else {
+        console.log('[Share] No SimpleMDM key configured');
       }
     } catch (e) {
       console.error('[Share] SimpleMDM lookup error:', e.message);
@@ -1366,7 +1362,7 @@ app.get('/api/public/share/:token/usage', async (req, res) => {
         }
         
         // Find matched iPad for this SIM
-        const iccid = dev.ICCID || '';
+        const iccid = (dev.ICCID || '').replace(/\s/g, '');
         const ipad = mdmMatches[iccid] || null;
         
         // Detect carrier from ProductName or matched data
