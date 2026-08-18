@@ -562,36 +562,30 @@
 
     async function loadData() {
       try {
-        const [routersRes, alertsRes] = await Promise.all([
-          fetch('/api/cradlepoint/routers'),
-          fetch('/api/cradlepoint/alerts')
-        ]);
+        const res = await fetch('/api/cradlepoint/fleet');
+        if (!res.ok) throw new Error('Fleet fetch failed');
+        const data = await res.json();
         
-        if (routersRes.ok) {
-          const data = await routersRes.json();
-          routersData = data.data || [];
-          renderRouters();
-          updateStats(routersData, data.meta?.total_count);
+        if (data.error) {
+          console.error('Fleet error:', data.error);
+          return;
         }
         
-        if (alertsRes.ok) {
-          const data = await alertsRes.json();
-          renderAlerts(data.data || []);
-          document.getElementById('stat-alerts').textContent = data.meta?.total_count || (data.data ? data.data.length : 0);
-        }
+        routersData = data.routers || [];
+        renderRouters();
+        
+        // Update stats
+        const stats = data.stats || {};
+        document.getElementById('stat-total').textContent = stats.total || routersData.length;
+        document.getElementById('stat-online').textContent = stats.online || 0;
+        document.getElementById('stat-offline').textContent = stats.offline || 0;
+        document.getElementById('stat-alerts').textContent = stats.alertCount || 0;
+        
+        // Render alerts
+        renderAlerts(data.alerts || []);
       } catch (err) {
         console.error('Error loading data', err);
       }
-    }
-
-    function updateStats(routers, total) {
-      document.getElementById('stat-total').textContent = total || routers.length;
-      
-      const online = routers.filter(r => r.state === 'online').length;
-      const offline = routers.filter(r => r.state === 'offline').length;
-      
-      document.getElementById('stat-online').textContent = online;
-      document.getElementById('stat-offline').textContent = offline;
     }
 
     function renderRouters() {
