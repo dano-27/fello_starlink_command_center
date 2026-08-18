@@ -274,7 +274,7 @@
             'data-end="' + esc(crm.endDate) + '" ' +
             'data-gb="' + (crm.totalGbAmount || 0) + '" ' +
             'style="display:flex;align-items:center;gap:8px;padding:10px 20px;background:linear-gradient(135deg,#e8802a,#c06820);color:white;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;transition:all 0.2s;">' +
-            '📤 Share Data Usage' +
+            '📤 Fello Pulse' +
           '</button>' +
           '<div id="share-result-' + esc(crm.flyOrderId) + '" style="flex:1;"></div>' +
         '</div>' +
@@ -2313,7 +2313,7 @@ window.generateShareLink = async function(orderId, customerName, eventName, star
   var resultDiv = document.getElementById('share-result-' + orderId);
   if (!resultDiv) return;
   
-  resultDiv.innerHTML = '<span style="font-size:12px;color:var(--muted);">Generating share link...</span>';
+  resultDiv.innerHTML = '<span style="font-size:12px;color:var(--muted);">Generating Fello Pulse link...</span>';
   
   try {
     var res = await fetch('/api/share/generate', {
@@ -2331,7 +2331,7 @@ window.generateShareLink = async function(orderId, customerName, eventName, star
     
     if (!res.ok) {
       var errData = await res.json().catch(function() { return { error: 'Server error ' + res.status }; });
-      throw new Error(errData.error || 'Failed to generate share link');
+      throw new Error(errData.error || 'Failed to generate Fello Pulse link');
     }
     
     var data = await res.json();
@@ -2368,7 +2368,7 @@ window.generateShareLink = async function(orderId, customerName, eventName, star
         '<div style="display:flex;align-items:flex-start;gap:16px;">' +
           (qrImg ? '<img src="' + qrImg + '" alt="QR Code" style="width:120px;height:120px;border-radius:8px;border:1px solid var(--border);flex-shrink:0;">' : '') +
           '<div style="flex:1;min-width:0;">' +
-            '<div style="font-size:12px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">✅ Share Link ' + statusLabel + '</div>' +
+            '<div style="font-size:12px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">✅ Fello Pulse Link ' + statusLabel + '</div>' +
             '<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">' +
               '<input readonly value="' + shareUrl + '" id="share-url-' + orderId + '" style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:11px;font-family:monospace;background:white;min-width:0;" onclick="this.select()">' +
               '<button onclick="var i=document.getElementById(\'share-url-' + orderId + '\');navigator.clipboard.writeText(i.value);this.textContent=\'✓\';var b=this;setTimeout(function(){b.textContent=\'📋\'},1500)" ' +
@@ -2382,7 +2382,7 @@ window.generateShareLink = async function(orderId, customerName, eventName, star
       '</div>';
       
   } catch (err) {
-    resultDiv.innerHTML = '<span style="font-size:12px;color:var(--red);">❌ ' + (err.message || 'Failed to generate share link') + '</span>';
+    resultDiv.innerHTML = '<span style="font-size:12px;color:var(--red);">❌ ' + (err.message || 'Failed to generate Fello Pulse link') + '</span>';
   }
 };
 
@@ -2395,16 +2395,16 @@ document.addEventListener('click', function(e) {
   var token = btn.getAttribute('data-token');
   var orderId = btn.getAttribute('data-order');
   
-  if (!confirm('Revoke this share link? The customer will no longer be able to access their usage data.')) return;
+  if (!confirm('Revoke this Fello Pulse link? The customer will no longer be able to view their data.')) return;
   
   fetch('/api/share/' + token, { method: 'DELETE' }).then(function(res) {
     if (!res.ok) throw new Error('Failed to revoke');
     var resultDiv = document.getElementById('share-result-' + orderId);
     if (resultDiv) {
-      resultDiv.innerHTML = '<span style="font-size:12px;color:var(--muted);">🚫 Share link revoked</span>';
+      resultDiv.innerHTML = '<span style="font-size:12px;color:var(--muted);">🚫 Fello Pulse link revoked</span>';
     }
   }).catch(function(err) {
-    alert('Error revoking share link: ' + err.message);
+    alert('Error revoking Fello Pulse link: ' + err.message);
   });
 });
 

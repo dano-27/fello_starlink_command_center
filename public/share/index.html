@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Your Rental Data Usage — Fello</title>
+  <title>Fello Pulse</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -240,21 +240,21 @@
   <div class="share-header">
     <img src="/fello-logo.png" alt="Fello">
     <span class="divider"></span>
-    <span class="label">Rental Data Usage</span>
+    <span class="label">Fello Pulse</span>
   </div>
 
   <!-- Loading -->
   <div id="loading-screen" class="status-screen">
     <div class="status-icon">📡</div>
-    <div class="status-title">Loading your rental data...</div>
-    <div class="status-msg">Fetching live usage from your devices</div>
+    <div class="status-title">Loading Fello Pulse...</div>
+    <div class="status-msg">Connecting to your live data dashboard</div>
   </div>
 
   <!-- Error -->
   <div id="error-screen" class="status-screen" style="display:none;">
     <div class="status-icon">🔒</div>
     <div class="status-title" id="error-title">Link Not Found</div>
-    <div class="status-msg" id="error-msg">This share link may have expired or been revoked.</div>
+    <div class="status-msg" id="error-msg">This Fello Pulse link may have expired or been revoked.</div>
   </div>
 
   <!-- Main Content -->
@@ -308,7 +308,7 @@
     </div>
 
     <div class="share-footer">
-      Powered by <a href="https://events.fello.com" target="_blank">Fello</a> · Data updates every 60 seconds
+      Powered by <a href="https://events.fello.com" target="_blank">Fello Pulse</a> · Live data updates every 60 seconds
     </div>
   </div>
 
@@ -321,7 +321,7 @@
 
     async function init() {
       if (!token || token === 'share') {
-        showError('No Share Link', 'Please use the QR code or link provided by your Fello representative.');
+        showError('No Share Link', 'Please use the QR code or link provided by your Fello team.');
         return;
       }
 
@@ -333,7 +333,7 @@
           return;
         }
         if (res.status === 410) {
-          showError('Link Expired', 'This share link has expired. Please contact your Fello representative for a new link.');
+          showError('Link Expired', 'This Fello Pulse link has expired. Please contact your Fello team for a new link.');
           return;
         }
         if (!res.ok) throw new Error('Validation failed');
@@ -362,7 +362,7 @@
         setInterval(loadUsage, 60000);
 
       } catch (err) {
-        showError('Something went wrong', 'Unable to load your rental data. Please try again later.');
+        showError('Something went wrong', 'Unable to load your Fello Pulse dashboard. Please try again later.');
         console.error(err);
       }
     }
