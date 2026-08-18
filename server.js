@@ -984,30 +984,109 @@ app.post('/api/cradlepoint/routers/:id/reboot', async (req, res) => {
   }
 });
 
-// Unified fleet overview (parallel fetch)
+// Unified fleet overview with Webbing SIM enrichment
 app.get('/api/cradlepoint/fleet', async (req, res) => {
   if (!CP_ECM_API_ID) return res.status(503).json({ error: 'Cradlepoint not configured', configured: false });
   try {
-    const [routersData, alertsData] = await Promise.all([
+    const [routersData, netDevData, alertsData] = await Promise.all([
       cpFetch('/routers/?limit=200'),
+      cpFetch('/net_devices/?limit=500'),
       cpFetch('/router_alerts/?limit=20&order_by=-detected_at')
     ]);
 
     const routers = routersData.data || [];
+    const netDevices = netDevData.data || [];
     const alerts = alertsData.data || [];
     const online = routers.filter(r => r.state === 'online').length;
 
-    console.log('[Cradlepoint] Fleet: ' + routers.length + ' routers (' + online + ' online), ' + alerts.length + ' alerts');
+    // Build net device lookup by router ID
+    const netDevByRouter = {};
+    for (const nd of netDevices) {
+      const routerUrl = nd.router || '';
+      const rid = routerUrl.replace(/\/$/, '').split('/').pop();
+      if (rid) {
+        if (!netDevByRouter[rid]) netDevByRouter[rid] = [];
+        netDevByRouter[rid].push(nd);
+      }
+    }
+
+    // Build Webbing ICCID lookup from the in-memory cache
+    const wbByIccid = {};
+    for (const d of webbingDeviceCache) {
+      const iccid = String(d.ICCID || '').trim();
+      if (iccid) wbByIccid[iccid] = d;
+    }
+
+    // Enrich each router
+    const enrichedRouters = routers.map(r => {
+      const rid = String(r.id);
+      const devices = netDevByRouter[rid] || [];
+      
+      // Find the primary modem (SIM1 with an ICCID)
+      const primaryModem = devices.find(d => d.iccid && d.type === 'mdm') || null;
+      const iccid = primaryModem ? String(primaryModem.iccid).trim() : null;
+      
+      // Cross-reference with Webbing
+      const webbingSim = iccid ? (wbByIccid[iccid] || null) : null;
+
+      return {
+        id: r.id,
+        name: r.name || '',
+        state: r.state || 'unknown',
+        serial_number: r.serial_number || '',
+        mac: r.mac || '',
+        group: r.group || null,
+        firmware_version: r.actual_firmware || null,
+        // Net device / modem info
+        modem: primaryModem ? {
+          carrier: primaryModem.carrier || '',
+          carrier_id: primaryModem.carrier_id || '',
+          connection_state: primaryModem.connection_state || '',
+          signal_type: primaryModem.service_type || '',
+          ip: primaryModem.ipv4_address || '',
+          iccid: iccid,
+          imei: primaryModem.imei || '',
+          model: primaryModem.model || '',
+          apn: primaryModem.apn || ''
+        } : null,
+        allDevices: devices.map(d => ({
+          id: d.id,
+          name: d.name || '',
+          type: d.type || '',
+          carrier: d.carrier || '',
+          connection_state: d.connection_state || '',
+          ip: d.ipv4_address || '',
+          iccid: d.iccid || '',
+          imei: d.imei || '',
+          model: d.model || ''
+        })),
+        // Webbing match
+        webbing: webbingSim ? {
+          matched: true,
+          iccid: String(webbingSim.ICCID || ''),
+          product: webbingSim.ProductName || '',
+          status: webbingSim.StatusName || '',
+          branch: webbingSim.BranchName || '',
+          msisdn: webbingSim.MSISDN || '',
+          branchId: webbingSim.BranchID || '',
+          serial: webbingSim.Serial || ''
+        } : { matched: false }
+      };
+    });
+
+    const wbMatched = enrichedRouters.filter(r => r.webbing && r.webbing.matched).length;
+    console.log('[Cradlepoint] Fleet: ' + routers.length + ' routers (' + online + ' online), ' + wbMatched + ' Webbing matches, ' + alerts.length + ' alerts');
 
     res.json({
       configured: true,
-      routers: routers,
+      routers: enrichedRouters,
       alerts: alerts,
       stats: {
         total: routers.length,
         online: online,
         offline: routers.length - online,
-        alertCount: (alertsData.meta || {}).total_count || alerts.length
+        alertCount: (alertsData.meta || {}).total_count || alerts.length,
+        webbingMatched: wbMatched
       }
     });
   } catch (err) {

@@ -465,14 +465,14 @@
             <th style="width: 40px;"></th>
             <th>Name</th>
             <th>Serial Number</th>
-            <th>MAC Address</th>
+            <th>Carrier</th>
             <th>State</th>
-            <th>Group</th>
+            <th>Webbing SIM</th>
             <th style="text-align: right;">Actions</th>
           </tr>
         </thead>
         <tbody id="routers-tbody">
-          <tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text-muted);">Loading routers...</td></tr>
+          <tr><td colspan="8" style="text-align:center;padding:32px;color:var(--text-muted);">Loading routers...</td></tr>
         </tbody>
       </table>
     </div>
@@ -604,12 +604,15 @@
           (r.name && r.name.toLowerCase().includes(query)) ||
           (r.mac && r.mac.toLowerCase().includes(query)) ||
           (r.serial_number && r.serial_number.toLowerCase().includes(query)) ||
-          (r.group && r.group.toLowerCase().includes(query))
+          (r.modem && r.modem.carrier && r.modem.carrier.toLowerCase().includes(query)) ||
+          (r.modem && r.modem.iccid && r.modem.iccid.toLowerCase().includes(query)) ||
+          (r.webbing && r.webbing.branch && r.webbing.branch.toLowerCase().includes(query)) ||
+          (r.webbing && r.webbing.status && r.webbing.status.toLowerCase().includes(query))
         );
       }
       
       if (filtered.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--text-muted);">No routers match your search.</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--text-muted);">No routers match your search.</td></tr>';
         return;
       }
       
@@ -621,19 +624,31 @@
         tr.className = 'router-row';
         tr.onclick = (e) => {
           if(e.target.tagName === 'BUTTON') return;
-          toggleDetail(router.id, tr);
+          toggleDetail(router, tr);
         };
         
         const actionHtml = currentUser?.role === 'admin' ? 
           `<button class="btn btn-danger btn-sm" onclick="rebootRouter(event, '${router.id}')">Reboot</button>` : '';
+        
+        // Carrier from modem
+        const carrier = router.modem ? router.modem.carrier : '-';
+        
+        // Webbing SIM info
+        let wbHtml = '<span style="color:var(--text-muted);">—</span>';
+        if (router.webbing && router.webbing.matched) {
+          const wb = router.webbing;
+          const statusColor = wb.status === 'Active' ? 'var(--success)' : (wb.status === 'Suspended' ? 'var(--warning)' : 'var(--danger)');
+          const branchLabel = wb.branch && wb.branch !== '--- Fello WEB lines' ? wb.branch : '<span style="color:var(--text-muted);font-size:11px;">inventory</span>';
+          wbHtml = `<span style="color:${statusColor};font-weight:600;font-size:11px;">${wb.status}</span> · ${branchLabel}`;
+        }
           
         tr.innerHTML = `
           <td style="text-align:center;"><span class="status-dot ${isOnline ? 'online' : 'offline'}"></span></td>
           <td style="font-weight:600;color:var(--text-main);">${router.name || 'Unknown'}</td>
           <td style="font-family:monospace;color:var(--text-muted);">${router.serial_number || '-'}</td>
-          <td style="font-family:monospace;color:var(--text-muted);">${router.mac || '-'}</td>
+          <td>${carrier}</td>
           <td><span class="badge ${isOnline ? 'online' : 'offline'}">${router.state || 'unknown'}</span></td>
-          <td>${router.group || '-'}</td>
+          <td>${wbHtml}</td>
           <td style="text-align:right;">${actionHtml}</td>
         `;
         
@@ -642,9 +657,9 @@
         detailTr.className = 'detail-row';
         detailTr.id = `detail-${router.id}`;
         detailTr.innerHTML = `
-          <td colspan="7" style="padding:0;border:none;">
+          <td colspan="8" style="padding:0;border:none;">
             <div class="detail-content" id="detail-content-${router.id}">
-              <div style="color:var(--text-muted);font-style:italic;">Loading net devices...</div>
+              <div style="color:var(--text-muted);font-style:italic;">Click to expand...</div>
             </div>
           </td>
         `;
@@ -654,8 +669,8 @@
       });
     }
 
-    async function toggleDetail(routerId, rowEl) {
-      const detailRow = document.getElementById(`detail-${routerId}`);
+    function toggleDetail(router, rowEl) {
+      const detailRow = document.getElementById(`detail-${router.id}`);
       if (detailRow.classList.contains('open')) {
         detailRow.classList.remove('open');
         return;
@@ -665,52 +680,71 @@
       document.querySelectorAll('.detail-row.open').forEach(el => el.classList.remove('open'));
       detailRow.classList.add('open');
       
-      const contentEl = document.getElementById(`detail-content-${routerId}`);
+      const contentEl = document.getElementById(`detail-content-${router.id}`);
+      const devices = router.allDevices || [];
+      const wb = router.webbing || {};
+      const modem = router.modem || {};
       
-      try {
-        const res = await fetch(`/api/cradlepoint/net_devices?router=${routerId}`);
-        if (!res.ok) throw new Error('Failed to fetch net devices');
-        const data = await res.json();
-        
-        if (!data.data || data.data.length === 0) {
-          contentEl.innerHTML = '<div style="color:var(--text-muted);">No cellular modems or net devices found for this router.</div>';
-          return;
-        }
-        
-        let html = `
-          <div class="detail-title">Net Devices (Modems)</div>
+      let html = '';
+      
+      // Webbing SIM detail
+      if (wb.matched) {
+        html += `
+          <div class="detail-title">📶 Webbing SIM</div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;margin-bottom:16px;font-size:13px;">
+            <div><strong>Plan:</strong> ${wb.product || '-'}</div>
+            <div><strong>Status:</strong> <span style="color:${wb.status==='Active'?'var(--success)':'var(--warning)'};font-weight:600;">${wb.status}</span></div>
+            <div><strong>Branch:</strong> ${wb.branch || '-'}</div>
+            <div><strong>ICCID:</strong> <span style="font-family:monospace;">${wb.iccid || modem.iccid || '-'}</span></div>
+            <div><strong>MSISDN:</strong> ${wb.msisdn || '-'}</div>
+            <div><strong>IMEI:</strong> <span style="font-family:monospace;">${modem.imei || '-'}</span></div>
+          </div>
+        `;
+      } else if (modem.iccid) {
+        html += `
+          <div class="detail-title">📶 SIM Info (no Webbing match)</div>
+          <div style="font-size:13px;margin-bottom:16px;">
+            <strong>ICCID:</strong> <span style="font-family:monospace;">${modem.iccid}</span> · 
+            <strong>IMEI:</strong> <span style="font-family:monospace;">${modem.imei || '-'}</span> · 
+            <strong>Carrier:</strong> ${modem.carrier || '-'}
+          </div>
+        `;
+      }
+      
+      // Net devices table
+      if (devices.length > 0) {
+        html += `
+          <div class="detail-title">🔌 Net Devices</div>
           <table class="net-devices-table">
             <thead>
               <tr>
-                <th>Device Name</th>
+                <th>Name</th>
+                <th>Type</th>
                 <th>Carrier</th>
                 <th>IP Address</th>
-                <th>Connection State</th>
-                <th>Signal (dBm)</th>
+                <th>State</th>
               </tr>
             </thead>
             <tbody>
         `;
-        
-        data.data.forEach(nd => {
+        devices.forEach(nd => {
           const stateColor = nd.connection_state === 'connected' ? 'var(--success)' : (nd.connection_state === 'disconnected' ? 'var(--danger)' : 'var(--text-muted)');
           html += `
             <tr>
               <td style="font-weight:500;">${nd.name || '-'}</td>
+              <td>${nd.type || '-'}</td>
               <td>${nd.carrier || '-'}</td>
-              <td style="font-family:monospace;">${nd.ip_address || '-'}</td>
+              <td style="font-family:monospace;">${nd.ip || '-'}</td>
               <td style="color:${stateColor};font-weight:500;text-transform:capitalize;">${nd.connection_state || '-'}</td>
-              <td>${nd.signal_strength ? nd.signal_strength + ' dBm' : '-'}</td>
             </tr>
           `;
         });
-        
         html += `</tbody></table>`;
-        contentEl.innerHTML = html;
-        
-      } catch (err) {
-        contentEl.innerHTML = '<div style="color:var(--danger);">Error loading details: ' + err.message + '</div>';
+      } else {
+        html += '<div style="color:var(--text-muted);">No net devices found for this router.</div>';
       }
+      
+      contentEl.innerHTML = html;
     }
 
     async function rebootRouter(event, routerId) {
