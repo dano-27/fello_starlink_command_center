@@ -1147,7 +1147,7 @@ app.post('/api/share/generate', async (req, res) => {
   // Check if token already exists for this order
   const existing = Object.entries(shareTokens).find(([_, d]) => d.orderId === orderId && new Date(d.expiresAt) > new Date());
   if (existing) {
-    return res.json({ token: existing[0], ...existing[1], alreadyExists: true });
+    return res.json({ token: existing[0], shareUrl: '/share/' + existing[0], ...existing[1], alreadyExists: true });
   }
   
   // Generate secure token
