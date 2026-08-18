@@ -1332,10 +1332,19 @@ app.get('/api/public/share/:token/usage', async (req, res) => {
     // ─── Fetch Webbing SIM Usage ───
     if (branchDevices.length > 0) {
       const client = getWebbingClient();
-      const startDate = data.startDate || new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
-      // Use today if rental is ongoing, or endDate if ended
+      const rawStart = data.startDate || new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
       const today = new Date().toISOString().split('T')[0];
-      const endDate = data.endDate && data.endDate < today ? data.endDate : today;
+      const rawEnd = data.endDate && data.endDate < today ? data.endDate : today;
+      
+      // Convert YYYY-MM-DD to MM/dd/yyyy for Webbing API
+      function toWebbingDate(isoDate) {
+        const [y, m, d] = isoDate.split('-');
+        return m + '/' + d + '/' + y;
+      }
+      const startDate = toWebbingDate(rawStart);
+      const endDate = toWebbingDate(rawEnd);
+      
+      console.log('[Share] Fetching usage for ' + branchDevices.length + ' devices, ' + startDate + ' to ' + endDate);
       
       for (const dev of branchDevices) {
         let usageMB = 0;
