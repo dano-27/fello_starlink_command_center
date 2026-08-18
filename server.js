@@ -321,7 +321,9 @@ app.use(express.json({ limit: '50mb' }));
 const AUTH_WHITELIST = [
   '/login', '/login.html',
   '/api/auth/login', '/api/auth/logout',
-  '/favicon.ico'
+  '/favicon.ico',
+  '/share', '/api/public/share',
+  '/shared-header.css', '/shared-header.js', '/fello-logo.png'
 ];
 
 app.use((req, res, next) => {
@@ -1094,6 +1096,267 @@ app.get('/api/cradlepoint/fleet', async (req, res) => {
     res.status(500).json({ error: err.message, configured: true });
   }
 });
+
+// ═══════════════════════════════════════════════════════════════════════
+// ── Customer Data Usage Sharing (QR Code Portal) ─────────────────────
+// ═══════════════════════════════════════════════════════════════════════
+
+const SHARE_TOKENS_FILE = path.join(DATA_DIR, 'share-tokens.json');
+let shareTokens = {};
+
+// Load tokens from disk
+function loadShareTokens() {
+  try {
+    if (fs.existsSync(SHARE_TOKENS_FILE)) {
+      shareTokens = JSON.parse(fs.readFileSync(SHARE_TOKENS_FILE, 'utf8'));
+      // Clean expired tokens
+      const now = Date.now();
+      let cleaned = 0;
+      for (const [token, data] of Object.entries(shareTokens)) {
+        if (data.expiresAt && new Date(data.expiresAt).getTime() < now) {
+          delete shareTokens[token];
+          cleaned++;
+        }
+      }
+      if (cleaned > 0) saveShareTokens();
+      console.log('[Share] Loaded ' + Object.keys(shareTokens).length + ' active share tokens');
+    }
+  } catch (e) {
+    console.error('[Share] Error loading tokens:', e.message);
+    shareTokens = {};
+  }
+}
+
+function saveShareTokens() {
+  try {
+    fs.writeFileSync(SHARE_TOKENS_FILE, JSON.stringify(shareTokens, null, 2));
+  } catch (e) {
+    console.error('[Share] Error saving tokens:', e.message);
+  }
+}
+
+loadShareTokens();
+
+// Admin: Generate a share token for an order
+app.post('/api/share/generate', async (req, res) => {
+  if (!req.user || req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  
+  const { orderId, customerName, eventName, startDate, endDate, totalGbAmount } = req.body;
+  if (!orderId) return res.status(400).json({ error: 'orderId is required' });
+  
+  // Check if token already exists for this order
+  const existing = Object.entries(shareTokens).find(([_, d]) => d.orderId === orderId && new Date(d.expiresAt) > new Date());
+  if (existing) {
+    return res.json({ token: existing[0], ...existing[1], alreadyExists: true });
+  }
+  
+  // Generate secure token
+  const crypto = require('crypto');
+  const token = crypto.randomBytes(16).toString('hex');
+  
+  // Calculate expiration: 7 days after rental end date, or 30 days from now if no end date
+  let expiresAt;
+  if (endDate) {
+    const end = new Date(endDate);
+    end.setDate(end.getDate() + 7);
+    expiresAt = end.toISOString();
+  } else {
+    const exp = new Date();
+    exp.setDate(exp.getDate() + 30);
+    expiresAt = exp.toISOString();
+  }
+  
+  // Determine branchName from orderId (Webbing branches match order IDs)
+  const branchName = orderId.toUpperCase();
+  
+  shareTokens[token] = {
+    orderId,
+    branchName,
+    customerName: customerName || '',
+    eventName: eventName || '',
+    startDate: startDate || '',
+    endDate: endDate || '',
+    totalGbAmount: parseFloat(totalGbAmount || 0),
+    createdAt: new Date().toISOString(),
+    expiresAt,
+    createdBy: req.user.username
+  };
+  
+  saveShareTokens();
+  
+  // Audit log
+  if (typeof auditLog === 'function') {
+    auditLog(req, 'share_generate', { orderId, token: token.substring(0, 8) + '...' });
+  }
+  
+  console.log('[Share] Token generated for ' + orderId + ' by ' + req.user.username + ' (expires ' + expiresAt + ')');
+  
+  res.json({
+    token,
+    shareUrl: '/share/' + token,
+    ...shareTokens[token]
+  });
+});
+
+// Admin: List all active share tokens
+app.get('/api/share/list', (req, res) => {
+  if (!req.user || req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  
+  const now = new Date();
+  const active = Object.entries(shareTokens)
+    .filter(([_, d]) => new Date(d.expiresAt) > now)
+    .map(([token, d]) => ({ token, shareUrl: '/share/' + token, ...d }));
+  
+  res.json({ tokens: active, total: active.length });
+});
+
+// Admin: Revoke a share token
+app.delete('/api/share/:token', (req, res) => {
+  if (!req.user || req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  
+  const { token } = req.params;
+  if (shareTokens[token]) {
+    const orderId = shareTokens[token].orderId;
+    delete shareTokens[token];
+    saveShareTokens();
+    if (typeof auditLog === 'function') {
+      auditLog(req, 'share_revoke', { orderId, token: token.substring(0, 8) + '...' });
+    }
+    console.log('[Share] Token revoked for ' + orderId);
+    return res.json({ success: true });
+  }
+  res.status(404).json({ error: 'Token not found' });
+});
+
+// Public: Validate token and return order info (NO auth required)
+app.get('/api/public/share/:token', (req, res) => {
+  const data = shareTokens[req.params.token];
+  if (!data) return res.status(404).json({ error: 'Share link not found or expired' });
+  if (new Date(data.expiresAt) < new Date()) {
+    delete shareTokens[req.params.token];
+    saveShareTokens();
+    return res.status(410).json({ error: 'This share link has expired' });
+  }
+  
+  // Return only safe customer-facing data
+  res.json({
+    valid: true,
+    orderId: data.orderId,
+    customerName: data.customerName,
+    eventName: data.eventName,
+    startDate: data.startDate,
+    endDate: data.endDate,
+    totalGbAmount: data.totalGbAmount,
+    expiresAt: data.expiresAt
+  });
+});
+
+// Public: Get live device usage data for a shared order (NO auth required)
+app.get('/api/public/share/:token/usage', async (req, res) => {
+  const data = shareTokens[req.params.token];
+  if (!data) return res.status(404).json({ error: 'Share link not found or expired' });
+  if (new Date(data.expiresAt) < new Date()) {
+    return res.status(410).json({ error: 'This share link has expired' });
+  }
+  
+  const branchName = data.branchName;
+  const results = { devices: [], totalUsageMB: 0, totalUsageGB: 0 };
+  
+  try {
+    // ─── Webbing SIM Usage ───
+    const branchDevices = webbingDeviceCache.filter(d => 
+      d.BranchName && d.BranchName.toUpperCase() === branchName
+    );
+    
+    if (branchDevices.length > 0) {
+      const client = getWebbingClient();
+      const startDate = data.startDate || new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
+      const endDate = data.endDate || new Date().toISOString().split('T')[0];
+      
+      // Fetch usage for each SIM
+      for (const dev of branchDevices) {
+        try {
+          const usage = await client.getDeviceUsage(dev.ServiceDeviceID, startDate, endDate, 'day');
+          const records = usage?.UsageRecords?.UsageRecord || [];
+          const totalMB = records.reduce((sum, r) => sum + parseFloat(r.TotalUsage || r.TotalMB || 0), 0);
+          
+          results.devices.push({
+            type: 'sim',
+            icon: '📶',
+            name: dev.ProductName || 'Cellular SIM',
+            identifier: dev.ICCID || dev.Serial || '',
+            carrier: dev.ProductName?.includes('VZ') ? 'Verizon' : 
+                     dev.ProductName?.includes('AT&T') ? 'AT&T' : 
+                     dev.ProductName?.includes('T-Mobile') ? 'T-Mobile' : 'Cellular',
+            status: dev.StatusName || '',
+            usageMB: Math.round(totalMB * 100) / 100,
+            usageGB: Math.round((totalMB / 1024) * 1000) / 1000,
+            dailyUsage: records.map(r => ({
+              date: r.Date || '',
+              mb: parseFloat(r.TotalUsage || r.TotalMB || 0)
+            }))
+          });
+          results.totalUsageMB += totalMB;
+        } catch (e) {
+          console.error('[Share] Webbing usage error for ' + dev.ServiceDeviceID + ':', e.message);
+          results.devices.push({
+            type: 'sim',
+            icon: '📶',
+            name: dev.ProductName || 'Cellular SIM',
+            identifier: dev.ICCID || '',
+            status: dev.StatusName || '',
+            usageMB: 0,
+            usageGB: 0,
+            error: 'Usage data temporarily unavailable'
+          });
+        }
+      }
+    }
+    
+    // ─── Cradlepoint Routers (matched by Webbing ICCID) ───
+    if (CP_ECM_API_ID && branchDevices.length > 0) {
+      try {
+        const cpFleet = await cpFetch('/routers/?limit=200');
+        const cpNetDevs = await cpFetch('/net_devices/?limit=500');
+        const branchIccids = new Set(branchDevices.map(d => String(d.ICCID || '').trim()).filter(Boolean));
+        
+        for (const nd of (cpNetDevs.data || [])) {
+          const iccid = String(nd.iccid || '').trim();
+          if (iccid && branchIccids.has(iccid)) {
+            const routerUrl = nd.router || '';
+            const rid = routerUrl.replace(/\/$/, '').split('/').pop();
+            const router = (cpFleet.data || []).find(r => String(r.id) === rid);
+            if (router) {
+              results.devices.push({
+                type: 'router',
+                icon: '🌐',
+                name: router.name || 'Cradlepoint Router',
+                identifier: router.serial_number || '',
+                status: router.state || 'unknown',
+                model: router.full_product_name || 'IBR900'
+              });
+            }
+          }
+        }
+      } catch (e) {
+        console.error('[Share] Cradlepoint lookup error:', e.message);
+      }
+    }
+    
+    results.totalUsageGB = Math.round((results.totalUsageMB / 1024) * 1000) / 1000;
+    results.totalGbAmount = data.totalGbAmount || 0;
+    results.overageGB = data.totalGbAmount > 0 ? Math.max(0, Math.round((results.totalUsageGB - data.totalGbAmount) * 1000) / 1000) : 0;
+    results.usagePercent = data.totalGbAmount > 0 ? Math.min(100, Math.round((results.totalUsageGB / data.totalGbAmount) * 100)) : 0;
+    
+    console.log('[Share] Usage for ' + data.orderId + ': ' + results.totalUsageGB + ' GB / ' + data.totalGbAmount + ' GB, ' + results.devices.length + ' devices');
+    
+    res.json(results);
+  } catch (err) {
+    console.error('[Share] Usage aggregation error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch usage data' });
+  }
+});
+
 
 // ── CoverageMap API Proxy (for Site Checker) ────────────────────────
 const COVERAGEMAP_KEY = process.env.COVERAGEMAP_KEY || 'e3f45af8095f4148998998511ad55754';
@@ -4224,6 +4487,9 @@ app.get('/hexnode/*', (req, res) => {
 });
 app.get('/webbing/*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'webbing', 'index.html'));
+});
+app.get('/share/*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'share', 'index.html'));
 });
 
 

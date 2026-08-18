@@ -264,6 +264,16 @@
             '<div style="display:none;">' + rentalsHtml + '</div>' +
           '</div>' : '') +
         (crm.notes ? '<div style="margin-top:12px;font-size:12px;color:var(--muted);"><strong>Notes:</strong> ' + esc(crm.notes) + '</div>' : '') +
+        // Share Usage button
+        '<div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border);display:flex;align-items:center;gap:12px;">' +
+          '<button onclick="window.generateShareLink(\'' + esc(crm.flyOrderId) + '\', \'' + esc(crm.customerName) + '\', \'' + esc(crm.eventName) + '\', \'' + esc(crm.startDate) + '\', \'' + esc(crm.endDate) + '\', ' + (crm.totalGbAmount || 0) + ')" ' +
+            'style="display:flex;align-items:center;gap:8px;padding:10px 20px;background:linear-gradient(135deg,#e8802a,#c06820);color:white;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;transition:all 0.2s;" ' +
+            'onmouseover="this.style.transform=\'translateY(-1px)\';this.style.boxShadow=\'0 4px 12px rgba(232,128,42,0.3)\'" ' +
+            'onmouseout="this.style.transform=\'none\';this.style.boxShadow=\'none\'">' +
+            '📤 Share Data Usage' +
+          '</button>' +
+          '<div id="share-result-' + esc(crm.flyOrderId) + '" style="flex:1;"></div>' +
+        '</div>' +
       '</div>' +
     '</div>';
   }
@@ -2276,3 +2286,88 @@ ${(mdm.length > 0 || web.length > 0) ? `
   };
 })();
 
+// ═══════════════════════════════════════════════════════════════════════
+// ── Customer Data Usage Sharing ───────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════
+window.generateShareLink = async function(orderId, customerName, eventName, startDate, endDate, totalGbAmount) {
+  const resultDiv = document.getElementById('share-result-' + orderId);
+  if (!resultDiv) return;
+  
+  resultDiv.innerHTML = '<span style="font-size:12px;color:var(--muted);">Generating share link...</span>';
+  
+  try {
+    const res = await fetch('/api/share/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderId, customerName, eventName, startDate, endDate, totalGbAmount })
+    });
+    
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Failed to generate share link');
+    }
+    
+    const data = await res.json();
+    const shareUrl = window.location.origin + data.shareUrl;
+    const expiresDate = new Date(data.expiresAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    
+    // Load QR code library if not already loaded
+    if (!window.QRCode) {
+      await new Promise((resolve, reject) => {
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js';
+        script.onload = resolve;
+        script.onerror = reject;
+        document.head.appendChild(script);
+      });
+    }
+    
+    // Generate QR code
+    let qrImg = '';
+    try {
+      const qr = qrcode(0, 'M');
+      qr.addData(shareUrl);
+      qr.make();
+      qrImg = qr.createDataURL(4, 0);
+    } catch(e) {
+      console.warn('QR generation failed:', e);
+    }
+    
+    resultDiv.innerHTML = 
+      '<div style="background:var(--bg);border:1px solid var(--border);border-radius:12px;padding:16px;margin-top:12px;">' +
+        '<div style="display:flex;align-items:flex-start;gap:16px;">' +
+          (qrImg ? '<img src="' + qrImg + '" alt="QR Code" style="width:120px;height:120px;border-radius:8px;border:1px solid var(--border);flex-shrink:0;">' : '') +
+          '<div style="flex:1;min-width:0;">' +
+            '<div style="font-size:12px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">✅ Share Link ' + (data.alreadyExists ? '(Existing)' : 'Generated') + '</div>' +
+            '<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">' +
+              '<input readonly value="' + shareUrl + '" style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:6px;font-size:11px;font-family:monospace;background:white;min-width:0;" onclick="this.select()">' +
+              '<button onclick="navigator.clipboard.writeText(\'' + shareUrl + '\');this.textContent=\'✓\';setTimeout(()=>this.textContent=\'📋\',1500)" ' +
+                'style="padding:8px 12px;border:1px solid var(--border);border-radius:6px;background:white;cursor:pointer;font-size:14px;" title="Copy link">📋</button>' +
+            '</div>' +
+            '<div style="font-size:11px;color:var(--muted);">Expires: ' + expiresDate + ' · ' +
+              '<a href="#" onclick="window.revokeShareLink(\'' + data.token + '\', \'' + orderId + '\');return false;" style="color:var(--red);font-weight:600;">Revoke</a>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+      
+  } catch (err) {
+    resultDiv.innerHTML = '<span style="font-size:12px;color:var(--red);">❌ ' + err.message + '</span>';
+  }
+};
+
+window.revokeShareLink = async function(token, orderId) {
+  if (!confirm('Revoke this share link? The customer will no longer be able to access their usage data.')) return;
+  
+  try {
+    const res = await fetch('/api/share/' + token, { method: 'DELETE' });
+    if (!res.ok) throw new Error('Failed to revoke');
+    
+    const resultDiv = document.getElementById('share-result-' + orderId);
+    if (resultDiv) {
+      resultDiv.innerHTML = '<span style="font-size:12px;color:var(--muted);">🚫 Share link revoked</span>';
+    }
+  } catch (err) {
+    alert('Error revoking share link: ' + err.message);
+  }
+};

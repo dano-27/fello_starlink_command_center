@@ -152,6 +152,7 @@ class FelloCrmClient {
       dealOwner: raw.deal_owner || null,
       sequence: raw.sequence || 0,
       siteSource: raw.site_source || '',
+      totalGbAmount: parseFloat(raw.total_gb_amount || 0),
 
       // Line items (rentals)
       rentals: (raw.rentals || []).map(r => this._normalizeRental(r)),

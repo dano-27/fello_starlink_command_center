@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Your Rental Data Usage — Fello</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="icon" href="https://events.fello.com/favicon.ico">
+  <style>
+    :root {
+      --primary: #e8802a;
+      --primary-dark: #c06820;
+      --bg: #f7f8fa;
+      --card: #ffffff;
+      --text: #1a1a2e;
+      --muted: #6b7280;
+      --border: #e5e7eb;
+      --green: #10b981;
+      --red: #ef4444;
+      --orange: #f59e0b;
+      --font: 'Montserrat', sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: var(--font); background: var(--bg); color: var(--text); min-height: 100vh; }
+
+    /* Header */
+    .share-header {
+      background: #232428;
+      padding: 20px 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .share-header img { height: 28px; }
+    .share-header .divider { width: 1px; height: 20px; background: rgba(255,255,255,0.2); }
+    .share-header .label { color: rgba(255,255,255,0.7); font-size: 11px; font-weight: 700; letter-spacing: 0.4px; }
+
+    /* Event Banner */
+    .event-banner {
+      background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+      color: white;
+      padding: 32px 24px;
+      text-align: center;
+    }
+    .event-name { font-size: 28px; font-weight: 800; margin-bottom: 4px; }
+    .event-customer { font-size: 14px; opacity: 0.9; font-weight: 500; }
+    .event-dates { font-size: 13px; opacity: 0.8; margin-top: 8px; }
+
+    /* Container */
+    .container { max-width: 720px; margin: 0 auto; padding: 24px 16px; }
+
+    /* Data Gauge */
+    .gauge-card {
+      background: var(--card);
+      border-radius: 16px;
+      padding: 28px;
+      margin-bottom: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    }
+    .gauge-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+    .gauge-title { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); }
+    .gauge-percent { font-size: 36px; font-weight: 800; color: var(--text); }
+    .gauge-percent.overage { color: var(--red); }
+    .gauge-bar-bg {
+      height: 24px;
+      background: #e5e7eb;
+      border-radius: 12px;
+      overflow: hidden;
+      position: relative;
+    }
+    .gauge-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--green), #059669);
+      border-radius: 12px;
+      transition: width 1s ease;
+      min-width: 2px;
+    }
+    .gauge-bar-fill.warning { background: linear-gradient(90deg, var(--orange), #d97706); }
+    .gauge-bar-fill.danger { background: linear-gradient(90deg, var(--red), #dc2626); }
+    .gauge-labels {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 8px;
+      font-size: 13px;
+      color: var(--muted);
+      font-weight: 500;
+    }
+    .gauge-labels .used { color: var(--text); font-weight: 700; }
+    .overage-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #fef2f2;
+      color: var(--red);
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 700;
+      margin-top: 12px;
+    }
+
+    /* Timeline */
+    .timeline-card {
+      background: var(--card);
+      border-radius: 16px;
+      padding: 20px 28px;
+      margin-bottom: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    }
+    .timeline-title { font-size: 13px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--muted); margin-bottom: 12px; }
+    .timeline-bar-bg {
+      height: 8px;
+      background: #e5e7eb;
+      border-radius: 4px;
+      overflow: hidden;
+    }
+    .timeline-bar-fill {
+      height: 100%;
+      background: var(--primary);
+      border-radius: 4px;
+      transition: width 1s ease;
+    }
+    .timeline-labels {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 8px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .timeline-labels .start { color: var(--green); }
+    .timeline-labels .end { color: var(--muted); }
+    .timeline-days {
+      text-align: center;
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 6px;
+      font-weight: 500;
+    }
+
+    /* Devices */
+    .devices-title {
+      font-size: 13px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+    .device-card {
+      background: var(--card);
+      border-radius: 12px;
+      padding: 16px 20px;
+      margin-bottom: 12px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .device-icon { font-size: 28px; flex-shrink: 0; }
+    .device-info { flex: 1; min-width: 0; }
+    .device-name { font-size: 14px; font-weight: 700; }
+    .device-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+    .device-usage {
+      text-align: right;
+      flex-shrink: 0;
+    }
+    .device-usage-value { font-size: 18px; font-weight: 800; }
+    .device-usage-label { font-size: 11px; color: var(--muted); font-weight: 500; }
+    .device-status {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .device-status.active { background: #d1fae5; color: #065f46; }
+    .device-status.offline { background: #fee2e2; color: #991b1b; }
+    .device-status.suspended { background: #fef3c7; color: #92400e; }
+
+    /* Refresh indicator */
+    .refresh-bar {
+      text-align: center;
+      font-size: 11px;
+      color: var(--muted);
+      padding: 16px;
+      font-weight: 500;
+    }
+    .refresh-bar .dot {
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--green);
+      margin-right: 6px;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    /* Error / Loading */
+    .status-screen {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 60vh;
+      text-align: center;
+      padding: 24px;
+    }
+    .status-icon { font-size: 64px; margin-bottom: 16px; }
+    .status-title { font-size: 20px; font-weight: 700; margin-bottom: 8px; }
+    .status-msg { font-size: 14px; color: var(--muted); max-width: 400px; }
+
+    /* Footer */
+    .share-footer {
+      text-align: center;
+      padding: 24px;
+      font-size: 11px;
+      color: var(--muted);
+      border-top: 1px solid var(--border);
+      margin-top: 24px;
+    }
+    .share-footer a { color: var(--primary); text-decoration: none; font-weight: 600; }
+
+    /* Mobile */
+    @media (max-width: 480px) {
+      .event-name { font-size: 22px; }
+      .gauge-percent { font-size: 28px; }
+      .container { padding: 16px 12px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <div class="share-header">
+    <img src="/fello-logo.png" alt="Fello">
+    <span class="divider"></span>
+    <span class="label">Rental Data Usage</span>
+  </div>
+
+  <!-- Loading -->
+  <div id="loading-screen" class="status-screen">
+    <div class="status-icon">📡</div>
+    <div class="status-title">Loading your rental data...</div>
+    <div class="status-msg">Fetching live usage from your devices</div>
+  </div>
+
+  <!-- Error -->
+  <div id="error-screen" class="status-screen" style="display:none;">
+    <div class="status-icon">🔒</div>
+    <div class="status-title" id="error-title">Link Not Found</div>
+    <div class="status-msg" id="error-msg">This share link may have expired or been revoked.</div>
+  </div>
+
+  <!-- Main Content -->
+  <div id="main-content" style="display:none;">
+    <div class="event-banner">
+      <div class="event-name" id="event-name"></div>
+      <div class="event-customer" id="event-customer"></div>
+      <div class="event-dates" id="event-dates"></div>
+    </div>
+
+    <div class="container">
+      <!-- Data Gauge -->
+      <div class="gauge-card">
+        <div class="gauge-header">
+          <span class="gauge-title">Data Usage</span>
+          <span class="gauge-percent" id="gauge-percent">—</span>
+        </div>
+        <div class="gauge-bar-bg">
+          <div class="gauge-bar-fill" id="gauge-fill" style="width:0%"></div>
+        </div>
+        <div class="gauge-labels">
+          <span class="used" id="gauge-used">0 GB used</span>
+          <span id="gauge-total">of 0 GB</span>
+        </div>
+        <div id="overage-section" style="display:none;text-align:center;">
+          <div class="overage-badge">⚠️ <span id="overage-amount">0 GB</span> overage</div>
+        </div>
+      </div>
+
+      <!-- Timeline -->
+      <div class="timeline-card">
+        <div class="timeline-title">Rental Timeline</div>
+        <div class="timeline-bar-bg">
+          <div class="timeline-bar-fill" id="timeline-fill" style="width:0%"></div>
+        </div>
+        <div class="timeline-labels">
+          <span class="start" id="timeline-start">Start</span>
+          <span class="end" id="timeline-end">End</span>
+        </div>
+        <div class="timeline-days" id="timeline-days"></div>
+      </div>
+
+      <!-- Devices -->
+      <div class="devices-title">Your Devices (<span id="device-count">0</span>)</div>
+      <div id="devices-list"></div>
+
+      <!-- Refresh -->
+      <div class="refresh-bar">
+        <span class="dot"></span> Live data · Refreshes automatically
+      </div>
+    </div>
+
+    <div class="share-footer">
+      Powered by <a href="https://events.fello.com" target="_blank">Fello</a> · Data updates every 60 seconds
+    </div>
+  </div>
+
+  <script>
+    // Get token from URL path: /share/{token}
+    const pathParts = window.location.pathname.split('/').filter(Boolean);
+    const token = pathParts[pathParts.length - 1];
+    
+    let orderInfo = null;
+
+    async function init() {
+      if (!token || token === 'share') {
+        showError('No Share Link', 'Please use the QR code or link provided by your Fello representative.');
+        return;
+      }
+
+      try {
+        // Validate token
+        const res = await fetch('/api/public/share/' + token);
+        if (res.status === 404) {
+          showError('Link Not Found', 'This share link doesn\'t exist. Please contact your Fello representative for a new link.');
+          return;
+        }
+        if (res.status === 410) {
+          showError('Link Expired', 'This share link has expired. Please contact your Fello representative for a new link.');
+          return;
+        }
+        if (!res.ok) throw new Error('Validation failed');
+
+        orderInfo = await res.json();
+
+        // Populate event info
+        document.getElementById('event-name').textContent = orderInfo.eventName || orderInfo.orderId || 'Your Rental';
+        document.getElementById('event-customer').textContent = orderInfo.customerName || '';
+        
+        const startStr = orderInfo.startDate ? formatDate(orderInfo.startDate) : '';
+        const endStr = orderInfo.endDate ? formatDate(orderInfo.endDate) : '';
+        document.getElementById('event-dates').textContent = startStr && endStr ? startStr + ' — ' + endStr : '';
+
+        // Timeline
+        renderTimeline(orderInfo.startDate, orderInfo.endDate);
+
+        // Show main content
+        document.getElementById('loading-screen').style.display = 'none';
+        document.getElementById('main-content').style.display = 'block';
+
+        // Load usage
+        await loadUsage();
+
+        // Auto-refresh every 60 seconds
+        setInterval(loadUsage, 60000);
+
+      } catch (err) {
+        showError('Something went wrong', 'Unable to load your rental data. Please try again later.');
+        console.error(err);
+      }
+    }
+
+    async function loadUsage() {
+      try {
+        const res = await fetch('/api/public/share/' + token + '/usage');
+        if (!res.ok) return;
+        const data = await res.json();
+
+        // Data gauge
+        const percent = data.usagePercent || 0;
+        const totalGB = data.totalGbAmount || 0;
+        const usedGB = data.totalUsageGB || 0;
+        const overageGB = data.overageGB || 0;
+
+        const pctEl = document.getElementById('gauge-percent');
+        pctEl.textContent = percent + '%';
+        pctEl.className = 'gauge-percent' + (overageGB > 0 ? ' overage' : '');
+
+        const fill = document.getElementById('gauge-fill');
+        fill.style.width = Math.min(percent, 100) + '%';
+        fill.className = 'gauge-bar-fill' + (percent >= 90 ? ' danger' : percent >= 70 ? ' warning' : '');
+
+        document.getElementById('gauge-used').textContent = usedGB.toFixed(1) + ' GB used';
+        document.getElementById('gauge-total').textContent = totalGB > 0 ? 'of ' + totalGB + ' GB' : '';
+
+        if (overageGB > 0) {
+          document.getElementById('overage-section').style.display = 'block';
+          document.getElementById('overage-amount').textContent = overageGB.toFixed(1) + ' GB';
+        } else {
+          document.getElementById('overage-section').style.display = 'none';
+        }
+
+        // Devices
+        const devices = data.devices || [];
+        document.getElementById('device-count').textContent = devices.length;
+        
+        const list = document.getElementById('devices-list');
+        list.innerHTML = devices.map(d => {
+          const statusClass = d.status === 'Active' ? 'active' : 
+                              d.status === 'Suspended' ? 'suspended' : 
+                              d.status === 'offline' ? 'offline' : 'active';
+          const statusLabel = d.status === 'Active' ? 'Active' :
+                              d.status === 'online' ? 'Online' :
+                              d.status || 'Active';
+          
+          const usageHtml = d.usageGB != null ? 
+            '<div class="device-usage"><div class="device-usage-value">' + d.usageGB.toFixed(1) + '</div><div class="device-usage-label">GB</div></div>' : '';
+          
+          const carrierLabel = d.carrier ? ' · ' + d.carrier : '';
+          const modelLabel = d.model ? ' · ' + d.model : '';
+
+          return '<div class="device-card">' +
+            '<div class="device-icon">' + (d.icon || '📶') + '</div>' +
+            '<div class="device-info">' +
+              '<div class="device-name">' + (d.type === 'sim' ? (d.carrier || 'Cellular') + ' SIM' : d.name) + '</div>' +
+              '<div class="device-meta">' +
+                '<span class="device-status ' + statusClass + '">' + statusLabel + '</span>' +
+                modelLabel +
+              '</div>' +
+            '</div>' +
+            usageHtml +
+          '</div>';
+        }).join('');
+
+      } catch (err) {
+        console.error('Usage load error:', err);
+      }
+    }
+
+    function renderTimeline(startDate, endDate) {
+      if (!startDate || !endDate) return;
+      
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+      const now = new Date();
+      
+      const totalDays = Math.max(1, (end - start) / 86400000);
+      const elapsedDays = Math.max(0, (now - start) / 86400000);
+      const pct = Math.min(100, Math.max(0, (elapsedDays / totalDays) * 100));
+      const remaining = Math.max(0, Math.ceil((end - now) / 86400000));
+
+      document.getElementById('timeline-fill').style.width = pct + '%';
+      document.getElementById('timeline-start').textContent = 'Start ' + formatDate(startDate);
+      document.getElementById('timeline-end').textContent = 'End ' + formatDate(endDate);
+      
+      if (now > end) {
+        document.getElementById('timeline-days').textContent = 'Rental period has ended';
+      } else if (now < start) {
+        document.getElementById('timeline-days').textContent = 'Rental starts in ' + Math.ceil((start - now) / 86400000) + ' days';
+      } else {
+        document.getElementById('timeline-days').textContent = remaining + ' day' + (remaining !== 1 ? 's' : '') + ' remaining';
+      }
+    }
+
+    function formatDate(dateStr) {
+      try {
+        const d = new Date(dateStr + 'T00:00:00');
+        return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+      } catch (e) {
+        return dateStr;
+      }
+    }
+
+    function showError(title, msg) {
+      document.getElementById('loading-screen').style.display = 'none';
+      document.getElementById('error-screen').style.display = 'flex';
+      document.getElementById('error-title').textContent = title;
+      document.getElementById('error-msg').textContent = msg;
+    }
+
+    init();
+  </script>
+</body>
+</html>
