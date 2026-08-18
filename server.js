@@ -933,7 +933,7 @@ app.get('/api/cradlepoint/alerts', async (req, res) => {
   if (!CP_ECM_API_ID) return res.status(503).json({ error: 'Cradlepoint not configured' });
   try {
     const limit = req.query.limit || 50;
-    let url = '/router_alerts/?limit=' + limit + '&order_by=-created_at';
+    let url = '/router_alerts/?limit=' + limit + '&order_by=-detected_at';
     if (req.query.router) url += '&router=' + req.query.router;
     const data = await cpFetch(url);
     res.json(data);
@@ -990,7 +990,7 @@ app.get('/api/cradlepoint/fleet', async (req, res) => {
   try {
     const [routersData, alertsData] = await Promise.all([
       cpFetch('/routers/?limit=200'),
-      cpFetch('/router_alerts/?limit=20&order_by=-created_at')
+      cpFetch('/router_alerts/?limit=20&order_by=-detected_at')
     ]);
 
     const routers = routersData.data || [];
