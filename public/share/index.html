@@ -413,16 +413,24 @@
           const usageHtml = d.usageGB != null ? 
             '<div class="device-usage"><div class="device-usage-value">' + d.usageGB.toFixed(1) + '</div><div class="device-usage-label">GB</div></div>' : '';
           
-          const carrierLabel = d.carrier ? ' · ' + d.carrier : '';
-          const modelLabel = d.model ? ' · ' + d.model : '';
+          // Build device name — use iPad name if available
+          const displayName = d.deviceName || d.name || (d.carrier || 'Cellular') + ' SIM';
+          
+          // Build meta line: serial, carrier, SIM serial
+          const metaParts = [];
+          if (d.serialNumber) metaParts.push('S/N: ' + d.serialNumber);
+          if (d.carrier && d.carrier !== 'Cellular') metaParts.push(d.carrier);
+          if (d.simSerial) metaParts.push('SIM: ' + d.simSerial);
+          if (d.model) metaParts.push(d.model);
+          const metaLine = metaParts.length > 0 ? ' · ' + metaParts.join(' · ') : '';
 
           return '<div class="device-card">' +
             '<div class="device-icon">' + (d.icon || '📶') + '</div>' +
             '<div class="device-info">' +
-              '<div class="device-name">' + (d.type === 'sim' ? (d.carrier || 'Cellular') + ' SIM' : d.name) + '</div>' +
+              '<div class="device-name">' + displayName + '</div>' +
               '<div class="device-meta">' +
                 '<span class="device-status ' + statusClass + '">' + statusLabel + '</span>' +
-                modelLabel +
+                metaLine +
               '</div>' +
             '</div>' +
             usageHtml +

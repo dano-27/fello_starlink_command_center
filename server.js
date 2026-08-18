@@ -1263,60 +1263,128 @@ app.get('/api/public/share/:token/usage', async (req, res) => {
   const results = { devices: [], totalUsageMB: 0, totalUsageGB: 0 };
   
   try {
-    // ─── Webbing SIM Usage ───
+    // ─── Find branch SIMs in the Webbing cache ───
     const branchDevices = webbingDeviceCache.filter(d => 
       d.BranchName && d.BranchName.toUpperCase() === branchName
     );
     
+    // ─── Fetch SimpleMDM devices to match iPad names ───
+    let mdmMatches = {};  // iccid -> { name, serial, barcode }
+    try {
+      // Get SimpleMDM devices whose name starts with the order ID
+      const mdmKey = process.env.SIMPLEMDM_API_KEY || process.env.MDM_API_KEY || '';
+      if (mdmKey) {
+        const auth = 'Basic ' + Buffer.from(mdmKey + ':').toString('base64');
+        let mdmDevices = [];
+        let hasMore = true;
+        let cursor = null;
+        
+        // Paginate SimpleMDM to find devices matching this order
+        while (hasMore) {
+          const url = cursor 
+            ? `https://a.simplemdm.com/api/v1/devices?limit=100&starting_after=${cursor}`
+            : 'https://a.simplemdm.com/api/v1/devices?limit=100';
+          const mdmRes = await fetch(url, { headers: { 'Authorization': auth } });
+          if (!mdmRes.ok) break;
+          const mdmData = await mdmRes.json();
+          const batch = mdmData.data || [];
+          if (batch.length === 0) break;
+          
+          for (const d of batch) {
+            const name = d.attributes?.name || '';
+            if (name.toUpperCase().startsWith(branchName)) {
+              // Extract ICCID from service_subscriptions
+              const subs = d.attributes?.service_subscriptions || [];
+              const iccid = subs.length > 0 ? (subs[0].iccid || '') : '';
+              mdmDevices.push({
+                name: name,
+                serial: d.attributes?.serial_number || '',
+                barcode: '', // barcode not directly in SimpleMDM
+                model: d.attributes?.model_name || '',
+                iccid: iccid,
+                imei: d.attributes?.imei || ''
+              });
+            }
+          }
+          
+          cursor = batch[batch.length - 1]?.id;
+          hasMore = mdmData.has_more === true;
+        }
+        
+        // Build ICCID -> iPad mapping
+        for (const d of mdmDevices) {
+          if (d.iccid) mdmMatches[d.iccid] = d;
+          if (d.imei) {
+            // Also try matching by IMEI to Webbing
+            const simByImei = branchDevices.find(s => s.IMEI === d.imei);
+            if (simByImei && simByImei.ICCID) {
+              mdmMatches[simByImei.ICCID] = d;
+            }
+          }
+        }
+        
+        console.log('[Share] Found ' + mdmDevices.length + ' SimpleMDM devices for ' + branchName + ', matched ' + Object.keys(mdmMatches).length + ' by ICCID/IMEI');
+      }
+    } catch (e) {
+      console.error('[Share] SimpleMDM lookup error:', e.message);
+    }
+    
+    // ─── Fetch Webbing SIM Usage ───
     if (branchDevices.length > 0) {
       const client = getWebbingClient();
       const startDate = data.startDate || new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
-      const endDate = data.endDate || new Date().toISOString().split('T')[0];
+      // Use today if rental is ongoing, or endDate if ended
+      const today = new Date().toISOString().split('T')[0];
+      const endDate = data.endDate && data.endDate < today ? data.endDate : today;
       
-      // Fetch usage for each SIM (using same pattern as /api/webbing/branches/:branchId/usage)
       for (const dev of branchDevices) {
+        let usageMB = 0;
+        let usageError = null;
+        
         try {
+          // Use 'Unknown' interval for total (matching working branch usage pattern)
           const usageData = await client.getDeviceUsage(dev.ServiceDeviceID, startDate, endDate, 'Unknown');
-          let totalMB = 0;
           const usage = usageData?.Usage;
           if (usage && usage.DeviceUsageRecord) {
             const records = Array.isArray(usage.DeviceUsageRecord) ? usage.DeviceUsageRecord : [usage.DeviceUsageRecord];
             for (const r of records) {
-              totalMB += parseFloat(r.TotalUsage || 0);
+              usageMB += parseFloat(r.TotalUsage || 0);
             }
           }
-          
-          // Detect carrier from ProductName
-          const pn = dev.ProductName || '';
-          const carrier = pn.includes('VZ') || pn.includes('Verizon') ? 'Verizon' : 
-                          pn.includes('AT&T') || pn.includes('ATT') ? 'AT&T' : 
-                          pn.includes('T-Mobile') || pn.includes('TMO') ? 'T-Mobile' : 'Cellular';
-          
-          results.devices.push({
-            type: 'sim',
-            icon: '📶',
-            name: pn || 'Cellular SIM',
-            identifier: dev.ICCID || dev.Serial || '',
-            carrier: carrier,
-            status: dev.StatusName || '',
-            usageMB: Math.round(totalMB * 100) / 100,
-            usageGB: Math.round((totalMB / 1024) * 1000) / 1000
-          });
-          results.totalUsageMB += totalMB;
         } catch (e) {
-          console.error('[Share] Webbing usage error for ' + dev.ServiceDeviceID + ':', e.message);
-          results.devices.push({
-            type: 'sim',
-            icon: '📶',
-            name: dev.ProductName || 'Cellular SIM',
-            identifier: dev.ICCID || '',
-            carrier: 'Cellular',
-            status: dev.StatusName || '',
-            usageMB: 0,
-            usageGB: 0,
-            error: 'Usage data temporarily unavailable'
-          });
+          usageError = e.message;
+          console.error('[Share] Usage error for device ' + dev.ServiceDeviceID + ' (' + (dev.SSID || dev.Serial || '') + '):', e.message);
         }
+        
+        // Find matched iPad for this SIM
+        const iccid = dev.ICCID || '';
+        const ipad = mdmMatches[iccid] || null;
+        
+        // Detect carrier from ProductName or matched data
+        const pn = dev.ProductName || '';
+        let carrier = 'Cellular';
+        if (pn.includes('VZ') || pn.includes('Verizon')) carrier = 'Verizon';
+        else if (pn.includes('AT&T') || pn.includes('ATT')) carrier = 'AT&T';
+        else if (pn.includes('T-Mobile') || pn.includes('TMO')) carrier = 'T-Mobile';
+        
+        results.devices.push({
+          type: 'sim',
+          icon: '📶',
+          // Use iPad name if available, otherwise SIM serial/SSID
+          name: ipad ? ipad.name : (dev.SSID || dev.Serial || 'Cellular SIM'),
+          deviceName: ipad ? ipad.name : null,
+          serialNumber: ipad ? ipad.serial : (dev.Serial || ''),
+          barcode: ipad ? ipad.barcode : '',
+          model: ipad ? ipad.model : '',
+          simSerial: dev.SSID || dev.Serial || '',
+          iccid: iccid,
+          carrier: carrier,
+          status: dev.StatusName || '',
+          usageMB: Math.round(usageMB * 100) / 100,
+          usageGB: Math.round((usageMB / 1024) * 1000) / 1000,
+          ...(usageError ? { error: 'Usage temporarily unavailable' } : {})
+        });
+        results.totalUsageMB += usageMB;
       }
     }
     
@@ -1338,7 +1406,7 @@ app.get('/api/public/share/:token/usage', async (req, res) => {
                 type: 'router',
                 icon: '🌐',
                 name: router.name || 'Cradlepoint Router',
-                identifier: router.serial_number || '',
+                serialNumber: router.serial_number || '',
                 status: router.state || 'unknown',
                 model: router.full_product_name || 'IBR900'
               });
