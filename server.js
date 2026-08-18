@@ -1372,16 +1372,8 @@ app.get('/api/public/share/:token/usage', async (req, res) => {
         else if (pn.includes('AT&T') || pn.includes('ATT')) carrier = 'AT&T';
         else if (pn.includes('T-Mobile') || pn.includes('TMO')) carrier = 'T-Mobile';
         // Determine device type for icon
-        let deviceType = 'ipad'; // default for SIMs paired with iPads
-        if (!ipad) {
-          // Not matched to an iPad — check if it's a hotspot
-          const pnLower = pn.toLowerCase();
-          if (pnLower.includes('hotspot') || pnLower.includes('mifi') || pnLower.includes('jetpack')) {
-            deviceType = 'hotspot';
-          } else {
-            deviceType = 'ipad'; // still show tablet icon for unmatched SIMs (they're likely in iPads)
-          }
-        }
+        // Matched to SimpleMDM iPad = 'ipad', unmatched SIM = 'hotspot' (standalone data device)
+        const deviceType = ipad ? 'ipad' : 'hotspot';
         
         results.devices.push({
           type: deviceType,
