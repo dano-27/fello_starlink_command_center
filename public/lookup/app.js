@@ -2318,6 +2318,7 @@ window.generateShareLink = async function(orderId, customerName, eventName, star
   try {
     var res = await fetch('/api/share/generate', {
       method: 'POST',
+      credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
         orderId: orderId, 
@@ -2397,7 +2398,7 @@ document.addEventListener('click', function(e) {
   
   if (!confirm('Revoke this Fello Pulse link? The customer will no longer be able to view their data.')) return;
   
-  fetch('/api/share/' + token, { method: 'DELETE' }).then(function(res) {
+  fetch('/api/share/' + token, { method: 'DELETE', credentials: 'same-origin' }).then(function(res) {
     if (!res.ok) throw new Error('Failed to revoke');
     var resultDiv = document.getElementById('share-result-' + orderId);
     if (resultDiv) {
