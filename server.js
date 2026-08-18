@@ -1371,10 +1371,20 @@ app.get('/api/public/share/:token/usage', async (req, res) => {
         if (pn.includes('VZ') || pn.includes('Verizon')) carrier = 'Verizon';
         else if (pn.includes('AT&T') || pn.includes('ATT')) carrier = 'AT&T';
         else if (pn.includes('T-Mobile') || pn.includes('TMO')) carrier = 'T-Mobile';
+        // Determine device type for icon
+        let deviceType = 'ipad'; // default for SIMs paired with iPads
+        if (!ipad) {
+          // Not matched to an iPad — check if it's a hotspot
+          const pnLower = pn.toLowerCase();
+          if (pnLower.includes('hotspot') || pnLower.includes('mifi') || pnLower.includes('jetpack')) {
+            deviceType = 'hotspot';
+          } else {
+            deviceType = 'ipad'; // still show tablet icon for unmatched SIMs (they're likely in iPads)
+          }
+        }
         
         results.devices.push({
-          type: 'sim',
-          icon: '📶',
+          type: deviceType,
           // Use iPad name if available, otherwise SIM serial/SSID
           name: ipad ? ipad.name : (dev.SSID || dev.Serial || 'Cellular SIM'),
           deviceName: ipad ? ipad.name : null,
@@ -1409,7 +1419,7 @@ app.get('/api/public/share/:token/usage', async (req, res) => {
             if (router) {
               results.devices.push({
                 type: 'router',
-                icon: '🌐',
+                // icon handled by frontend SVG
                 name: router.name || 'Cradlepoint Router',
                 serialNumber: router.serial_number || '',
                 status: router.state || 'unknown',
