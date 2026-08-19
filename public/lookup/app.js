@@ -2315,11 +2315,23 @@ window.generateShareLink = async function(orderId, customerName, eventName, star
   
   resultDiv.innerHTML = '<span style="font-size:12px;color:var(--muted);">Generating Fello Pulse link...</span>';
   
+  // Extract session token — try cookie first, then localStorage backup
+  function getSessionToken() {
+    var match = document.cookie.match(/fello_session=([^;]+)/);
+    if (match) return match[1];
+    // Fallback to localStorage (set during login)
+    try { return localStorage.getItem('fello_session_token') || ''; } catch(e) { return ''; }
+  }
+  
   try {
+    var sessionToken = getSessionToken();
+    var headers = { 'Content-Type': 'application/json' };
+    if (sessionToken) headers['X-Session-Token'] = sessionToken;
+    
     var res = await fetch('/api/share/generate', {
       method: 'POST',
       credentials: 'same-origin',
-      headers: { 'Content-Type': 'application/json' },
+      headers: headers,
       body: JSON.stringify({ 
         orderId: orderId, 
         customerName: customerName, 
@@ -2329,6 +2341,13 @@ window.generateShareLink = async function(orderId, customerName, eventName, star
         totalGbAmount: totalGbAmount 
       })
     });
+    
+    if (res.status === 401) {
+      // Auth failed — check if we even have a cookie
+      var hasCookie = !!getSessionToken();
+      console.error('[Pulse] Auth failed. Cookie present:', hasCookie, 'Status:', res.status);
+      throw new Error('Session expired. Please refresh the page and try again.');
+    }
     
     if (!res.ok) {
       var errData = await res.json().catch(function() { return { error: 'Server error ' + res.status }; });

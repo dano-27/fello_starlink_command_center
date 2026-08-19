@@ -47,10 +47,46 @@ loadUsers();
 // Reload users when CSV changes
 try { fs.watch(USERS_CSV, () => { console.log('[Auth] Users CSV changed, reloading...'); loadUsers(); }); } catch(e) {}
 
-// Session store (in-memory)
-const sessions = new Map();
+// Session store (persisted to disk to survive redeploys)
 const SESSION_COOKIE = 'fello_session';
 const SESSION_MAX_AGE = 24 * 60 * 60 * 1000; // 24 hours
+const DATA_DIR = fs.existsSync('/data') ? '/data' : path.join(__dirname, 'data');
+const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
+
+let sessions = new Map();
+
+function loadSessions() {
+  try {
+    if (fs.existsSync(SESSIONS_FILE)) {
+      const raw = JSON.parse(fs.readFileSync(SESSIONS_FILE, 'utf8'));
+      const now = Date.now();
+      sessions = new Map();
+      for (const [token, sess] of Object.entries(raw)) {
+        // Only load sessions that haven't expired
+        const loginTime = new Date(sess.loginTime).getTime();
+        if (now - loginTime < SESSION_MAX_AGE) {
+          sessions.set(token, sess);
+        }
+      }
+      console.log('[Auth] Loaded ' + sessions.size + ' sessions from disk');
+    }
+  } catch (e) {
+    console.error('[Auth] Failed to load sessions:', e.message);
+  }
+}
+
+function saveSessions() {
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    const obj = Object.fromEntries(sessions);
+    fs.writeFileSync(SESSIONS_FILE, JSON.stringify(obj, null, 2));
+  } catch (e) {
+    console.error('[Auth] Failed to save sessions:', e.message);
+  }
+}
+
+// Load existing sessions on startup
+loadSessions();
 
 function createSession(user) {
   const token = crypto.randomUUID();
@@ -61,6 +97,7 @@ function createSession(user) {
     sessionToken: token,
     loginTime: new Date().toISOString()
   });
+  saveSessions();
   return token;
 }
 
@@ -68,6 +105,13 @@ function getSession(token) {
   if (!token) return null;
   const session = sessions.get(token);
   if (!session) return null;
+  // Check expiry
+  const loginTime = new Date(session.loginTime).getTime();
+  if (Date.now() - loginTime > SESSION_MAX_AGE) {
+    sessions.delete(token);
+    saveSessions();
+    return null;
+  }
   return session;
 }
 
@@ -338,9 +382,24 @@ app.use((req, res, next) => {
 
   // Check session cookie
   const cookies = parseCookies(req);
-  const session = getSession(cookies[SESSION_COOKIE]);
+  let sessionToken = cookies[SESSION_COOKIE];
+  
+  // Fallback: check for session token in header (for cases where cookie isn't sent)
+  if (!sessionToken && req.headers['x-session-token']) {
+    sessionToken = req.headers['x-session-token'];
+  }
+  
+  const session = getSession(sessionToken);
 
   if (!session) {
+    // Log auth failures for API share calls to help debug
+    if (req.path.startsWith('/api/share')) {
+      console.error('[Auth] Share endpoint auth failed — path:', req.path, 
+        'cookie present:', !!cookies[SESSION_COOKIE], 
+        'header present:', !!req.headers['x-session-token'],
+        'token value:', sessionToken ? sessionToken.substring(0, 8) + '...' : 'none',
+        'sessions count:', sessions.size);
+    }
     // API calls get 401, page requests get redirected
     if (req.path.startsWith('/api/')) {
       return res.status(401).json({ error: 'Not authenticated' });
@@ -420,11 +479,12 @@ app.post('/api/auth/login', (req, res) => {
   }
 
   const token = createSession(user);
-  res.setHeader('Set-Cookie', `${SESSION_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_MAX_AGE / 1000}`);
+  res.setHeader('Set-Cookie', `${SESSION_COOKIE}=${token}; Path=/; SameSite=Lax; Max-Age=${SESSION_MAX_AGE / 1000}`);
 
   auditLog({ user: user.username, name: user.name, role: user.role, sessionId: token, method: 'LOGIN', path: '/api/auth/login', body: { success: true }, ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress, userAgent: req.headers['user-agent'] });
 
-  res.json({ success: true, user: { username: user.username, name: user.name, role: user.role } });
+  // Return token so client can store it for header-based auth fallback
+  res.json({ success: true, user: { username: user.username, name: user.name, role: user.role }, sessionToken: token });
 });
 
 app.post('/api/auth/logout', (req, res) => {
@@ -436,6 +496,7 @@ app.post('/api/auth/logout', (req, res) => {
       auditLog({ user: session.username, name: session.name, role: session.role, sessionId: token, method: 'LOGOUT', path: '/api/auth/logout', ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress, userAgent: req.headers['user-agent'] });
     }
     sessions.delete(token);
+    saveSessions();
   }
   res.setHeader('Set-Cookie', `${SESSION_COOKIE}=; Path=/; HttpOnly; Max-Age=0`);
   res.json({ success: true });

@@ -95,6 +95,11 @@
           body: JSON.stringify({ username: u, password: p })
         });
         if (res.ok) {
+          const data = await res.json();
+          // Store session token as backup for header-based auth
+          if (data.sessionToken) {
+            try { localStorage.setItem('fello_session_token', data.sessionToken); } catch(e) {}
+          }
           window.location.href = '/lookup/';
         } else {
           err.style.display = 'block';
