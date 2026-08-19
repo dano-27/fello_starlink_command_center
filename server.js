@@ -1183,10 +1183,28 @@ app.get('/api/cradlepoint/routers/:id/wifi', async (req, res) => {
     const routerId = req.params.id;
     const routerUrl = CP_BASE_URL + '/routers/' + routerId + '/';
     
-    // Get configuration manager for this router
-    const cfgData = await cpFetch('/configuration_managers/?router=' + routerId + '&limit=1');
-    const configs = cfgData.data || [];
+    // Try fetching config manager — try by ID first, then by URL
+    let cfgData = await cpFetch('/configuration_managers/?router=' + routerId + '&limit=1&fields=id,configuration');
+    let configs = cfgData.data || [];
+    
     if (configs.length === 0) {
+      console.log('[Cradlepoint] No config found by ID, trying URL filter for router ' + routerId);
+      cfgData = await cpFetch('/configuration_managers/?router=' + encodeURIComponent(routerUrl) + '&limit=1&fields=id,configuration');
+      configs = cfgData.data || [];
+    }
+    
+    if (configs.length === 0) {
+      // Last try: fetch all config managers and find one matching this router
+      console.log('[Cradlepoint] No config found by URL either, fetching all config managers');
+      cfgData = await cpFetch('/configuration_managers/?limit=50&fields=id,router,configuration');
+      configs = (cfgData.data || []).filter(c => {
+        const cRouter = c.router || '';
+        return cRouter.includes('/' + routerId + '/') || cRouter === routerId;
+      });
+    }
+    
+    if (configs.length === 0) {
+      console.log('[Cradlepoint] No configuration_manager found for router ' + routerId + ' after all attempts');
       return res.json({ ssids: [], configId: null, error: 'No configuration found for this router' });
     }
     
@@ -1273,9 +1291,12 @@ app.get('/api/cradlepoint/routers/:id/wifi', async (req, res) => {
     
     console.log('[Cradlepoint] WiFi config for router ' + routerId + ': ' + ssids.length + ' SSIDs found');
     if (ssids.length === 0) {
-      console.log('[Cradlepoint] Full config structure (first 500 chars):', JSON.stringify(config).substring(0, 500));
+      const configSnapshot = JSON.stringify(config).substring(0, 1000);
+      console.log('[Cradlepoint] Full config structure (first 1000 chars):', configSnapshot);
+      res.json({ ssids: ssids, configId: configId, _debug: { configKeys: Object.keys(config), networkingKeys: Object.keys(config?.networking || {}), configPreview: configSnapshot } });
+    } else {
+      res.json({ ssids: ssids, configId: configId });
     }
-    res.json({ ssids: ssids, configId: configId });
   } catch (err) {
     console.error('[Cradlepoint] WiFi read error:', err.message);
     res.status(500).json({ error: err.message });

@@ -632,7 +632,15 @@
         
         const ssids = data.ssids || [];
         if (ssids.length === 0) {
-          body.innerHTML = '<p>No SSIDs found for this router.</p>';
+          let debugHtml = '<p>No SSIDs found for this router.</p>';
+          if (data._debug) {
+            debugHtml += '<details style="margin-top:12px;font-size:12px;"><summary style="cursor:pointer;color:var(--blue)">Debug Info</summary>';
+            debugHtml += '<pre style="background:var(--gray);padding:12px;border-radius:8px;overflow-x:auto;margin-top:8px;font-size:11px;">' + 
+              'Config Keys: ' + JSON.stringify(data._debug.configKeys) + '\n' +
+              'Networking Keys: ' + JSON.stringify(data._debug.networkingKeys) + '\n\n' +
+              'Config Preview:\n' + data._debug.configPreview + '</pre></details>';
+          }
+          body.innerHTML = debugHtml;
           return;
         }
 
