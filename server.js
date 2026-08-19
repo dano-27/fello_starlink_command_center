@@ -1499,7 +1499,7 @@ app.post('/api/cradlepoint/routers/:id/speedtest', async (req, res) => {
     const testBody = {
       account: accountUrl,
       config: {
-        host: req.body.host || '',  // Empty = use Cradlepoint default
+        host: req.body.host || 'netperf.bufferbloat.net',
         max_test_concurrency: 1,
         net_device_ids: [primaryModem.id],
         port: req.body.port || 12865,
