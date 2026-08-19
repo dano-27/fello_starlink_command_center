@@ -1545,30 +1545,35 @@ app.get('/api/cradlepoint/speedtest/:testId', async (req, res) => {
   if (!CP_ECM_API_ID) return res.status(503).json({ error: 'Cradlepoint not configured' });
   try {
     const data = await cpFetch('/speed_test/' + req.params.testId + '/');
-    console.log('[Cradlepoint] Speed test poll:', JSON.stringify(data).substring(0, 500));
+    console.log('[Cradlepoint] Speed test poll raw:', JSON.stringify(data).substring(0, 800));
     
-    // Normalize status
-    const rawStatus = (data.status || '').toLowerCase();
+    // Cradlepoint may use 'state' or 'status'
+    const rawStatus = (data.state || data.status || data.test_status || '').toLowerCase();
     let status = rawStatus;
-    if (rawStatus === 'success' || rawStatus === 'done' || rawStatus === 'complete') status = 'completed';
-    if (rawStatus === 'error' || rawStatus === 'fail') status = 'failed';
+    if (['success', 'done', 'complete', 'completed'].includes(rawStatus)) status = 'completed';
+    if (['error', 'fail', 'failed', 'cancelled'].includes(rawStatus)) status = 'failed';
+    if (['created', 'pending', 'queued', 'starting', 'started', 'running', 'in_progress'].includes(rawStatus)) status = 'running';
     
-    // Extract results — Cradlepoint returns results in various formats
-    const results = data.result || data.results || {};
-    const download = results.download || data.download || 0;
-    const upload = results.upload || data.upload || 0;
-    const latency = results.latency || data.latency || 0;
+    // Extract results from various possible locations
+    const results = data.result || data.results || data.result_data || {};
+    const cfg = data.config || {};
     
-    // Convert bps to Mbps if needed (values > 1000 are likely bps)
+    // Speed values could be in result.download, result.TCP Download, etc.
+    let download = results.download || results['TCP Download'] || results.download_speed || data.download || 0;
+    let upload = results.upload || results['TCP Upload'] || results.upload_speed || data.upload || 0;
+    let latency = results.latency || results.rtt || data.latency || 0;
+    
+    // Convert bps to Mbps if needed
     const toMbps = (val) => {
       if (!val) return 0;
-      if (val > 1000000) return (val / 1000000).toFixed(1);
-      if (val > 1000) return (val / 1000).toFixed(1);
-      return parseFloat(val).toFixed(1);
+      const num = parseFloat(val);
+      if (num > 1000000) return (num / 1000000).toFixed(1);
+      if (num > 1000) return (num / 1000).toFixed(1);
+      return num.toFixed(1);
     };
     
     res.json({
-      status: status,
+      status: status || 'running',
       download_mbps: toMbps(download),
       upload_mbps: toMbps(upload),
       latency_ms: latency ? parseFloat(latency).toFixed(0) : 0,
