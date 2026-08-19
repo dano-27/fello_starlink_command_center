@@ -368,7 +368,8 @@ const AUTH_WHITELIST = [
   '/favicon.ico',
   '/share', '/api/public/share',
   '/shared-header.css', '/shared-header.js', '/fello-logo.png',
-  '/api/dcr/submit', '/api/dcr'
+  '/api/dcr/submit', '/api/dcr',
+  '/api/automation/provision'
 ];
 
 app.use((req, res, next) => {
