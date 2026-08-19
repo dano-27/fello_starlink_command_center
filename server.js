@@ -1140,6 +1140,17 @@ app.get('/api/cradlepoint/fleet', async (req, res) => {
     });
 
     const wbMatched = enrichedRouters.filter(r => r.webbing && r.webbing.matched).length;
+    
+    // Sort by asset_id (routers without one go to the end)
+    enrichedRouters.sort((a, b) => {
+      const aId = a.asset_id || '';
+      const bId = b.asset_id || '';
+      if (!aId && !bId) return 0;
+      if (!aId) return 1;
+      if (!bId) return -1;
+      return aId.localeCompare(bId, undefined, { numeric: true });
+    });
+    
     console.log('[Cradlepoint] Fleet: ' + routers.length + ' routers (' + online + ' online), ' + wbMatched + ' Webbing matches, ' + alerts.length + ' alerts');
 
     res.json({
