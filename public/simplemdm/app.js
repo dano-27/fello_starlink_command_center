@@ -1951,6 +1951,11 @@
             showToast('Disconnected from SimpleMDM', 'info');
         });
 
+        // Assign Device buttons → open serial modal
+        const assignDeviceBtn = $('#assign-device-btn');
+        if (assignDeviceBtn) assignDeviceBtn.addEventListener('click', () => openSerialModal());
+        if (dom.addBySerialBtn) dom.addBySerialBtn.addEventListener('click', () => openSerialModal());
+
         // Search — context-aware
         let searchDebounce;
         if (dom.searchInput) dom.searchInput.addEventListener('input', (e) => {
