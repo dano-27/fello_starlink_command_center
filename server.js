@@ -4040,9 +4040,10 @@ app.post('/api/automation/provision', async (req, res) => {
   }
 
   // Validate required fields
-  if (!dcrData.eventName) {
-    return res.status(400).json({ error: 'Missing eventName in DCR payload.' });
+  if (!dcrData.eventName && !dcrData.orderNumber && !dcrData.contactName) {
+    return res.status(400).json({ error: 'Missing eventName or orderNumber in DCR payload.' });
   }
+  if (!dcrData.eventName) dcrData.eventName = dcrData.orderNumber || dcrData.company || 'Untitled Request';
 
   const runId = `prov-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const run = {
