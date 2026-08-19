@@ -670,56 +670,46 @@
         const name = getGroupName(group);
         const count = state.groupDeviceCounts[group.id] || 0;
 
-        if (count === 0) {
-            const confirmed = await showConfirm('Delete Group?', `Are you sure you want to delete "${name}"?`, '🗑');
-            if (!confirmed) return;
+        // First confirmation: delete the group?
+        const msg = count > 0
+            ? `This group has ${count} device${count !== 1 ? 's' : ''} assigned.\n\nDeleting this group will:\n1. Factory reset all devices\n2. Unenroll them from SimpleMDM\n3. Delete their records\n4. Unassign them from DEP\n5. Delete the group\n\nThis cannot be undone.`
+            : `Are you sure you want to delete "${name}"?\n\nIf there are devices assigned (count may not be loaded), they will be factory reset, unenrolled, and unassigned from DEP.`;
+        const confirmed = await showConfirm('Delete Group?', msg, '🗑');
+        if (!confirmed) return;
 
-            try {
-                showToast(`Deleting "${name}"…`, 'info');
-                await apiRequest(`/assignment_groups/${group.id}`, { method: 'DELETE' });
-                showToast(`"${name}" deleted successfully.`, 'success');
-            } catch (err) {
-                showToast(`Failed to delete group: ${err.message}`, 'error');
-                return;
-            }
-        } else {
-            // First confirmation: delete the group?
-            const msg = `This group has ${count} device${count !== 1 ? 's' : ''} assigned.\n\nDeleting this group will:\n1. Unenroll all devices from SimpleMDM\n2. Delete their records\n3. Unassign them from DEP\n4. Delete the group\n\nThis cannot be undone.`;
-            const confirmed = await showConfirm('Delete Group?', msg, '🗑');
-            if (!confirmed) return;
+        // Second confirmation: factory reset?
+        const wipeFirst = await showConfirm(
+            'Factory Reset Devices?',
+            `Do you want to factory reset all devices in this group before removing them?\n\nThis will erase all data on the devices.`,
+            '🔄'
+        );
 
-            // Second confirmation: factory reset?
-            const wipeFirst = await showConfirm(
-                'Factory Reset Devices?',
-                `Do you also want to factory reset all ${count} device${count !== 1 ? 's' : ''} before removing them?\n\nThis will erase all data on the devices.`,
-                '🔄'
-            );
+        try {
+            const action = wipeFirst ? 'Factory resetting, unenrolling' : 'Unenrolling';
+            showToast(`${action} devices and deleting "${name}"…`, 'info');
+            const resp = await fetch(`/api/simplemdm/groups/${group.id}/delete-with-cleanup`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Basic ${btoa(state.apiKey + ':')}`,
+                },
+                credentials: 'same-origin',
+                body: JSON.stringify({ wipeFirst }),
+            });
+            const results = await resp.json();
+            if (!resp.ok) throw new Error(results.error || 'Cleanup failed');
 
-            try {
-                const action = wipeFirst ? 'Factory resetting, unenrolling' : 'Unenrolling';
-                showToast(`${action} ${count} device${count !== 1 ? 's' : ''} and deleting "${name}"…`, 'info');
-                const resp = await fetch(`/api/simplemdm/groups/${group.id}/delete-with-cleanup`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Basic ${btoa(state.apiKey + ':')}`,
-                    },
-                    body: JSON.stringify({ wipeFirst }),
-                });
-                const results = await resp.json();
-                if (!resp.ok) throw new Error(results.error || 'Cleanup failed');
-
-                const uCount = results.unenrolled?.length || 0;
-                const wCount = results.wiped?.length || 0;
-                let resultMsg = `✓ "${name}" deleted — ${uCount} device${uCount !== 1 ? 's' : ''} unenrolled`;
-                if (wCount > 0) resultMsg += `, ${wCount} factory reset`;
-                if (results.abmUnassigned) resultMsg += ' + unassigned from DEP';
-                if (results.errors?.length > 0) resultMsg += ` (${results.errors.length} errors)`;
-                showToast(resultMsg, results.errors?.length > 0 ? 'warning' : 'success');
-            } catch (err) {
-                showToast(`Failed to delete group: ${err.message}`, 'error');
-                return;
-            }
+            const uCount = results.unenrolled?.length || 0;
+            const wCount = results.wiped?.length || 0;
+            let resultMsg = `✓ "${name}" deleted`;
+            if (uCount > 0) resultMsg += ` — ${uCount} device${uCount !== 1 ? 's' : ''} unenrolled`;
+            if (wCount > 0) resultMsg += `, ${wCount} factory reset`;
+            if (results.abmUnassigned) resultMsg += ' + unassigned from DEP';
+            if (results.errors?.length > 0) resultMsg += ` (${results.errors.length} errors)`;
+            showToast(resultMsg, results.errors?.length > 0 ? 'warning' : 'success');
+        } catch (err) {
+            showToast(`Failed to delete group: ${err.message}`, 'error');
+            return;
         }
 
         // Remove from state and re-render
