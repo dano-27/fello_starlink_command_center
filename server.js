@@ -1322,6 +1322,11 @@ app.put('/api/cradlepoint/routers/:id/wifi', async (req, res) => {
     const bssPatch = {};
     if (newSsid) bssPatch.ssid = newSsid;
     if (newPassword) bssPatch.wpa_password = newPassword;
+    // When both are provided, it's likely a new network — enable it
+    if (newSsid && newPassword) {
+      bssPatch.enabled = true;
+      bssPatch.encryption_mode = 'wpa2';
+    }
     
     let patchData;
     

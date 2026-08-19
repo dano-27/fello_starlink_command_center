@@ -670,6 +670,46 @@
             <button class="btn btn-primary btn-full" onclick="updateWifi('${routerId}', '${ssid.radioKey}', '${ssid.ssidKey}', ${idx}, '${ssid._configPath || ''}')">Save Changes</button>
           </div>
         `}).join('');
+
+        // Calculate next available BSS index per radio
+        const usedBss = {};
+        ssids.forEach(s => {
+          if (!usedBss[s.radioKey]) usedBss[s.radioKey] = [];
+          usedBss[s.radioKey].push(parseInt(s.ssidKey));
+        });
+        const getNextBss = (radioKey) => {
+          const used = usedBss[radioKey] || [];
+          for (let i = 0; i < 4; i++) { if (!used.includes(i)) return i; }
+          return -1;
+        };
+        const nextBss24 = getNextBss('0');
+        const nextBss5 = getNextBss('1');
+        const canAdd = nextBss24 >= 0 || nextBss5 >= 0;
+
+        if (canAdd) {
+          body.innerHTML += `
+            <div style="border-top: 2px solid var(--border); margin-top: 16px; padding-top: 16px;">
+              <div style="font-weight:700; font-size:15px; margin-bottom:12px;">➕ Add New WiFi Network</div>
+              <div style="font-size:12px; color:var(--dark-gray-shade); margin-bottom:12px;">This adds a new SSID without changing your existing networks. Max 4 per radio.</div>
+              <div class="form-group">
+                <label class="form-label">Radio Band</label>
+                <select class="form-input" id="add-wifi-radio">
+                  ${nextBss24 >= 0 ? '<option value="0">2.4 GHz</option>' : ''}
+                  ${nextBss5 >= 0 ? '<option value="1">5 GHz</option>' : ''}
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">New SSID Name</label>
+                <input type="text" class="form-input" id="add-wifi-ssid" placeholder="e.g. Guest-WiFi">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Password</label>
+                <input type="text" class="form-input" id="add-wifi-pw" placeholder="Minimum 8 characters">
+              </div>
+              <button class="btn btn-primary btn-full" onclick="addWifiNetwork('${routerId}')">Add Network</button>
+            </div>
+          `;
+        }
       } catch (err) {
         body.innerHTML = `<div style="color:var(--light-red)">${err.message}</div>`;
       }
@@ -688,6 +728,44 @@
         const data = await res.json();
         if (!res.ok || data.error) throw new Error(data.error || 'Failed to update');
         showToast('WiFi settings updated successfully');
+        closeModal('wifi-modal');
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+
+    async function addWifiNetwork(routerId) {
+      const radioKey = document.getElementById('add-wifi-radio').value;
+      const newSsid = document.getElementById('add-wifi-ssid').value.trim();
+      const newPassword = document.getElementById('add-wifi-pw').value;
+      
+      if (!newSsid) { showToast('Please enter an SSID name', 'error'); return; }
+      if (!newPassword || newPassword.length < 8) { showToast('Password must be at least 8 characters', 'error'); return; }
+      
+      // Find the next available BSS index for this radio
+      const ssids = (await (await fetch(`/api/cradlepoint/routers/${routerId}/wifi`, { credentials: 'same-origin' })).json()).ssids || [];
+      const usedIndices = ssids.filter(s => s.radioKey === radioKey).map(s => parseInt(s.ssidKey));
+      let nextBss = -1;
+      for (let i = 0; i < 4; i++) { if (!usedIndices.includes(i)) { nextBss = i; break; } }
+      
+      if (nextBss < 0) { showToast('No available slots on this radio (max 4)', 'error'); return; }
+      
+      try {
+        const res = await fetch(`/api/cradlepoint/routers/${routerId}/wifi`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
+          body: JSON.stringify({
+            radioKey: radioKey,
+            ssidKey: String(nextBss),
+            newSsid: newSsid,
+            newPassword: newPassword,
+            configPath: 'wlan.radio.' + radioKey + '.bss.' + nextBss
+          })
+        });
+        const data = await res.json();
+        if (!res.ok || data.error) throw new Error(data.error || 'Failed to add network');
+        showToast(`New network "${newSsid}" added on ${radioKey === '1' ? '5 GHz' : '2.4 GHz'}`);
         closeModal('wifi-modal');
       } catch (err) {
         showToast(err.message, 'error');
