@@ -3011,39 +3011,30 @@ let dcrSubmissions = loadDcrLog();
 // ── DCR Submit endpoint (public, CORS enabled) ─────────────────────
 // This is what the DCR form POSTs to directly — no API key needed from the client
 app.options('/api/dcr/submit', (req, res) => {
-  // CORS preflight
-  const origin = req.headers.origin || '';
-  const allowed = serverConfig.allowedOrigins || [];
-  if (allowed.length === 0 || allowed.includes(origin)) {
-    res.set('Access-Control-Allow-Origin', origin || '*');
-    res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.set('Access-Control-Allow-Headers', 'Content-Type');
-  }
+  res.set('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Content-Type');
   return res.sendStatus(204);
 });
 
 app.options('/api/dcr/:id/upload', (req, res) => {
-  const origin = req.headers.origin || '';
-  const allowed = serverConfig.allowedOrigins || [];
-  if (allowed.length === 0 || allowed.includes(origin)) {
-    res.set('Access-Control-Allow-Origin', origin || '*');
-    res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
-    res.set('Access-Control-Allow-Headers', 'Content-Type');
-  }
+  res.set('Access-Control-Allow-Origin', req.headers.origin || '*');
+  res.set('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.set('Access-Control-Allow-Headers', 'Content-Type');
   return res.sendStatus(204);
 });
 
 app.post('/api/dcr/submit', async (req, res) => {
-  // CORS headers
-  const origin = req.headers.origin || '';
-  const allowed = serverConfig.allowedOrigins || [];
-  if (allowed.length === 0 || allowed.includes(origin)) {
-    res.set('Access-Control-Allow-Origin', origin || '*');
-  }
+  // Always allow CORS for DCR — it's a public customer form
+  res.set('Access-Control-Allow-Origin', req.headers.origin || '*');
+  
+  console.log('[DCR] Submit request received from origin:', req.headers.origin || 'unknown');
+  console.log('[DCR] Body keys:', Object.keys(req.body || {}).join(', '));
 
   const dcrData = req.body;
 
   if (!dcrData || !dcrData.eventName) {
+    console.log('[DCR] Rejected — missing eventName. Body:', JSON.stringify(dcrData).substring(0, 200));
     return res.status(400).json({ error: 'Missing eventName in DCR payload.' });
   }
 
