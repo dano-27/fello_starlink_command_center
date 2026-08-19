@@ -1501,10 +1501,11 @@ app.post('/api/cradlepoint/routers/:id/speedtest', async (req, res) => {
     const routerData = await cpFetch('/routers/' + routerId + '/');
     const accountUrl = routerData.account || '';
     
-    // Get the primary modem net_device ID
-    const netDevData = await cpFetch('/net_devices/?router=' + CP_BASE_URL + '/routers/' + routerId + '/&type=mdm&limit=10');
-    const modems = netDevData.data || [];
-    const primaryModem = modems.find(m => m.connection_state === 'connected') || modems[0];
+    // Get the primary modem net_device ID (can't filter by type, do it client-side)
+    const netDevData = await cpFetch('/net_devices/?router=' + routerId + '&limit=50');
+    const allDevs = netDevData.data || [];
+    const modems = allDevs.filter(m => m.type === 'mdm' || m.is_modem || (m.info && m.info.type === 'mdm'));
+    const primaryModem = modems.find(m => m.connection_state === 'connected') || modems[0] || allDevs.find(m => m.connection_state === 'connected') || allDevs[0];
     
     if (!primaryModem) {
       return res.status(400).json({ error: 'No modem found on this router' });
