@@ -821,7 +821,9 @@
         const res = await fetch(`/api/cradlepoint/routers/${routerId}/speedtest`, { method: 'POST', credentials: 'same-origin' });
         const data = await res.json();
         if (!res.ok || data.error) throw new Error(data.error || 'Failed to start test');
-        pollSpeedTest(data.test?.id, routerId, resDiv, btn);
+        const testId = data.testId || data.test?.id || (data.test?.resource_url?.match(/\/(\d+)\/?$/)?.[1]);
+        if (!testId) throw new Error('Could not get test ID from response');
+        pollSpeedTest(testId, routerId, resDiv, btn);
       } catch (err) {
         btn.disabled = false;
         btn.innerHTML = '🏎️ Run Speed Test';

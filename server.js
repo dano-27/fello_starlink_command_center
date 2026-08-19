@@ -1525,7 +1525,15 @@ app.post('/api/cradlepoint/routers/:id/speedtest', async (req, res) => {
     });
     
     console.log('[Cradlepoint] Speed test triggered for router ' + routerId + ' by ' + req.user.username);
-    res.json({ success: true, test: testResult });
+    console.log('[Cradlepoint] Speed test response keys:', Object.keys(testResult).join(', '));
+    
+    // Extract test ID from response — could be in id, resource_url, or _links
+    let testId = testResult.id;
+    if (!testId && testResult.resource_url) {
+      testId = testResult.resource_url.match(/\/(\d+)\/?$/)?.[1];
+    }
+    
+    res.json({ success: true, testId: testId, test: testResult });
   } catch (err) {
     console.error('[Cradlepoint] Speed test trigger error:', err.message);
     res.status(500).json({ error: err.message });
@@ -1537,7 +1545,35 @@ app.get('/api/cradlepoint/speedtest/:testId', async (req, res) => {
   if (!CP_ECM_API_ID) return res.status(503).json({ error: 'Cradlepoint not configured' });
   try {
     const data = await cpFetch('/speed_test/' + req.params.testId + '/');
-    res.json(data);
+    console.log('[Cradlepoint] Speed test poll:', JSON.stringify(data).substring(0, 500));
+    
+    // Normalize status
+    const rawStatus = (data.status || '').toLowerCase();
+    let status = rawStatus;
+    if (rawStatus === 'success' || rawStatus === 'done' || rawStatus === 'complete') status = 'completed';
+    if (rawStatus === 'error' || rawStatus === 'fail') status = 'failed';
+    
+    // Extract results — Cradlepoint returns results in various formats
+    const results = data.result || data.results || {};
+    const download = results.download || data.download || 0;
+    const upload = results.upload || data.upload || 0;
+    const latency = results.latency || data.latency || 0;
+    
+    // Convert bps to Mbps if needed (values > 1000 are likely bps)
+    const toMbps = (val) => {
+      if (!val) return 0;
+      if (val > 1000000) return (val / 1000000).toFixed(1);
+      if (val > 1000) return (val / 1000).toFixed(1);
+      return parseFloat(val).toFixed(1);
+    };
+    
+    res.json({
+      status: status,
+      download_mbps: toMbps(download),
+      upload_mbps: toMbps(upload),
+      latency_ms: latency ? parseFloat(latency).toFixed(0) : 0,
+      raw: data
+    });
   } catch (err) {
     console.error('[Cradlepoint] Speed test poll error:', err.message);
     res.status(500).json({ error: err.message });
