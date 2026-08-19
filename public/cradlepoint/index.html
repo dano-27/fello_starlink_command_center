@@ -338,6 +338,36 @@
     </div>
   </div>
 
+  <!-- QR Code Modal -->
+  <div class="modal-overlay" id="qr-modal" style="display:none">
+    <div class="modal-content" style="max-width:400px; text-align:center;">
+      <div class="modal-header">
+        <h2 id="qr-modal-title">WiFi QR Code</h2>
+        <button class="modal-close" onclick="closeModal('qr-modal')">&times;</button>
+      </div>
+      <div style="padding:24px;">
+        <div id="qr-code-container" style="display:inline-block; padding:16px; background:white; border-radius:12px; border:1px solid var(--border);"></div>
+        <div style="margin-top:20px; text-align:left; background:var(--gray); border-radius:12px; padding:16px;">
+          <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+            <span style="font-size:13px; color:var(--charcoal); font-weight:600;">Network Name</span>
+            <span style="font-size:13px; font-family:monospace; font-weight:600;" id="qr-ssid-display"></span>
+          </div>
+          <div style="display:flex; justify-content:space-between; margin-bottom:8px;">
+            <span style="font-size:13px; color:var(--charcoal); font-weight:600;">Password</span>
+            <span style="font-size:13px; font-family:monospace; font-weight:600;" id="qr-pass-display"></span>
+          </div>
+          <div style="display:flex; justify-content:space-between;">
+            <span style="font-size:13px; color:var(--charcoal); font-weight:600;">Security</span>
+            <span style="font-size:13px; font-weight:600;">WPA2</span>
+          </div>
+        </div>
+        <p style="font-size:12px; color:var(--dark-gray-shade); margin-top:12px;">Scan with a phone camera to connect to this WiFi network</p>
+        <button class="btn btn-primary btn-sm" style="margin-top:12px;" onclick="downloadQR()">⬇ Download PNG</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
   <script>
     let currentUser = null;
@@ -470,10 +500,12 @@
         }
 
         let actions = '';
+        // QR code button always available (default WiFi creds are static)
+        actions += `<button class="btn btn-secondary btn-sm" onclick="showQR('${(router.name || '').replace(/'/g, "\\'")}', '${(router.serial_number || '').replace(/'/g, "\\'")}')">📱 QR</button>`;
         if (isOnline) {
           actions += `<button class="btn btn-secondary btn-sm" onclick="navToWifi('${router.id}')">📶 WiFi</button>`;
           actions += `<button class="btn btn-secondary btn-sm" onclick="navToSpeed('${router.id}')">🏎️ Test</button>`;
-          actions += `<button class="btn btn-secondary btn-sm" onclick="navToTrack('${router.id}', '${router.name?.replace(/'/g, "\\'")}')">📍 Track</button>`;
+          actions += `<button class="btn btn-secondary btn-sm" onclick="navToTrack('${router.id}', '${router.name?.replace(/'/g, "\\'") || ''}')">📍 Track</button>`;
         }
         if (currentUser?.role === 'admin') {
           actions += `<button class="btn btn-danger btn-sm" onclick="rebootRouter('${router.id}')">🔄 Reboot</button>`;
@@ -762,6 +794,54 @@
         showToast(err.message, 'error');
       }
     }
+    // ── QR Code Functions ──────────────────────────────────────────────
+    let currentQrSsid = '';
+    
+    function showQR(ssid, password) {
+      currentQrSsid = ssid;
+      document.getElementById('qr-modal-title').textContent = ssid + ' — WiFi QR';
+      document.getElementById('qr-ssid-display').textContent = ssid;
+      document.getElementById('qr-pass-display').textContent = password;
+      
+      // Generate WiFi QR string
+      const wifiString = `WIFI:T:WPA;S:${ssid};P:${password};;`;
+      
+      // Clear previous QR
+      const container = document.getElementById('qr-code-container');
+      container.innerHTML = '';
+      
+      // Generate QR code
+      new QRCode(container, {
+        text: wifiString,
+        width: 220,
+        height: 220,
+        colorDark: '#232428',
+        colorLight: '#ffffff',
+        correctLevel: QRCode.CorrectLevel.M
+      });
+      
+      document.getElementById('qr-modal').style.display = 'flex';
+    }
+    
+    function downloadQR() {
+      const container = document.getElementById('qr-code-container');
+      const canvas = container.querySelector('canvas');
+      if (!canvas) {
+        const img = container.querySelector('img');
+        if (img) {
+          const a = document.createElement('a');
+          a.download = currentQrSsid + '-wifi-qr.png';
+          a.href = img.src;
+          a.click();
+        }
+        return;
+      }
+      const a = document.createElement('a');
+      a.download = currentQrSsid + '-wifi-qr.png';
+      a.href = canvas.toDataURL('image/png');
+      a.click();
+    }
+
   </script>
 </body>
 </html>
