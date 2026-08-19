@@ -1431,18 +1431,20 @@ app.put('/api/cradlepoint/routers/:id/wifi', async (req, res) => {
     
     // Determine config path: IBR900 uses wlan.radio.{n}.bss.{n}, others use networking.wifi.radios.{n}.ssids.{n}
     if (configPath && configPath.startsWith('wlan.')) {
-      // IBR900 format: wlan.radio.{radioKey}.bss.{ssidKey}
-      patchData = [{
-        wlan: {
-          radio: {
-            [radioKey]: {
-              bss: {
-                [ssidKey]: bssPatch
+      // IBR900 format: configuration is an array [configObj, []]
+      patchData = {
+        configuration: [{
+          wlan: {
+            radio: {
+              [radioKey]: {
+                bss: {
+                  [ssidKey]: bssPatch
+                }
               }
             }
           }
-        }
-      }, []];
+        }, []]
+      };
     } else {
       // Standard format
       patchData = {
