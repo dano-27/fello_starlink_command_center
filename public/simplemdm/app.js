@@ -2125,15 +2125,29 @@
     //  INIT
     // ================================================
 
-    function init() {
+    async function init() {
         initEventListeners();
         initGroupTabs();
 
-        // Auto-fill saved API key
+        // Check if server already has the API key configured
+        try {
+            const cfgRes = await fetch('/api/automation/config', { credentials: 'same-origin' });
+            const cfg = await cfgRes.json();
+            if (cfg.simpleMdmKeySet) {
+                // Server has the key — skip login, use server-side key
+                state.apiKey = 'server-managed';
+                showDashboard();
+                navigateToGroups();
+                return;
+            }
+        } catch (e) {
+            // Config check failed, fall through to normal login
+        }
+
+        // Auto-fill saved API key from localStorage
         const savedKey = loadCredentials();
         if (savedKey) {
             dom.apiKeyInput.value = savedKey;
-            // Auto-login
             attemptLogin(savedKey);
         } else {
             showLogin();
