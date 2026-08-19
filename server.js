@@ -1293,8 +1293,17 @@ app.get('/api/cradlepoint/routers/:id/wifi', async (req, res) => {
       for (const rv of Object.values(mRadios)) totalBss += Object.keys(rv?.bss || {}).length;
       console.log('[Cradlepoint] Using merged config, total BSS entries:', totalBss);
     }
+    // Get router name/serial for default SSID generation
+    let routerName = '';
+    let routerSerial = '';
+    try {
+      // We already fetched routerData above, but it may be out of scope
+      const rData = await cpFetch('/routers/' + routerId + '/');
+      routerName = rData.name || '';
+      routerSerial = rData.serial_number || '';
+    } catch (e) { /* ignore, we may have already fetched it */ }
     
-    // Extract ALL SSIDs
+    // Extract SSIDs from config
     const ssids = [];
     const wlanRadios = mergedConfig?.wlan?.radio || {};
     for (const [radioIdx, radio] of Object.entries(wlanRadios)) {
@@ -1308,7 +1317,6 @@ app.get('/api/cradlepoint/routers/:id/wifi', async (req, res) => {
           ssidKey: bssIdx,
           ssid: bss.ssid || '',
           password: bss.wpa_password || bss.wpapsk || '',
-          // enabled: default to true unless explicitly set to false
           enabled: bss.enabled !== false && bss.enabled !== 0,
           band: band,
           security: bss.encryption_mode || (bss.wpa_password ? 'wpa2' : 'open'),
@@ -1321,7 +1329,48 @@ app.get('/api/cradlepoint/routers/:id/wifi', async (req, res) => {
       }
     }
     
-    console.log('[Cradlepoint] WiFi for router ' + routerId + ': ' + ssids.length + ' SSIDs found');
+    // IBR900 has 2 BSS per radio (0 and 1) for 2 radios (0=2.4GHz, 1=5GHz)
+    // The API only returns BSS entries with overrides — firmware-default disabled
+    // networks are invisible. Ensure all 4 slots exist.
+    const nameSuffix = routerName ? routerName.split('-').pop() || '' : '';
+    const defaultBss = {
+      '0': { // 2.4 GHz radio
+        '0': { ssid: routerName, password: routerSerial, enabled: true, security: 'wpa2', band: '2.4 GHz' },
+        '1': { ssid: routerName ? 'Public-' + nameSuffix : '', password: '', enabled: false, security: 'open', band: '2.4 GHz' }
+      },
+      '1': { // 5 GHz radio
+        '0': { ssid: routerName ? routerName + ' 5G' : '', password: routerSerial, enabled: true, security: 'wpa2', band: '5 GHz' },
+        '1': { ssid: routerName ? 'Public-' + nameSuffix + ' 5G' : '', password: '', enabled: false, security: 'open', band: '5 GHz' }
+      }
+    };
+    
+    for (const radioIdx of ['0', '1']) {
+      for (const bssIdx of ['0', '1']) {
+        const exists = ssids.find(s => s.radioKey === radioIdx && s.ssidKey === bssIdx);
+        if (!exists) {
+          const def = defaultBss[radioIdx]?.[bssIdx] || {};
+          ssids.push({
+            radioKey: radioIdx,
+            ssidKey: bssIdx,
+            ssid: def.ssid || '',
+            password: def.password || '',
+            enabled: def.enabled || false,
+            band: def.band || (radioIdx === '1' ? '5 GHz' : '2.4 GHz'),
+            security: def.security || 'open',
+            hidden: false,
+            isolate: false,
+            wmm: true,
+            _configPath: 'wlan.radio.' + radioIdx + '.bss.' + bssIdx,
+            _source: 'firmware_default'
+          });
+        }
+      }
+    }
+    
+    // Sort: radio 0 first, then radio 1; BSS 0 first, then BSS 1
+    ssids.sort((a, b) => a.radioKey.localeCompare(b.radioKey) || a.ssidKey.localeCompare(b.ssidKey));
+    
+    console.log('[Cradlepoint] WiFi for router ' + routerId + ': ' + ssids.length + ' SSIDs (' + ssids.filter(s => s._source === 'firmware_default').length + ' from defaults)');
     res.json({ ssids: ssids, configId: configId });
   } catch (err) {
     console.error('[Cradlepoint] WiFi read error:', err.message);
