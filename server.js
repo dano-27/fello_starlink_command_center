@@ -1297,80 +1297,64 @@ app.get('/api/cradlepoint/routers/:id/wifi', async (req, res) => {
     let routerName = '';
     let routerSerial = '';
     try {
-      // We already fetched routerData above, but it may be out of scope
       const rData = await cpFetch('/routers/' + routerId + '/');
       routerName = rData.name || '';
       routerSerial = rData.serial_number || '';
-    } catch (e) { /* ignore, we may have already fetched it */ }
+    } catch (e) { /* ignore */ }
     
-    // Extract SSIDs from config
+    // IBR900 firmware defaults for all 4 BSS slots
+    const nameSuffix = routerName ? routerName.split('-').pop() || '' : '';
+    const firmwareDefaults = {
+      '0': { // 2.4 GHz radio
+        '0': { ssid: routerName, wpa_password: routerSerial, enabled: true, encryption_mode: 'wpa2', broadcast: true, isolate: false, wmm: true },
+        '1': { ssid: 'Public-' + nameSuffix, wpa_password: '', enabled: false, encryption_mode: 'none', broadcast: true, isolate: false, wmm: true }
+      },
+      '1': { // 5 GHz radio
+        '0': { ssid: routerName + ' 5G', wpa_password: routerSerial, enabled: true, encryption_mode: 'wpa2', broadcast: true, isolate: false, wmm: true },
+        '1': { ssid: 'Public-' + nameSuffix + ' 5G', wpa_password: '', enabled: false, encryption_mode: 'none', broadcast: true, isolate: true, wmm: true }
+      }
+    };
+    
+    // Build final SSIDs: start with firmware defaults, overlay API data on top
     const ssids = [];
-    const wlanRadios = mergedConfig?.wlan?.radio || {};
-    for (const [radioIdx, radio] of Object.entries(wlanRadios)) {
-      if (!radio || typeof radio !== 'object') continue;
-      const bssEntries = radio.bss || {};
-      for (const [bssIdx, bss] of Object.entries(bssEntries)) {
-        if (!bss || typeof bss !== 'object') continue;
+    for (const radioIdx of ['0', '1']) {
+      for (const bssIdx of ['0', '1']) {
         const band = radioIdx === '1' ? '5 GHz' : '2.4 GHz';
+        const fw = firmwareDefaults[radioIdx]?.[bssIdx] || {};
+        
+        // Get API data for this BSS (if any override exists)
+        const apiBss = mergedConfig?.wlan?.radio?.[radioIdx]?.bss?.[bssIdx] || {};
+        
+        // Merge: firmware defaults as base, API data overlays on top
+        // Only use API value if the field is explicitly present
+        const ssid = ('ssid' in apiBss) ? apiBss.ssid : fw.ssid;
+        const password = ('wpa_password' in apiBss) ? apiBss.wpa_password : (('wpapsk' in apiBss) ? apiBss.wpapsk : fw.wpa_password);
+        const enabled = ('enabled' in apiBss) ? (apiBss.enabled === true || apiBss.enabled === 1) : fw.enabled;
+        const encMode = ('encryption_mode' in apiBss) ? apiBss.encryption_mode : fw.encryption_mode;
+        const broadcast = ('broadcast' in apiBss) ? apiBss.broadcast : fw.broadcast;
+        const isolate = ('isolate' in apiBss) ? apiBss.isolate : fw.isolate;
+        
+        const hasPassword = !!password;
+        const securityLabel = (encMode && encMode !== 'none') ? encMode : (hasPassword ? 'wpa2' : 'open');
+        
         ssids.push({
           radioKey: radioIdx,
           ssidKey: bssIdx,
-          ssid: bss.ssid || '',
-          password: bss.wpa_password || bss.wpapsk || '',
-          enabled: bss.enabled !== false && bss.enabled !== 0,
+          ssid: ssid || '',
+          password: password || '',
+          enabled: !!enabled,
           band: band,
-          security: bss.encryption_mode || (bss.wpa_password ? 'wpa2' : 'open'),
-          hidden: bss.broadcast === false,
-          isolate: bss.isolate === true,
-          wmm: bss.wmm !== false,
+          security: securityLabel,
+          hidden: broadcast === false,
+          isolate: !!isolate,
+          wmm: true,
           _configPath: 'wlan.radio.' + radioIdx + '.bss.' + bssIdx,
-          _source: actual?.wlan ? 'actual' : 'merged'
+          _source: Object.keys(apiBss).length > 0 ? 'api' : 'firmware_default'
         });
       }
     }
     
-    // IBR900 has 2 BSS per radio (0 and 1) for 2 radios (0=2.4GHz, 1=5GHz)
-    // The API only returns BSS entries with overrides — firmware-default disabled
-    // networks are invisible. Ensure all 4 slots exist.
-    const nameSuffix = routerName ? routerName.split('-').pop() || '' : '';
-    const defaultBss = {
-      '0': { // 2.4 GHz radio
-        '0': { ssid: routerName, password: routerSerial, enabled: true, security: 'wpa2', band: '2.4 GHz' },
-        '1': { ssid: routerName ? 'Public-' + nameSuffix : '', password: '', enabled: false, security: 'open', band: '2.4 GHz' }
-      },
-      '1': { // 5 GHz radio
-        '0': { ssid: routerName ? routerName + ' 5G' : '', password: routerSerial, enabled: true, security: 'wpa2', band: '5 GHz' },
-        '1': { ssid: routerName ? 'Public-' + nameSuffix + ' 5G' : '', password: '', enabled: false, security: 'open', band: '5 GHz' }
-      }
-    };
-    
-    for (const radioIdx of ['0', '1']) {
-      for (const bssIdx of ['0', '1']) {
-        const exists = ssids.find(s => s.radioKey === radioIdx && s.ssidKey === bssIdx);
-        if (!exists) {
-          const def = defaultBss[radioIdx]?.[bssIdx] || {};
-          ssids.push({
-            radioKey: radioIdx,
-            ssidKey: bssIdx,
-            ssid: def.ssid || '',
-            password: def.password || '',
-            enabled: def.enabled || false,
-            band: def.band || (radioIdx === '1' ? '5 GHz' : '2.4 GHz'),
-            security: def.security || 'open',
-            hidden: false,
-            isolate: false,
-            wmm: true,
-            _configPath: 'wlan.radio.' + radioIdx + '.bss.' + bssIdx,
-            _source: 'firmware_default'
-          });
-        }
-      }
-    }
-    
-    // Sort: radio 0 first, then radio 1; BSS 0 first, then BSS 1
-    ssids.sort((a, b) => a.radioKey.localeCompare(b.radioKey) || a.ssidKey.localeCompare(b.ssidKey));
-    
-    console.log('[Cradlepoint] WiFi for router ' + routerId + ': ' + ssids.length + ' SSIDs (' + ssids.filter(s => s._source === 'firmware_default').length + ' from defaults)');
+    console.log('[Cradlepoint] WiFi for router ' + routerId + ': ' + ssids.length + ' SSIDs (' + ssids.filter(s => s._source === 'firmware_default').length + ' pure defaults)');
     res.json({ ssids: ssids, configId: configId });
   } catch (err) {
     console.error('[Cradlepoint] WiFi read error:', err.message);
