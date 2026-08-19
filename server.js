@@ -1203,88 +1203,127 @@ app.get('/api/cradlepoint/routers/:id/wifi', async (req, res) => {
     }
     
     const configId = configs[0].id;
+    const configMgr = configs[0];
     
-    // 'actual' = what's running on the device right now (complete)
-    // 'configuration' = pending overrides/deltas
-    const rawActual = configs[0].actual;
+    // Log what fields are available
+    console.log('[Cradlepoint] Config manager fields:', Object.keys(configMgr).join(', '));
+    console.log('[Cradlepoint] actual present:', !!configMgr.actual, '| actual type:', typeof configMgr.actual);
+    
+    // 'actual' = complete running config on the device
+    // 'configuration' = device-level overrides/deltas
+    const rawActual = configMgr.actual;
     const actual = Array.isArray(rawActual) ? (rawActual[0] || {}) : (rawActual || {});
     
-    const rawConfig = configs[0].configuration;
-    const pending = Array.isArray(rawConfig) ? (rawConfig[0] || {}) : (rawConfig || {});
+    const rawConfig = configMgr.configuration;
+    const deviceConfig = Array.isArray(rawConfig) ? (rawConfig[0] || {}) : (rawConfig || {});
     
-    // Debug: log the wlan structure to understand what actual returns
-    const actualWlan = actual?.wlan?.radio || {};
-    console.log('[Cradlepoint] WiFi actual wlan.radio keys:', Object.keys(actualWlan).join(', '));
-    for (const [rk, rv] of Object.entries(actualWlan)) {
-      const bssKeys = Object.keys(rv?.bss || {});
-      console.log('[Cradlepoint]   radio.' + rk + '.bss keys:', bssKeys.join(', '));
-    }
-    
-    // Helper to extract ALL SSIDs from a config object (including disabled)
-    function extractSsids(cfg, source) {
-      const ssids = [];
-      
-      // IBR900 path: wlan.radio.{0,1}.bss.{0,1,2,3}
-      const wlanRadios = cfg?.wlan?.radio || {};
-      for (const [radioIdx, radio] of Object.entries(wlanRadios)) {
-        if (!radio || typeof radio !== 'object') continue;
-        const bssEntries = radio.bss || {};
-        for (const [bssIdx, bss] of Object.entries(bssEntries)) {
-          if (!bss || typeof bss !== 'object') continue;
-          const band = radioIdx === '1' ? '5 GHz' : '2.4 GHz';
-          ssids.push({
-            radioKey: radioIdx,
-            ssidKey: bssIdx,
-            ssid: bss.ssid || '',
-            password: bss.wpa_password || bss.wpapsk || '',
-            enabled: bss.enabled === true || bss.enabled === 1,
-            band: band,
-            security: bss.encryption_mode || (bss.wpa_password ? 'wpa2' : 'open'),
-            hidden: bss.broadcast === false || bss.hidden === true,
-            isolate: bss.isolate === true,
-            wmm: bss.wmm !== false,
-            _configPath: 'wlan.radio.' + radioIdx + '.bss.' + bssIdx,
-            _source: source
-          });
-        }
-      }
-      
-      // Newer firmware path
-      if (ssids.length === 0) {
-        const wifiRadios = cfg?.networking?.wifi?.radios || {};
-        for (const [radioKey, radio] of Object.entries(wifiRadios)) {
-          if (!radio || typeof radio !== 'object') continue;
-          const radioSsids = radio.ssids || {};
-          const band = radioKey.includes('5') ? '5 GHz' : '2.4 GHz';
-          for (const [ssidKey, ssidConfig] of Object.entries(radioSsids)) {
-            if (!ssidConfig || typeof ssidConfig !== 'object') continue;
-            ssids.push({
-              radioKey: radioKey,
-              ssidKey: ssidKey,
-              ssid: ssidConfig.ssid || ssidKey,
-              password: ssidConfig.wpa_password || '',
-              enabled: ssidConfig.enabled !== false,
-              band: band,
-              security: ssidConfig.encryption_mode || 'wpa2',
-              hidden: ssidConfig.broadcast === false,
-              isolate: ssidConfig.isolate === true,
-              wmm: ssidConfig.wmm !== false,
-              _configPath: 'networking.wifi.radios.' + radioKey + '.ssids.' + ssidKey,
-              _source: source
-            });
+    // Also fetch the group config — disabled networks are often defined at group level
+    let groupConfig = {};
+    try {
+      // Get the router to find its group
+      const routerData = await cpFetch('/routers/' + routerId + '/');
+      const groupUrl = routerData.group;
+      if (groupUrl) {
+        // Extract group ID from URL
+        const groupId = groupUrl.match(/\/(\d+)\/$/)?.[1];
+        if (groupId) {
+          const groupCfgData = await cpFetch('/configuration_managers/?group=' + groupId + '&limit=1');
+          const groupConfigs = groupCfgData.data || [];
+          if (groupConfigs.length > 0) {
+            const rawGroupConfig = groupConfigs[0].configuration;
+            groupConfig = Array.isArray(rawGroupConfig) ? (rawGroupConfig[0] || {}) : (rawGroupConfig || {});
+            console.log('[Cradlepoint] Group config wlan keys:', Object.keys(groupConfig?.wlan?.radio || {}).join(', '));
           }
         }
       }
-      return ssids;
+    } catch (err) {
+      console.log('[Cradlepoint] Could not fetch group config:', err.message);
     }
     
-    // Prefer 'actual' (the real running config) over 'configuration' (overrides only)
-    let ssids = extractSsids(actual, 'actual');
+    // Helper to deep merge (group defaults + device overrides)
+    function deepMerge(base, override) {
+      const result = JSON.parse(JSON.stringify(base || {}));
+      if (!override) return result;
+      for (const [key, val] of Object.entries(override)) {
+        if (val && typeof val === 'object' && !Array.isArray(val) && result[key] && typeof result[key] === 'object') {
+          result[key] = deepMerge(result[key], val);
+        } else {
+          result[key] = val;
+        }
+      }
+      return result;
+    }
+    
+    // Merge: actual > device overrides on top of group defaults
+    // If actual is available and has wlan, use that (it's the full running config)
+    // Otherwise, merge group + device configs
+    let mergedConfig;
+    if (actual?.wlan?.radio && Object.keys(actual.wlan.radio).length > 0) {
+      // actual has the full running config
+      mergedConfig = actual;
+      // Check BSS count
+      for (const [rk, rv] of Object.entries(actual.wlan.radio || {})) {
+        const bssKeys = Object.keys(rv?.bss || {});
+        console.log('[Cradlepoint] actual radio.' + rk + '.bss:', bssKeys.join(', '));
+      }
+    } else {
+      // Merge group defaults with device overrides
+      mergedConfig = deepMerge(groupConfig, deviceConfig);
+      console.log('[Cradlepoint] Using merged config (group + device)');
+    }
+    
+    // Extract ALL SSIDs from merged config
+    const ssids = [];
+    const wlanRadios = mergedConfig?.wlan?.radio || {};
+    for (const [radioIdx, radio] of Object.entries(wlanRadios)) {
+      if (!radio || typeof radio !== 'object') continue;
+      const bssEntries = radio.bss || {};
+      for (const [bssIdx, bss] of Object.entries(bssEntries)) {
+        if (!bss || typeof bss !== 'object') continue;
+        const band = radioIdx === '1' ? '5 GHz' : '2.4 GHz';
+        ssids.push({
+          radioKey: radioIdx,
+          ssidKey: bssIdx,
+          ssid: bss.ssid || '',
+          password: bss.wpa_password || bss.wpapsk || '',
+          enabled: bss.enabled === true || bss.enabled === 1,
+          band: band,
+          security: bss.encryption_mode || (bss.wpa_password ? 'wpa2' : 'open'),
+          hidden: bss.broadcast === false || bss.hidden === true,
+          isolate: bss.isolate === true,
+          wmm: bss.wmm !== false,
+          _configPath: 'wlan.radio.' + radioIdx + '.bss.' + bssIdx,
+          _source: actual?.wlan ? 'actual' : 'merged'
+        });
+      }
+    }
+    
+    // Fallback: newer firmware path
     if (ssids.length === 0) {
-      ssids = extractSsids(pending, 'pending');
+      const wifiRadios = mergedConfig?.networking?.wifi?.radios || {};
+      for (const [radioKey, radio] of Object.entries(wifiRadios)) {
+        if (!radio || typeof radio !== 'object') continue;
+        const radioSsids = radio.ssids || {};
+        const band = radioKey.includes('5') ? '5 GHz' : '2.4 GHz';
+        for (const [ssidKey, ssidConfig] of Object.entries(radioSsids)) {
+          if (!ssidConfig || typeof ssidConfig !== 'object') continue;
+          ssids.push({
+            radioKey, ssidKey,
+            ssid: ssidConfig.ssid || ssidKey,
+            password: ssidConfig.wpa_password || '',
+            enabled: ssidConfig.enabled !== false,
+            band, security: ssidConfig.encryption_mode || 'wpa2',
+            hidden: ssidConfig.broadcast === false,
+            isolate: ssidConfig.isolate === true,
+            wmm: ssidConfig.wmm !== false,
+            _configPath: 'networking.wifi.radios.' + radioKey + '.ssids.' + ssidKey,
+            _source: 'merged'
+          });
+        }
+      }
     }
     
-    console.log('[Cradlepoint] WiFi for router ' + routerId + ': ' + ssids.length + ' SSIDs found (source: ' + (ssids[0]?._source || 'none') + ')');
+    console.log('[Cradlepoint] WiFi for router ' + routerId + ': ' + ssids.length + ' SSIDs found');
     res.json({ ssids: ssids, configId: configId });
   } catch (err) {
     console.error('[Cradlepoint] WiFi read error:', err.message);
