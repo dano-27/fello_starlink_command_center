@@ -1184,16 +1184,17 @@ app.get('/api/cradlepoint/routers/:id/wifi', async (req, res) => {
     const routerUrl = CP_BASE_URL + '/routers/' + routerId + '/';
     
     // Fetch config manager with BOTH 'actual' (running config) and 'configuration' (pending overrides)
-    let cfgData = await cpFetch('/configuration_managers/?router=' + routerId + '&limit=1&fields=id,actual,configuration');
+    // Don't limit fields — actual can be excluded if not explicitly requested without field limits
+    let cfgData = await cpFetch('/configuration_managers/?router=' + routerId + '&limit=1');
     let configs = cfgData.data || [];
     
     if (configs.length === 0) {
-      cfgData = await cpFetch('/configuration_managers/?router=' + encodeURIComponent(routerUrl) + '&limit=1&fields=id,actual,configuration');
+      cfgData = await cpFetch('/configuration_managers/?router=' + encodeURIComponent(routerUrl) + '&limit=1');
       configs = cfgData.data || [];
     }
     
     if (configs.length === 0) {
-      cfgData = await cpFetch('/configuration_managers/?limit=50&fields=id,router,actual,configuration');
+      cfgData = await cpFetch('/configuration_managers/?limit=50');
       configs = (cfgData.data || []).filter(c => (c.router || '').includes('/' + routerId + '/'));
     }
     
@@ -1208,17 +1209,22 @@ app.get('/api/cradlepoint/routers/:id/wifi', async (req, res) => {
     const rawActual = configs[0].actual;
     const actual = Array.isArray(rawActual) ? (rawActual[0] || {}) : (rawActual || {});
     
-    // Also get pending config for reference
     const rawConfig = configs[0].configuration;
     const pending = Array.isArray(rawConfig) ? (rawConfig[0] || {}) : (rawConfig || {});
     
-    console.log('[Cradlepoint] WiFi for router ' + routerId + ' — actual keys:', Object.keys(actual).join(', '));
+    // Debug: log the wlan structure to understand what actual returns
+    const actualWlan = actual?.wlan?.radio || {};
+    console.log('[Cradlepoint] WiFi actual wlan.radio keys:', Object.keys(actualWlan).join(', '));
+    for (const [rk, rv] of Object.entries(actualWlan)) {
+      const bssKeys = Object.keys(rv?.bss || {});
+      console.log('[Cradlepoint]   radio.' + rk + '.bss keys:', bssKeys.join(', '));
+    }
     
-    // Helper to extract SSIDs from a config object
+    // Helper to extract ALL SSIDs from a config object (including disabled)
     function extractSsids(cfg, source) {
       const ssids = [];
       
-      // IBR900 path: wlan.radio.{0,1}.bss.{0,1}
+      // IBR900 path: wlan.radio.{0,1}.bss.{0,1,2,3}
       const wlanRadios = cfg?.wlan?.radio || {};
       for (const [radioIdx, radio] of Object.entries(wlanRadios)) {
         if (!radio || typeof radio !== 'object') continue;
@@ -1231,17 +1237,19 @@ app.get('/api/cradlepoint/routers/:id/wifi', async (req, res) => {
             ssidKey: bssIdx,
             ssid: bss.ssid || '',
             password: bss.wpa_password || bss.wpapsk || '',
-            enabled: bss.enabled !== false,
+            enabled: bss.enabled === true || bss.enabled === 1,
             band: band,
-            security: bss.encryption_mode || 'wpa2',
-            hidden: bss.broadcast === false,
+            security: bss.encryption_mode || (bss.wpa_password ? 'wpa2' : 'open'),
+            hidden: bss.broadcast === false || bss.hidden === true,
+            isolate: bss.isolate === true,
+            wmm: bss.wmm !== false,
             _configPath: 'wlan.radio.' + radioIdx + '.bss.' + bssIdx,
             _source: source
           });
         }
       }
       
-      // Newer firmware path: networking.wifi.radios.{name}.ssids.{name}
+      // Newer firmware path
       if (ssids.length === 0) {
         const wifiRadios = cfg?.networking?.wifi?.radios || {};
         for (const [radioKey, radio] of Object.entries(wifiRadios)) {
@@ -1259,6 +1267,8 @@ app.get('/api/cradlepoint/routers/:id/wifi', async (req, res) => {
               band: band,
               security: ssidConfig.encryption_mode || 'wpa2',
               hidden: ssidConfig.broadcast === false,
+              isolate: ssidConfig.isolate === true,
+              wmm: ssidConfig.wmm !== false,
               _configPath: 'networking.wifi.radios.' + radioKey + '.ssids.' + ssidKey,
               _source: source
             });
@@ -1291,13 +1301,10 @@ app.put('/api/cradlepoint/routers/:id/wifi', async (req, res) => {
   
   try {
     const routerId = req.params.id;
-    const { radioKey, ssidKey, newSsid, newPassword, configPath } = req.body;
+    const { radioKey, ssidKey, newSsid, newPassword, configPath, enabled, hidden, isolate, security } = req.body;
     
     if (!radioKey && !configPath) {
       return res.status(400).json({ error: 'radioKey or configPath is required' });
-    }
-    if (!newSsid && !newPassword) {
-      return res.status(400).json({ error: 'Provide newSsid and/or newPassword' });
     }
     
     // Get the config manager ID — try ID filter first, then URL
@@ -1318,14 +1325,20 @@ app.put('/api/cradlepoint/routers/:id/wifi', async (req, res) => {
     
     const configId = configs[0].id;
     
-    // Build the PATCH delta
+    // Build the PATCH delta — include any fields that were explicitly provided
     const bssPatch = {};
-    if (newSsid) bssPatch.ssid = newSsid;
-    if (newPassword) bssPatch.wpa_password = newPassword;
-    // When both are provided, it's likely a new network — enable it
-    if (newSsid && newPassword) {
-      bssPatch.enabled = true;
-      bssPatch.encryption_mode = 'wpa2';
+    if (newSsid !== undefined && newSsid !== '') bssPatch.ssid = newSsid;
+    if (newPassword !== undefined && newPassword !== '') bssPatch.wpa_password = newPassword;
+    if (enabled !== undefined) bssPatch.enabled = enabled;
+    if (hidden !== undefined) bssPatch.broadcast = !hidden;
+    if (isolate !== undefined) bssPatch.isolate = isolate;
+    if (security !== undefined) {
+      if (security === 'open') {
+        bssPatch.encryption_mode = 'none';
+        // Remove password for open networks
+      } else {
+        bssPatch.encryption_mode = security;
+      }
     }
     
     let patchData;

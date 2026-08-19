@@ -650,23 +650,47 @@
         }
 
         body.innerHTML = ssids.map((ssid, idx) => {
-          // Use actual values from API, fall back to known defaults
           const displaySsid = ssid.ssid || (ssid.band === '5 GHz' ? defaultName + ' 5G' : defaultName);
           const displayPw = ssid.password || defaultSerial;
+          const isOpen = ssid.security === 'open' || ssid.security === 'none' || !ssid.password;
+          const borderColor = ssid.enabled ? 'var(--success-color)' : 'var(--border)';
+          const opacity = ssid.enabled ? '1' : '0.7';
           return `
-          <div style="border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 16px; margin-bottom: 16px;">
-            <div style="font-weight:600; margin-bottom:12px;">Radio: ${ssid.band} 
-              <span style="font-size:12px; color:${ssid.enabled?'var(--success-color)':'var(--light-red)'}"> (${ssid.enabled?'Enabled':'Disabled'})</span>
+          <div style="border: 2px solid ${borderColor}; border-radius: var(--radius-sm); padding: 16px; margin-bottom: 16px; opacity:${opacity}">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+              <div style="font-weight:700; font-size:14px;">📡 ${ssid.band} — BSS ${ssid.ssidKey}</div>
+              <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:13px;">
+                <input type="checkbox" id="ssid-enabled-${idx}" ${ssid.enabled ? 'checked' : ''} style="width:16px;height:16px;">
+                <span style="color:${ssid.enabled ? 'var(--success-color)' : 'var(--light-red)'}; font-weight:600;">${ssid.enabled ? 'Enabled' : 'Disabled'}</span>
+              </label>
             </div>
             <div class="form-group">
               <label class="form-label">SSID Name</label>
               <input type="text" class="form-input" id="ssid-name-${idx}" value="${displaySsid}">
             </div>
             <div class="form-group">
+              <label class="form-label">Security Mode</label>
+              <select class="form-input" id="ssid-security-${idx}" onchange="document.getElementById('ssid-pw-row-${idx}').style.display = this.value === 'open' ? 'none' : 'block'">
+                <option value="wpa2" ${(ssid.security === 'wpa2' || ssid.security === 'wpa2_personal') ? 'selected' : ''}>WPA2 Personal (AES)</option>
+                <option value="wpa" ${ssid.security === 'wpa' ? 'selected' : ''}>WPA Personal</option>
+                <option value="open" ${isOpen ? 'selected' : ''}>Open (No Password)</option>
+              </select>
+            </div>
+            <div class="form-group" id="ssid-pw-row-${idx}" style="display:${isOpen ? 'none' : 'block'}">
               <label class="form-label">Password</label>
               <input type="text" class="form-input" id="ssid-pw-${idx}" value="${displayPw}">
             </div>
-            ${(!ssid.ssid || !ssid.password) ? '<div style="font-size:11px;color:var(--dark-gray-shade);margin-bottom:8px;">ℹ️ Showing default credentials (SSID = device name, Password = serial number)</div>' : ''}
+            <div style="display:flex; gap:16px; margin-bottom:12px; flex-wrap:wrap;">
+              <label style="display:flex; align-items:center; gap:6px; font-size:13px; cursor:pointer;">
+                <input type="checkbox" id="ssid-hidden-${idx}" ${ssid.hidden ? 'checked' : ''} style="width:14px;height:14px;">
+                Hidden
+              </label>
+              <label style="display:flex; align-items:center; gap:6px; font-size:13px; cursor:pointer;">
+                <input type="checkbox" id="ssid-isolate-${idx}" ${ssid.isolate ? 'checked' : ''} style="width:14px;height:14px;">
+                Client Isolate
+              </label>
+            </div>
+            ${(!ssid.ssid || !ssid.password) ? '<div style="font-size:11px;color:var(--dark-gray-shade);margin-bottom:8px;">ℹ️ Showing default credentials</div>' : ''}
             <button class="btn btn-primary btn-full" onclick="updateWifi('${routerId}', '${ssid.radioKey}', '${ssid.ssidKey}', ${idx}, '${ssid._configPath || ''}')">Save Changes</button>
           </div>
         `}).join('');
@@ -690,7 +714,7 @@
           body.innerHTML += `
             <div style="border-top: 2px solid var(--border); margin-top: 16px; padding-top: 16px;">
               <div style="font-weight:700; font-size:15px; margin-bottom:12px;">➕ Add New WiFi Network</div>
-              <div style="font-size:12px; color:var(--dark-gray-shade); margin-bottom:12px;">This adds a new SSID without changing your existing networks. Max 4 per radio.</div>
+              <div style="font-size:12px; color:var(--dark-gray-shade); margin-bottom:12px;">Adds a new SSID without changing existing networks. Max 4 per radio.</div>
               <div class="form-group">
                 <label class="form-label">Radio Band</label>
                 <select class="form-input" id="add-wifi-radio">
@@ -703,6 +727,13 @@
                 <input type="text" class="form-input" id="add-wifi-ssid" placeholder="e.g. Guest-WiFi">
               </div>
               <div class="form-group">
+                <label class="form-label">Security</label>
+                <select class="form-input" id="add-wifi-security" onchange="document.getElementById('add-wifi-pw-row').style.display = this.value === 'open' ? 'none' : 'block'">
+                  <option value="wpa2">WPA2 Personal (AES)</option>
+                  <option value="open">Open (No Password)</option>
+                </select>
+              </div>
+              <div class="form-group" id="add-wifi-pw-row">
                 <label class="form-label">Password</label>
                 <input type="text" class="form-input" id="add-wifi-pw" placeholder="Minimum 8 characters">
               </div>
@@ -718,17 +749,21 @@
     async function updateWifi(routerId, radioKey, ssidKey, idx, configPath) {
       const newName = document.getElementById(`ssid-name-${idx}`).value;
       const newPw = document.getElementById(`ssid-pw-${idx}`).value;
+      const enabled = document.getElementById(`ssid-enabled-${idx}`).checked;
+      const hidden = document.getElementById(`ssid-hidden-${idx}`).checked;
+      const isolate = document.getElementById(`ssid-isolate-${idx}`).checked;
+      const security = document.getElementById(`ssid-security-${idx}`).value;
       try {
         const res = await fetch(`/api/cradlepoint/routers/${routerId}/wifi`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'same-origin',
-          body: JSON.stringify({ radioKey, ssidKey, newSsid: newName, newPassword: newPw, configPath })
+          body: JSON.stringify({ radioKey, ssidKey, newSsid: newName, newPassword: security !== 'open' ? newPw : '', configPath, enabled, hidden, isolate, security })
         });
         const data = await res.json();
         if (!res.ok || data.error) throw new Error(data.error || 'Failed to update');
         showToast('WiFi settings updated successfully');
-        closeModal('wifi-modal');
+        openWifiModal(routerId); // Refresh modal to show changes
       } catch (err) {
         showToast(err.message, 'error');
       }
