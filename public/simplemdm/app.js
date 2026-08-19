@@ -2132,14 +2132,19 @@
         // Try to use server-side API key (user must be logged into Command Center)
         try {
             state.apiKey = 'server-managed'; // Proxy uses env var, this is just a placeholder
+            console.log('[SimpleMDM] Checking server-side key via proxy...');
             const data = await apiRequest('/assignment_groups?limit=1');
+            console.log('[SimpleMDM] Server check OK:', JSON.stringify(data).substring(0, 200));
             if (data && !data.error) {
                 // Server has the key — skip login
+                console.log('[SimpleMDM] Server key works — skipping login');
                 showDashboard();
                 navigateToGroups();
                 return;
             }
+            console.log('[SimpleMDM] Server returned error in data:', data?.error);
         } catch (e) {
+            console.error('[SimpleMDM] Server check failed:', e.message, 'status:', e.status);
             state.apiKey = '';
             // Server key not available or not logged in, fall through
         }
