@@ -50,7 +50,7 @@ try { fs.watch(USERS_CSV, () => { console.log('[Auth] Users CSV changed, reloadi
 // Session store (persisted to disk to survive redeploys)
 const SESSION_COOKIE = 'fello_session';
 const SESSION_MAX_AGE = 24 * 60 * 60 * 1000; // 24 hours
-const DATA_DIR = fs.existsSync('/data') ? '/data' : path.join(__dirname, 'data');
+// DATA_DIR already declared at top of file
 const SESSIONS_FILE = path.join(DATA_DIR, 'sessions.json');
 
 let sessions = new Map();
