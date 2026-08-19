@@ -3588,7 +3588,7 @@ const PROFILE_IDS = {
 
 // Apps that are ALWAYS assigned to every new provisioned group
 const DEFAULT_APPS = [
-  'Fello Connect',
+  { name: 'Fello Connect', id: 687894 },
 ];
 
 // ── DEP Sync ────────────────────────────────────────────────────────
@@ -4110,19 +4110,20 @@ app.post('/api/automation/provision', async (req, res) => {
       const requestedAppIds = dcrData.app_ids || []; // Direct IDs from catalog picker
 
       // ── Step 2a: Always assign default apps (e.g. Fello Connect) ──
-      for (const defaultAppName of DEFAULT_APPS) {
-        const match = appCatalog.find(a => a.name.toLowerCase().includes(defaultAppName.toLowerCase()));
-        if (match) {
+      for (const defaultApp of DEFAULT_APPS) {
+        const appId = defaultApp.id || (appCatalog.find(a => a.name.toLowerCase().includes(defaultApp.name.toLowerCase())) || {}).id;
+        const appName = defaultApp.name;
+        if (appId) {
           try {
-            await smdmRequest(rawKey, `/assignment_groups/${groupId}/apps/${match.id}`, 'POST', { deployment_type: 'standard' });
-            run.appsMatched.push({ requested: defaultAppName, matched: match.name, id: match.id, default: true });
-            console.log(`[PROVISION]   ✓ Default app: "${match.name}" (${match.id})`);
+            await smdmRequest(rawKey, `/assignment_groups/${groupId}/apps/${appId}`, 'POST', { deployment_type: 'standard' });
+            run.appsMatched.push({ requested: appName, matched: appName, id: appId, default: true });
+            console.log(`[PROVISION]   ✓ Default app: "${appName}" (${appId})`);
           } catch (e) {
-            run.appsMatched.push({ requested: defaultAppName, matched: match.name, id: match.id, default: true, warning: e.message });
-            console.log(`[PROVISION]   ⚠ Default app assign failed: "${match.name}" — ${e.message}`);
+            run.appsMatched.push({ requested: appName, matched: appName, id: appId, default: true, warning: e.message });
+            console.log(`[PROVISION]   ⚠ Default app assign failed: "${appName}" — ${e.message}`);
           }
         } else {
-          console.log(`[PROVISION]   ⚠ Default app not found in catalog: "${defaultAppName}"`);
+          console.log(`[PROVISION]   ⚠ Default app not found in catalog: "${appName}"`);
         }
       }
 
