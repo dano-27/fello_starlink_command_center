@@ -1159,6 +1159,247 @@ app.get('/api/cradlepoint/fleet', async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════
+// ── Cradlepoint Advanced Features ────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════
+
+// ── WiFi Configuration ──────────────────────────────────────────────
+// GET: Read current WiFi SSID/password config from a router
+app.get('/api/cradlepoint/routers/:id/wifi', async (req, res) => {
+  if (!CP_ECM_API_ID) return res.status(503).json({ error: 'Cradlepoint not configured' });
+  try {
+    const routerId = req.params.id;
+    const routerUrl = CP_BASE_URL + '/routers/' + routerId + '/';
+    
+    // Get configuration manager for this router
+    const cfgData = await cpFetch('/configuration_managers/?router=' + encodeURIComponent(routerUrl) + '&limit=1');
+    const configs = cfgData.data || [];
+    if (configs.length === 0) {
+      return res.json({ ssids: [], configId: null, error: 'No configuration found for this router' });
+    }
+    
+    const configId = configs[0].id;
+    const config = configs[0].configuration || {};
+    
+    // Navigate to WiFi radios
+    const wifi = config?.networking?.wifi?.radios || {};
+    const ssids = [];
+    
+    for (const [radioKey, radio] of Object.entries(wifi)) {
+      const band = radioKey.includes('5') ? '5 GHz' : radioKey.includes('6') ? '6 GHz' : '2.4 GHz';
+      const radioSsids = radio.ssids || {};
+      
+      for (const [ssidKey, ssidConfig] of Object.entries(radioSsids)) {
+        ssids.push({
+          radioKey: radioKey,
+          ssidKey: ssidKey,
+          ssid: ssidConfig.ssid || ssidKey,
+          password: ssidConfig.wpa_password || '',
+          enabled: ssidConfig.enabled !== false,
+          band: band,
+          security: ssidConfig.encryption_mode || 'wpa2',
+          hidden: ssidConfig.broadcast === false
+        });
+      }
+    }
+    
+    console.log('[Cradlepoint] WiFi config for router ' + routerId + ': ' + ssids.length + ' SSIDs');
+    res.json({ ssids: ssids, configId: configId });
+  } catch (err) {
+    console.error('[Cradlepoint] WiFi read error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// PUT: Update WiFi SSID name and/or password
+app.put('/api/cradlepoint/routers/:id/wifi', async (req, res) => {
+  if (!req.user || req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+  if (!CP_ECM_API_ID) return res.status(503).json({ error: 'Cradlepoint not configured' });
+  
+  try {
+    const routerId = req.params.id;
+    const { radioKey, ssidKey, newSsid, newPassword } = req.body;
+    
+    if (!radioKey || !ssidKey) {
+      return res.status(400).json({ error: 'radioKey and ssidKey are required' });
+    }
+    if (!newSsid && !newPassword) {
+      return res.status(400).json({ error: 'Provide newSsid and/or newPassword' });
+    }
+    
+    // Get the config manager ID
+    const routerUrl = CP_BASE_URL + '/routers/' + routerId + '/';
+    const cfgData = await cpFetch('/configuration_managers/?router=' + encodeURIComponent(routerUrl) + '&limit=1');
+    const configs = cfgData.data || [];
+    if (configs.length === 0) {
+      return res.status(404).json({ error: 'No configuration manager found' });
+    }
+    
+    const configId = configs[0].id;
+    
+    // Build the PATCH delta
+    const ssidPatch = {};
+    if (newSsid) ssidPatch.ssid = newSsid;
+    if (newPassword) ssidPatch.wpa_password = newPassword;
+    
+    const patchBody = [{
+      op: 'replace',
+      path: '/configuration/networking/wifi/radios/' + radioKey + '/ssids/' + ssidKey,
+      value: ssidPatch
+    }];
+    
+    // PATCH uses merge semantics on configuration_managers
+    const patchData = {
+      configuration: {
+        networking: {
+          wifi: {
+            radios: {
+              [radioKey]: {
+                ssids: {
+                  [ssidKey]: ssidPatch
+                }
+              }
+            }
+          }
+        }
+      }
+    };
+    
+    await cpFetch('/configuration_managers/' + configId + '/', {
+      method: 'PATCH',
+      body: JSON.stringify(patchData)
+    });
+    
+    auditLog({
+      user: req.user.username,
+      name: req.user.name,
+      method: 'WIFI_UPDATE',
+      path: '/api/cradlepoint/routers/' + routerId + '/wifi',
+      body: { routerId, radioKey, ssidKey, newSsid: newSsid || '(unchanged)', passwordChanged: !!newPassword },
+      ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress
+    });
+    
+    console.log('[Cradlepoint] WiFi updated for router ' + routerId + ' (' + ssidKey + ') by ' + req.user.username);
+    res.json({ success: true, message: 'WiFi configuration updated. Changes will sync to the router shortly.' });
+  } catch (err) {
+    console.error('[Cradlepoint] WiFi update error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Speed Tests ─────────────────────────────────────────────────────
+// POST: Trigger a speed test on a router
+app.post('/api/cradlepoint/routers/:id/speedtest', async (req, res) => {
+  if (!req.user || req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+  if (!CP_ECM_API_ID) return res.status(503).json({ error: 'Cradlepoint not configured' });
+  
+  try {
+    const routerId = req.params.id;
+    
+    // Get account URL (needed for speed test)
+    const routerData = await cpFetch('/routers/' + routerId + '/');
+    const accountUrl = routerData.account || '';
+    
+    // Get the primary modem net_device ID
+    const netDevData = await cpFetch('/net_devices/?router=' + CP_BASE_URL + '/routers/' + routerId + '/&type=mdm&limit=10');
+    const modems = netDevData.data || [];
+    const primaryModem = modems.find(m => m.connection_state === 'connected') || modems[0];
+    
+    if (!primaryModem) {
+      return res.status(400).json({ error: 'No modem found on this router' });
+    }
+    
+    // Trigger speed test using Cradlepoint default server
+    const testBody = {
+      account: accountUrl,
+      config: {
+        host: req.body.host || '',  // Empty = use Cradlepoint default
+        max_test_concurrency: 1,
+        net_device_ids: [primaryModem.id],
+        port: req.body.port || 12865,
+        size: null,
+        test_timeout: 10,
+        test_type: req.body.testType || 'TCP Download',
+        time: 5
+      }
+    };
+    
+    const testResult = await cpFetch('/speed_test/', {
+      method: 'POST',
+      body: JSON.stringify(testBody)
+    });
+    
+    auditLog({
+      user: req.user.username,
+      name: req.user.name,
+      method: 'SPEED_TEST',
+      path: '/api/cradlepoint/routers/' + routerId + '/speedtest',
+      body: { routerId, modemId: primaryModem.id, testType: testBody.config.test_type },
+      ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress
+    });
+    
+    console.log('[Cradlepoint] Speed test triggered for router ' + routerId + ' by ' + req.user.username);
+    res.json({ success: true, test: testResult });
+  } catch (err) {
+    console.error('[Cradlepoint] Speed test trigger error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET: Poll speed test status/results
+app.get('/api/cradlepoint/speedtest/:testId', async (req, res) => {
+  if (!CP_ECM_API_ID) return res.status(503).json({ error: 'Cradlepoint not configured' });
+  try {
+    const data = await cpFetch('/speed_test/' + req.params.testId + '/');
+    res.json(data);
+  } catch (err) {
+    console.error('[Cradlepoint] Speed test poll error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Historical GPS Tracking ─────────────────────────────────────────
+// GET: Fetch location history for a router
+app.get('/api/cradlepoint/routers/:id/history', async (req, res) => {
+  if (!CP_ECM_API_ID) return res.status(503).json({ error: 'Cradlepoint not configured' });
+  try {
+    const routerId = req.params.id;
+    const days = parseInt(req.query.days) || 7;
+    const limit = parseInt(req.query.limit) || 500;
+    
+    // Calculate start date
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+    const startIso = startDate.toISOString().replace('+', '%2b');
+    
+    const routerUrl = CP_BASE_URL + '/routers/' + routerId + '/';
+    const url = '/historical_locations/?router=' + encodeURIComponent(routerUrl) + 
+                '&limit=' + limit + 
+                '&created_at__gt=' + startIso +
+                '&order_by=created_at';
+    
+    const data = await cpFetch(url);
+    const locations = (data.data || []).map(loc => ({
+      lat: loc.latitude,
+      lng: loc.longitude,
+      speed: loc.speed || 0,
+      heading: loc.heading || 0,
+      accuracy: loc.accuracy || 0,
+      timestamp: loc.created_at || ''
+    }));
+    
+    console.log('[Cradlepoint] GPS history for router ' + routerId + ': ' + locations.length + ' points over ' + days + ' days');
+    res.json({ routerId, days, locations });
+  } catch (err) {
+    console.error('[Cradlepoint] GPS history error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════
 // ── Customer Data Usage Sharing (QR Code Portal) ─────────────────────
 // ═══════════════════════════════════════════════════════════════════════
 
