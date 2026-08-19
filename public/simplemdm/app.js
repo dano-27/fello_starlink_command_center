@@ -282,7 +282,7 @@
             ...(options.headers || {}),
         };
 
-        const res = await fetch(url, { ...options, headers });
+        const res = await fetch(url, { ...options, headers, credentials: 'same-origin' });
 
         if (!res.ok) {
             const body = await res.text().catch(() => '');
@@ -2129,21 +2129,19 @@
         initEventListeners();
         initGroupTabs();
 
-        // Try to use server-side API key first (no client key needed)
+        // Try to use server-side API key (user must be logged into Command Center)
         try {
-            const testRes = await fetch('/api/simplemdm/assignment_groups?limit=1', { credentials: 'same-origin' });
-            if (testRes.ok) {
-                const data = await testRes.json();
-                if (data && !data.error) {
-                    // Server has the key — skip login
-                    state.apiKey = 'server-managed';
-                    showDashboard();
-                    navigateToGroups();
-                    return;
-                }
+            state.apiKey = 'server-managed'; // Proxy uses env var, this is just a placeholder
+            const data = await apiRequest('/assignment_groups?limit=1');
+            if (data && !data.error) {
+                // Server has the key — skip login
+                showDashboard();
+                navigateToGroups();
+                return;
             }
         } catch (e) {
-            // Server key not available, fall through to manual login
+            state.apiKey = '';
+            // Server key not available or not logged in, fall through
         }
 
         // Auto-fill saved API key from localStorage
