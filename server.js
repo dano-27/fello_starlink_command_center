@@ -3586,6 +3586,11 @@ const PROFILE_IDS = {
   SAFARI_LOCK: 145745,  // Single App Lock (Kiosk mode)
 };
 
+// Apps that are ALWAYS assigned to every new provisioned group
+const DEFAULT_APPS = [
+  'Fello Connect',
+];
+
 // ── DEP Sync ────────────────────────────────────────────────────────
 
 // ── List configured MDM accounts ────────────────────────────────────
@@ -4103,6 +4108,23 @@ app.post('/api/automation/provision', async (req, res) => {
       const appCatalog = await fetchAllApps(rawKey);
       const requestedApps = dcrData.apps || [];
       const requestedAppIds = dcrData.app_ids || []; // Direct IDs from catalog picker
+
+      // ── Step 2a: Always assign default apps (e.g. Fello Connect) ──
+      for (const defaultAppName of DEFAULT_APPS) {
+        const match = appCatalog.find(a => a.name.toLowerCase().includes(defaultAppName.toLowerCase()));
+        if (match) {
+          try {
+            await smdmRequest(rawKey, `/assignment_groups/${groupId}/apps/${match.id}`, 'POST', { deployment_type: 'standard' });
+            run.appsMatched.push({ requested: defaultAppName, matched: match.name, id: match.id, default: true });
+            console.log(`[PROVISION]   ✓ Default app: "${match.name}" (${match.id})`);
+          } catch (e) {
+            run.appsMatched.push({ requested: defaultAppName, matched: match.name, id: match.id, default: true, warning: e.message });
+            console.log(`[PROVISION]   ⚠ Default app assign failed: "${match.name}" — ${e.message}`);
+          }
+        } else {
+          console.log(`[PROVISION]   ⚠ Default app not found in catalog: "${defaultAppName}"`);
+        }
+      }
 
       // If app_ids are provided, use them directly (from the searchable picker)
       if (requestedAppIds.length > 0) {
