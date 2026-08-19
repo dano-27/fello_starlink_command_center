@@ -2166,9 +2166,16 @@
     function switchTab(tab) {
         state.activeTab = tab;
 
-        // Update tab buttons
-        dom.tabGroups.classList.toggle('active', tab === 'groups');
-        dom.tabProvisioning.classList.toggle('active', tab === 'provisioning');
+        // Update tab buttons — highlight active, clear others
+        [dom.tabGroups, dom.tabProvisioning, dom.navRequests].forEach(btn => {
+            if (btn) btn.style.borderBottomColor = 'transparent';
+        });
+        if (tab === 'groups' && dom.tabGroups) dom.tabGroups.style.borderBottomColor = '#f5c518';
+        if (tab === 'provisioning' && dom.tabProvisioning) dom.tabProvisioning.style.borderBottomColor = '#f5c518';
+        if (tab === 'requests' && dom.navRequests) dom.navRequests.style.borderBottomColor = '#f5c518';
+
+        if (dom.tabGroups) dom.tabGroups.classList.toggle('active', tab === 'groups');
+        if (dom.tabProvisioning) dom.tabProvisioning.classList.toggle('active', tab === 'provisioning');
         if (dom.navRequests) dom.navRequests.classList.toggle('active', tab === 'requests');
 
         // Hide requests section by default
