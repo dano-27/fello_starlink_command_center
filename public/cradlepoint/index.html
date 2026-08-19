@@ -625,6 +625,11 @@
       const body = document.getElementById('wifi-modal-body');
       body.innerHTML = '<div style="text-align:center; padding:24px;"><span class="refresh-dot" style="display:inline-block"></span> Loading...</div>';
       
+      // Look up this router's name/serial for default values
+      const router = routersData.find(r => String(r.id) === String(routerId));
+      const defaultName = router?.name || '';
+      const defaultSerial = router?.serial_number || '';
+      
       try {
         const res = await fetch(`/api/cradlepoint/routers/${routerId}/wifi`, { credentials: 'same-origin' });
         const data = await res.json();
@@ -644,22 +649,27 @@
           return;
         }
 
-        body.innerHTML = ssids.map((ssid, idx) => `
+        body.innerHTML = ssids.map((ssid, idx) => {
+          // Use actual values from API, fall back to known defaults
+          const displaySsid = ssid.ssid || (ssid.band === '5 GHz' ? defaultName + ' 5G' : defaultName);
+          const displayPw = ssid.password || defaultSerial;
+          return `
           <div style="border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 16px; margin-bottom: 16px;">
             <div style="font-weight:600; margin-bottom:12px;">Radio: ${ssid.band} 
               <span style="font-size:12px; color:${ssid.enabled?'var(--success-color)':'var(--light-red)'}"> (${ssid.enabled?'Enabled':'Disabled'})</span>
             </div>
             <div class="form-group">
               <label class="form-label">SSID Name</label>
-              <input type="text" class="form-input" id="ssid-name-${idx}" value="${ssid.ssid || ''}">
+              <input type="text" class="form-input" id="ssid-name-${idx}" value="${displaySsid}">
             </div>
             <div class="form-group">
               <label class="form-label">Password</label>
-              <input type="text" class="form-input" id="ssid-pw-${idx}" value="${ssid.password || ''}">
+              <input type="text" class="form-input" id="ssid-pw-${idx}" value="${displayPw}">
             </div>
+            ${(!ssid.ssid || !ssid.password) ? '<div style="font-size:11px;color:var(--dark-gray-shade);margin-bottom:8px;">ℹ️ Showing default credentials (SSID = device name, Password = serial number)</div>' : ''}
             <button class="btn btn-primary btn-full" onclick="updateWifi('${routerId}', '${ssid.radioKey}', '${ssid.ssidKey}', ${idx}, '${ssid._configPath || ''}')">Save Changes</button>
           </div>
-        `).join('');
+        `}).join('');
       } catch (err) {
         body.innerHTML = `<div style="color:var(--light-red)">${err.message}</div>`;
       }
