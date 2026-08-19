@@ -7,509 +7,403 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/shared-header.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
   <style>
     :root {
-      --primary: #0082F0;
-      --primary-hover: #006bbd;
-      --bg-color: #f5f7fa;
-      --card-bg: #ffffff;
-      --text-main: #333333;
-      --text-muted: #666666;
-      --border-color: #e0e0e0;
-      --success: #10b981;
-      --danger: #ef4444;
-      --warning: #f59e0b;
-      --font-family: 'Montserrat', sans-serif;
-    }
-    
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
+      --orange: #f59231;
+      --yellow: #fcd230;
+      --blue: #3166ae;
+      --black: #232428;
+      --charcoal: #3e3e40;
+      --white: #fff;
+      --gray: #fafafa;
+      --border: #cfccca;
+      --dark-gray: #4c4c4c;
+      --dark-gray-shade: #636363;
+      --off-white: #fffcf9;
+      --success-color: #05ac3f;
+      --light-red: #ff4d41;
+      --light-blue: #f4f6fa;
+      --input-border: #dedddc;
+      --input-off-white: #fdfdfd;
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+      --radius-xl: 20px;
+      --radius-full: 9999px;
+      --radius-pill: 40px;
+      --shadow-card: 0 2px 12px rgba(35, 36, 40, 0.06);
+      --shadow-hover: 0 6px 24px rgba(35, 36, 40, 0.10);
+      --transition-fast: 0.15s ease;
+      --transition-normal: 0.3s ease;
+      --nav-height: 64px;
+      --glass-blur: blur(16px);
+      --glass-bg: rgba(255, 255, 255, 0.82);
     }
 
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    html { -webkit-font-smoothing: antialiased; }
     body {
-      font-family: var(--font-family);
-      background-color: var(--bg-color);
-      color: var(--text-main);
-      line-height: 1.5;
+      font-family: 'Montserrat', sans-serif;
+      background: var(--white);
+      color: var(--black);
+      font-weight: 500;
+      line-height: 1.6;
+      min-height: 100vh;
+      overflow-x: hidden;
     }
 
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: var(--radius-full); }
 
-
-    #user-badge span {
-      color: #e0e0e0;
+    /* Nav Bar */
+    .nav-bar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: var(--nav-height);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      background: var(--glass-bg);
+      backdrop-filter: var(--glass-blur);
+      border-bottom: 1px solid var(--border);
+      z-index: 100;
+      margin-top: 48px; /* For fello header */
     }
-
-    /* Main Container */
-    main {
-      max-width: 1200px;
-      margin: 32px auto;
-      padding: 0 16px;
+    .nav-left { display: flex; align-items: center; gap: 12px; }
+    .nav-title { font-size: 16px; font-weight: 600; color: var(--black); }
+    .nav-right { display: flex; align-items: center; gap: 8px; }
+    
+    .refresh-indicator {
+      display: flex; align-items: center; gap: 6px; padding: 4px 12px;
+      border-radius: var(--radius-full); background: rgba(5, 172, 63, 0.08);
+      border: 1px solid rgba(5, 172, 63, 0.2); font-size: 12px;
+      color: var(--success-color); font-weight: 600;
     }
-
-    /* Stats Row */
-    .stats-row {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 16px;
-      margin-bottom: 24px;
+    .refresh-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--success-color); animation: pulse 2s ease-in-out infinite;
     }
+    @keyframes pulse { 0% { opacity: 0.5; transform: scale(0.8); } 50% { opacity: 1; transform: scale(1.2); } 100% { opacity: 0.5; transform: scale(0.8); } }
 
+    /* Buttons */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      padding: 10px 20px; border: none; border-radius: var(--radius-pill);
+      font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+      transition: all var(--transition-normal); white-space: nowrap;
+    }
+    .btn-primary { background: var(--yellow); color: var(--black); box-shadow: 0 2px 8px rgba(252, 210, 48, 0.25); }
+    .btn-primary:hover { background: #f3c100; transform: translateY(-1px); }
+    .btn-secondary { background: transparent; color: var(--charcoal); border: 1px solid var(--border); }
+    .btn-secondary:hover { background: var(--gray); color: var(--black); border-color: var(--dark-gray-shade); }
+    .btn-danger { background: rgba(255, 77, 65, 0.08); color: var(--light-red); border: 1px solid rgba(255, 77, 65, 0.25); }
+    .btn-danger:hover { background: rgba(255, 77, 65, 0.15); }
+    .btn-sm { padding: 6px 12px; font-size: 13px; border-radius: var(--radius-pill); }
+
+    /* App Container & Tabs */
+    #app { padding-top: calc(var(--nav-height) + 48px); max-width: 1400px; margin: 0 auto; }
+    
+    .tab-bar {
+      display: flex; gap: 8px; justify-content: center; padding: 16px;
+      background: var(--white); border-bottom: 1px solid var(--border);
+      position: sticky; top: calc(var(--nav-height) + 48px); z-index: 90;
+      flex-wrap: wrap;
+    }
+    .tab-btn {
+      padding: 10px 20px; border-radius: var(--radius-pill); border: none;
+      background: transparent; font-size: 14px; font-weight: 600; cursor: pointer;
+      color: var(--charcoal); transition: all 0.2s; font-family: inherit; display: flex; align-items: center; gap: 6px;
+    }
+    .tab-btn:hover { color: var(--black); background: var(--gray); }
+    .tab-btn.active { background: var(--black); color: var(--white); }
+    .tab-panel { display: none; padding: 24px; }
+    .tab-panel.active { display: block; animation: fadeIn 0.3s ease; }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+    /* Fleet Summary Cards */
+    .fleet-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 32px; }
     .stat-card {
-      background: var(--card-bg);
-      padding: 24px;
-      border-radius: 8px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-      border: 1px solid var(--border-color);
+      background: var(--white); border: 1px solid var(--border); border-radius: var(--radius-lg);
+      padding: 24px; text-align: center; transition: all var(--transition-normal);
+      box-shadow: var(--shadow-card);
     }
-
-    .stat-title {
-      font-size: 13px;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      font-weight: 600;
-      margin-bottom: 8px;
-    }
-
-    .stat-value {
-      font-size: 32px;
-      font-weight: 700;
-    }
-    .stat-value.online { color: var(--success); }
-    .stat-value.offline { color: var(--danger); }
-    .stat-value.alerts { color: var(--warning); }
+    .stat-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-hover); }
+    .stat-value { font-size: 32px; font-weight: 700; letter-spacing: -1px; margin-bottom: 4px; color: var(--blue); }
+    .stat-label { font-size: 13px; color: var(--charcoal); font-weight: 500; }
 
     /* Controls Bar */
-    .controls-bar {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 16px;
-    }
-
+    .controls-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 16px; }
     .search-input {
-      padding: 10px 16px;
-      border: 1px solid var(--border-color);
-      border-radius: 6px;
-      font-family: inherit;
-      width: 320px;
-      font-size: 14px;
+      padding: 10px 16px 10px 36px; border: 1px solid var(--input-border); border-radius: var(--radius-sm);
+      font-family: inherit; font-size: 14px; background: var(--input-off-white); width: 320px;
+      outline: none; transition: border-color var(--transition-fast);
+      background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="%23636363" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>');
+      background-repeat: no-repeat; background-position: 12px center;
     }
-    
-    .search-input:focus {
-      outline: none;
-      border-color: var(--primary);
-      box-shadow: 0 0 0 2px rgba(0, 130, 240, 0.2);
-    }
+    .search-input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(49, 102, 174, 0.2); }
 
-    .btn {
-      padding: 10px 16px;
-      border: none;
-      border-radius: 6px;
-      cursor: pointer;
-      font-family: inherit;
-      font-size: 14px;
-      font-weight: 500;
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      transition: background 0.2s;
+    /* Terminal Grid & Cards */
+    .terminal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; }
+    .terminal-card {
+      background: var(--white); border: 1px solid var(--border); border-radius: var(--radius-lg);
+      padding: 24px; transition: all var(--transition-normal); box-shadow: var(--shadow-card);
+      display: flex; flex-direction: column; justify-content: space-between;
+      animation: fadeInUp 0.4s ease both;
     }
+    @keyframes fadeInUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .terminal-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-hover); border-color: var(--blue); }
+    
+    .terminal-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 16px; }
+    .terminal-name { font-size: 16px; font-weight: 600; color: var(--black); }
+    .terminal-serial { font-family: monospace; font-size: 12px; color: var(--blue); font-weight: 600; margin-top: 4px; }
+    
+    .status-badge {
+      display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px;
+      border-radius: var(--radius-full); font-size: 11px; font-weight: 600; text-transform: uppercase;
+    }
+    .status-badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; }
+    .status-badge.online { background: rgba(5, 172, 63, 0.08); color: var(--success-color); border: 1px solid rgba(5, 172, 63, 0.2); }
+    .status-badge.online::before { background: var(--success-color); }
+    .status-badge.offline { background: rgba(255, 77, 65, 0.08); color: var(--light-red); border: 1px solid rgba(255, 77, 65, 0.2); }
+    .status-badge.offline::before { background: var(--light-red); }
 
-    .btn-primary {
-      background: var(--primary);
-      color: white;
-    }
+    .info-section { font-size: 13px; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--gray); }
+    .info-row { display: flex; justify-content: space-between; margin-bottom: 4px; }
+    .info-label { color: var(--dark-gray-shade); }
+    .info-value { font-weight: 600; color: var(--charcoal); }
     
-    .btn-primary:hover {
-      background: var(--primary-hover);
-    }
+    .card-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
 
-    .btn-secondary {
-      background: white;
-      color: var(--text-main);
-      border: 1px solid var(--border-color);
-    }
+    /* Range Pills */
+    .range-pills { display: flex; gap: 4px; background: var(--light-blue); border-radius: var(--radius-full); padding: 3px; border: 1px solid var(--input-border); }
+    .range-pill { padding: 8px 18px; border: none; border-radius: var(--radius-full); background: transparent; color: var(--charcoal); font-size: 13px; font-weight: 600; cursor: pointer; }
+    .range-pill.active { background: var(--blue); color: var(--white); }
 
-    .btn-secondary:hover {
-      background: #f0f0f0;
-    }
+    /* Map */
+    #map-container { height: 500px; width: 100%; border-radius: var(--radius-lg); border: 1px solid var(--border); overflow: hidden; }
     
-    .btn-danger {
-      background: white;
-      color: var(--danger);
-      border: 1px solid var(--danger);
-    }
-    
-    .btn-danger:hover {
-      background: #fee2e2;
-    }
-    
-    .btn-sm {
-      padding: 6px 12px;
-      font-size: 13px;
-    }
+    /* Alerts */
+    .alert-feed { display: flex; flex-direction: column; gap: 12px; }
+    .alert-card { background: var(--white); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 16px; display: flex; gap: 16px; align-items: flex-start; }
+    .alert-time { font-size: 12px; color: var(--dark-gray-shade); min-width: 140px; }
+    .alert-type { font-weight: 600; color: var(--orange); font-size: 13px; text-transform: uppercase; }
+    .alert-router { font-weight: 600; color: var(--blue); }
+    .alert-msg { font-size: 14px; flex: 1; }
 
-    /* Table Styles */
-    .card {
-      background: var(--card-bg);
-      border-radius: 8px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-      border: 1px solid var(--border-color);
-      overflow: hidden;
-      margin-bottom: 24px;
-    }
+    /* Modals */
+    .modal-overlay { position: fixed; inset: 0; background: rgba(35, 36, 40, 0.45); backdrop-filter: blur(4px); display: none; align-items: center; justify-content: center; z-index: 200; padding: 24px; }
+    .modal-content { background: var(--white); border-radius: var(--radius-lg); width: 100%; max-width: 520px; box-shadow: 0 16px 64px rgba(35, 36, 40, 0.15); max-height: 90vh; overflow-y: auto; }
+    .modal-header { display: flex; justify-content: space-between; padding: 20px 24px; border-bottom: 1px solid var(--input-border); }
+    .modal-header h2 { font-size: 18px; font-weight: 600; }
+    .modal-close { background: transparent; border: none; font-size: 24px; cursor: pointer; color: var(--charcoal); }
+    .modal-body { padding: 24px; }
+    
+    .form-group { margin-bottom: 16px; }
+    .form-label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: var(--charcoal); }
+    .form-input { width: 100%; padding: 10px 14px; border: 1px solid var(--input-border); border-radius: var(--radius-sm); font-family: inherit; font-size: 14px; }
 
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      text-align: left;
-    }
-
-    th, td {
-      padding: 14px 16px;
-      border-bottom: 1px solid var(--border-color);
-    }
-
-    th {
-      background: #fafafa;
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--text-muted);
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-    }
-
-    tr:last-child td {
-      border-bottom: none;
-    }
-    
-    .router-row {
-      cursor: pointer;
-      transition: background 0.2s;
-    }
-    
-    .router-row:hover {
-      background: #f9fafb;
-    }
-
-    .status-dot {
-      display: inline-block;
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-    }
-    .status-dot.online { background-color: var(--success); }
-    .status-dot.offline { background-color: var(--danger); }
-
-    .badge {
-      padding: 4px 10px;
-      border-radius: 999px;
-      font-size: 12px;
-      font-weight: 600;
-      text-transform: capitalize;
-    }
-    .badge.online { background: #d1fae5; color: #065f46; }
-    .badge.offline { background: #fee2e2; color: #991b1b; }
-
-    /* Detail Row */
-    .detail-row {
-      display: none;
-      background: #f8fafc;
-    }
-    
-    .detail-row.open {
-      display: table-row;
-    }
-    
-    .detail-content {
-      padding: 20px;
-    }
-    
-    .detail-title {
-      font-size: 14px;
-      font-weight: 600;
-      margin-bottom: 12px;
-      color: var(--text-main);
-    }
-    
-    .net-devices-table {
-      background: white;
-      border: 1px solid var(--border-color);
-      border-radius: 6px;
-      overflow: hidden;
-    }
-    
-    .net-devices-table th, .net-devices-table td {
-      padding: 10px 14px;
-      font-size: 13px;
-    }
-
-    /* Alerts Panel */
-    .collapsible-header {
-      padding: 16px 20px;
-      background: #fafafa;
-      border-bottom: 1px solid var(--border-color);
-      font-weight: 600;
-      cursor: pointer;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-    }
-    
-    .alerts-list {
-      padding: 0;
-      list-style: none;
-      display: none;
-    }
-    
-    .alerts-list.open {
-      display: block;
-    }
-    
-    .alert-item {
-      padding: 16px 20px;
-      border-bottom: 1px solid var(--border-color);
-      display: flex;
-      gap: 20px;
-      align-items: flex-start;
-    }
-    
-    .alert-item:last-child {
-      border-bottom: none;
-    }
-    
-    .alert-time {
-      font-size: 13px;
-      color: var(--text-muted);
-      min-width: 140px;
-    }
-    
-    .alert-type {
-      font-weight: 600;
-      color: var(--warning);
-      font-size: 13px;
-      text-transform: uppercase;
-      letter-spacing: 0.5px;
-      min-width: 100px;
-    }
-    
-    .alert-router {
-      font-weight: 500;
-      color: var(--primary);
-      min-width: 160px;
-    }
-    
-    .alert-msg {
-      font-size: 14px;
-      flex: 1;
-    }
+    /* Toasts */
+    .toast { background: var(--black); color: var(--white); padding: 12px 24px; border-radius: var(--radius-sm); margin-bottom: 10px; font-size: 14px; font-weight: 500; animation: fadeInUp 0.3s ease; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+    .toast.error { background: var(--light-red); }
 
     /* Responsive */
-    @media (max-width: 1024px) {
-      .stats-row {
-        grid-template-columns: repeat(2, 1fr);
-      }
-    }
-    
+    @media (max-width: 1024px) { .fleet-summary { grid-template-columns: repeat(2, 1fr); } }
     @media (max-width: 768px) {
-      header {
-        flex-direction: column;
-        height: auto;
-        padding: 16px;
-        gap: 16px;
-      }
-      .nav-links {
-        margin-left: 0;
-        flex-wrap: wrap;
-        justify-content: center;
-      }
-      .controls-bar {
-        flex-direction: column;
-        gap: 16px;
-        align-items: stretch;
-      }
-      .search-input {
-        width: 100%;
-      }
-      .stats-row {
-        grid-template-columns: 1fr;
-      }
-      .card {
-        overflow-x: auto;
-      }
-      .alert-item {
-        flex-direction: column;
-        gap: 8px;
-      }
+      .fleet-summary { grid-template-columns: 1fr; }
+      .nav-bar { flex-direction: column; height: auto; padding: 12px; gap: 8px; }
+      #app { padding-top: 140px; }
+      .search-input { width: 100%; }
     }
-
-
-    /* Modals & Track Map */
-    .modal-overlay {
-      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-      background: rgba(0,0,0,0.5); display: none; align-items: center; justify-content: center; z-index: 1000;
-    }
-    .modal-card {
-      background: var(--card-bg); border-radius: 8px; width: 100%; max-width: 600px;
-      box-shadow: 0 4px 6px rgba(0,0,0,0.1); display: flex; flex-direction: column;
-    }
-    .modal-header {
-      padding: 16px; border-bottom: 1px solid var(--border-color);
-      display: flex; justify-content: space-between; align-items: center;
-    }
-    .modal-body {
-      padding: 16px; max-height: 70vh; overflow-y: auto;
-    }
-    .wifi-item {
-      border: 1px solid var(--border-color); border-radius: 6px; padding: 16px; margin-bottom: 16px;
-    }
-    .wifi-item label { display: block; margin-bottom: 4px; font-size: 13px; font-weight: 600; color: var(--text-muted); }
-    .wifi-item input { width: 100%; padding: 8px; border: 1px solid var(--border-color); border-radius: 4px; margin-bottom: 12px; font-family: inherit; font-size: 14px; }
-    .password-wrapper { position: relative; }
-    .password-wrapper input { padding-right: 60px; }
-    .password-wrapper .toggle-pw { position: absolute; right: 8px; top: 8px; background: none; border: none; cursor: pointer; color: var(--primary); font-size: 13px; font-weight: 500;}
-    .pill-btn { padding: 6px 16px; border-radius: 16px; border: 1px solid var(--border-color); background: white; cursor: pointer; font-size: 13px; font-weight: 600; color: var(--text-muted); }
-    .pill-btn.active { background: var(--primary); color: white; border-color: var(--primary); }
-    #map-section { margin-bottom: 24px; }
   </style>
-  <link rel="stylesheet" href="/shared-header.css">
-  <link rel="icon" href="https://events.fello.com/favicon.ico">
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 </head>
 <body>
+  <div id="toast-container" style="position:fixed;top:20px;right:20px;z-index:9999;"></div>
 
   <header class="fello-header"></header>
   <script src="/shared-header.js"></script>
 
-  <main>
-    <div class="stats-row">
-      <div class="stat-card">
-        <div class="stat-title">Total Routers</div>
-        <div class="stat-value" id="stat-total">—</div>
+  <nav class="nav-bar">
+    <div class="nav-left">
+      <span style="font-size: 20px;">🔌</span>
+      <span class="nav-title">Cradlepoint Dashboard</span>
+    </div>
+    <div class="nav-right">
+      <div class="refresh-indicator">
+        <span class="refresh-dot"></span> Live
       </div>
-      <div class="stat-card">
-        <div class="stat-title">Online</div>
-        <div class="stat-value online" id="stat-online">—</div>
+      <button class="btn btn-secondary btn-sm" id="refresh-btn" title="Refresh">↻</button>
+      <div id="user-badge" style="margin-left: 12px;"></div>
+    </div>
+  </nav>
+
+  <div id="app">
+    <div class="tab-bar">
+      <button class="tab-btn active" data-tab="tab-fleet">📡 Fleet Overview</button>
+      <button class="tab-btn" data-tab="tab-wifi">📶 WiFi Config</button>
+      <button class="tab-btn" data-tab="tab-speed">🏎️ Speed Tests</button>
+      <button class="tab-btn" data-tab="tab-gps">📍 GPS Tracking</button>
+      <button class="tab-btn" data-tab="tab-alerts">🔔 Alerts</button>
+    </div>
+
+    <!-- Fleet Overview -->
+    <div class="tab-panel active" id="tab-fleet">
+      <div class="fleet-summary">
+        <div class="stat-card">
+          <div class="stat-value" id="stat-total">—</div>
+          <div class="stat-label">Total Routers</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" style="color:var(--success-color)" id="stat-online">—</div>
+          <div class="stat-label">Online</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" style="color:var(--light-red)" id="stat-offline">—</div>
+          <div class="stat-label">Offline</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" style="color:var(--orange)" id="stat-alerts">—</div>
+          <div class="stat-label">Active Alerts</div>
+        </div>
       </div>
-      <div class="stat-card">
-        <div class="stat-title">Offline</div>
-        <div class="stat-value offline" id="stat-offline">—</div>
+      
+      <div class="controls-bar">
+        <input type="text" id="search-input" class="search-input" placeholder="Search by name, serial, carrier...">
+        <div style="display:flex; gap: 8px;">
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;cursor:pointer;">
+            <input type="checkbox" id="filter-online" checked> Online
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;cursor:pointer;">
+            <input type="checkbox" id="filter-offline" checked> Offline
+          </label>
+        </div>
       </div>
-      <div class="stat-card">
-        <div class="stat-title">Active Alerts</div>
-        <div class="stat-value alerts" id="stat-alerts">—</div>
+
+      <div class="terminal-grid" id="routers-grid">
+        <div style="grid-column: 1/-1; text-align:center; padding: 48px; color: var(--charcoal);">Loading routers...</div>
       </div>
     </div>
 
-    <div class="controls-bar">
-      <input type="text" id="search-input" class="search-input" placeholder="Search routers by name, MAC, SN...">
-      <button class="btn btn-secondary" id="refresh-btn">
-        <span style="font-size:16px;">↻</span> Refresh Data
-      </button>
+    <!-- WiFi Config -->
+    <div class="tab-panel" id="tab-wifi">
+      <h2 style="margin-bottom:24px;">WiFi Configuration</h2>
+      <div class="terminal-grid" id="wifi-grid"></div>
     </div>
 
-    <div class="card">
-      <table id="routers-table">
-        <thead>
-          <tr>
-            <th style="width: 40px;"></th>
-            <th>Name</th>
-            <th>Serial Number</th>
-            <th>Carrier</th>
-            <th>State</th>
-            <th>Webbing SIM</th>
-            <th style="text-align: right;">Actions</th>
-          </tr>
-        </thead>
-        <tbody id="routers-tbody">
-          <tr><td colspan="8" style="text-align:center;padding:32px;color:var(--text-muted);">Loading routers...</td></tr>
-        </tbody>
-      </table>
+    <!-- Speed Tests -->
+    <div class="tab-panel" id="tab-speed">
+      <h2 style="margin-bottom:24px;">Speed Tests</h2>
+      <div class="terminal-grid" id="speed-grid"></div>
     </div>
 
-    <div class="card" id="map-section" style="display: none;">
-      <div style="padding: 16px; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
-        <div>
-          <h3 id="map-router-name" style="margin-bottom: 8px;">Router Name</h3>
-          <div style="display: flex; gap: 8px;">
-            <button class="pill-btn active" id="btn-map-1" onclick="loadTrackMap(1)">1d</button>
-            <button class="pill-btn" id="btn-map-3" onclick="loadTrackMap(3)">3d</button>
-            <button class="pill-btn" id="btn-map-7" onclick="loadTrackMap(7)">7d</button>
-            <button class="pill-btn" id="btn-map-30" onclick="loadTrackMap(30)">30d</button>
+    <!-- GPS Tracking -->
+    <div class="tab-panel" id="tab-gps">
+      <div class="controls-bar">
+        <div style="display:flex; align-items:center; gap: 16px;">
+          <h2 id="map-router-name">Select a router to view trail</h2>
+          <div class="range-pills" id="gps-pills" style="display:none;">
+            <button class="range-pill active" data-days="1">1d</button>
+            <button class="range-pill" data-days="3">3d</button>
+            <button class="range-pill" data-days="7">7d</button>
+            <button class="range-pill" data-days="30">30d</button>
           </div>
         </div>
-        <button class="btn btn-secondary btn-sm" onclick="closeMap()">X</button>
       </div>
-      <div id="map-container" style="height: 400px; width: 100%; position: relative;"></div>
-      <div id="map-msg" style="padding: 16px; text-align: center; color: var(--text-muted); display: none;">No GPS data available for this router</div>
+      <div id="map-container"></div>
+      <div id="map-msg" style="text-align:center; padding:48px; color:var(--charcoal); display:none;">No GPS data available.</div>
     </div>
 
-    <div class="card">
-      <div class="collapsible-header" id="alerts-header">
-        <span>Recent Alerts</span>
-        <span id="alerts-chevron" style="font-size:12px;">▼</span>
-      </div>
-      <ul class="alerts-list open" id="alerts-list">
-        <li style="padding:32px;text-align:center;color:var(--text-muted);">Loading alerts...</li>
-      </ul>
-    </div>
-  </main>
-
-  <div id="wifi-modal" class="modal-overlay">
-    <div class="modal-card">
-      <div class="modal-header">
-        <h3 style="font-size: 16px;">WiFi Configuration</h3>
-        <button class="btn btn-secondary btn-sm" onclick="closeWifiModal()">X</button>
-      </div>
-      <div id="wifi-modal-content" class="modal-body">
-        Loading...
+    <!-- Alerts -->
+    <div class="tab-panel" id="tab-alerts">
+      <h2 style="margin-bottom:24px;">Alert Feed</h2>
+      <div class="alert-feed" id="alerts-list">
+        <div style="text-align:center; padding: 48px; color: var(--charcoal);">Loading alerts...</div>
       </div>
     </div>
   </div>
 
+  <!-- WiFi Modal -->
+  <div class="modal-overlay" id="wifi-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Edit WiFi Settings</h2>
+        <button class="modal-close" onclick="closeModal('wifi-modal')">&times;</button>
+      </div>
+      <div class="modal-body" id="wifi-modal-body">Loading...</div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
   <script>
     let currentUser = null;
     let routersData = [];
+    let alertsData = [];
+    let map = null;
+    let mapPolyline = null;
+    let mapMarkers = [];
+    let currentMapRouterId = null;
+    let currentMapDays = 1;
     let refreshInterval;
 
-    // Initialize
-    async function init() {
-      // Wait for shared header to load user
-      document.addEventListener('fello-user-loaded', (e) => {
-        currentUser = e.detail;
+    document.addEventListener('DOMContentLoaded', () => {
+      // Setup tabs
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+          document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+          btn.classList.add('active');
+          document.getElementById(btn.dataset.tab).classList.add('active');
+          if (btn.dataset.tab === 'tab-gps' && map) setTimeout(() => map.invalidateSize(), 200);
+        });
       });
-      // Small delay for header to init, then load data
-      setTimeout(async () => {
-        currentUser = window._felloUser || null;
-        await loadData();
-      }, 100);
+
+      // Events
+      document.getElementById('refresh-btn').addEventListener('click', loadData);
+      document.getElementById('search-input').addEventListener('input', renderAll);
+      document.getElementById('filter-online').addEventListener('change', renderAll);
+      document.getElementById('filter-offline').addEventListener('change', renderAll);
       
-      // Auto-refresh every 60 seconds
+      document.querySelectorAll('#gps-pills .range-pill').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          document.querySelectorAll('#gps-pills .range-pill').forEach(b => b.classList.remove('active'));
+          e.target.classList.add('active');
+          currentMapDays = parseInt(e.target.dataset.days);
+          loadTrackMap(currentMapDays);
+        });
+      });
+
+      // Initialize user and data
+      setTimeout(() => {
+        currentUser = window._felloUser || null;
+        loadData();
+      }, 200);
       refreshInterval = setInterval(loadData, 60000);
       
-      // Event Listeners
-      document.getElementById('refresh-btn').addEventListener('click', loadData);
-      document.getElementById('search-input').addEventListener('input', renderRouters);
-      document.getElementById('alerts-header').addEventListener('click', toggleAlerts);
+      initMap();
+    });
+
+    function showToast(msg, type = 'success') {
+      const container = document.getElementById('toast-container');
+      const t = document.createElement('div');
+      t.className = `toast ${type}`;
+      t.textContent = msg;
+      container.appendChild(t);
+      setTimeout(() => t.remove(), 4000);
     }
 
     async function loadData() {
       try {
         const res = await fetch('/api/cradlepoint/fleet', { credentials: 'same-origin' });
-        if (!res.ok) throw new Error('Fleet fetch failed');
+        if (!res.ok) throw new Error('Failed to fetch fleet data');
         const data = await res.json();
         
-        if (data.error) {
-          console.error('Fleet error:', data.error);
-          return;
-        }
-        
         routersData = data.routers || [];
-        renderRouters();
+        alertsData = data.alerts || [];
         
         // Update stats
         const stats = data.stats || {};
@@ -518,301 +412,221 @@
         document.getElementById('stat-offline').textContent = stats.offline || 0;
         document.getElementById('stat-alerts').textContent = stats.alertCount || 0;
         
-        // Render alerts
-        renderAlerts(data.alerts || []);
+        renderAll();
       } catch (err) {
-        console.error('Error loading data', err);
+        showToast(err.message, 'error');
       }
     }
 
-    function renderRouters() {
-      const tbody = document.getElementById('routers-tbody');
+    function renderAll() {
       const query = document.getElementById('search-input').value.toLowerCase();
+      const showOnline = document.getElementById('filter-online').checked;
+      const showOffline = document.getElementById('filter-offline').checked;
       
-      let filtered = routersData;
-      if (query) {
-        filtered = routersData.filter(r => 
+      const filtered = routersData.filter(r => {
+        const isOnline = r.state === 'online';
+        if (!showOnline && isOnline) return false;
+        if (!showOffline && !isOnline) return false;
+        
+        if (!query) return true;
+        return (
           (r.name && r.name.toLowerCase().includes(query)) ||
-          (r.mac && r.mac.toLowerCase().includes(query)) ||
           (r.serial_number && r.serial_number.toLowerCase().includes(query)) ||
-          (r.modem && r.modem.carrier && r.modem.carrier.toLowerCase().includes(query)) ||
-          (r.modem && r.modem.iccid && r.modem.iccid.toLowerCase().includes(query)) ||
-          (r.webbing && r.webbing.branch && r.webbing.branch.toLowerCase().includes(query)) ||
-          (r.webbing && r.webbing.status && r.webbing.status.toLowerCase().includes(query))
+          (r.modem?.carrier && r.modem.carrier.toLowerCase().includes(query)) ||
+          (r.modem?.iccid && r.modem.iccid.toLowerCase().includes(query)) ||
+          (r.webbing?.branch && r.webbing.branch.toLowerCase().includes(query))
         );
-      }
-      
-      if (filtered.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--text-muted);">No routers match your search.</td></tr>';
+      });
+
+      renderFleet(filtered);
+      renderWifi(filtered);
+      renderSpeedTests(filtered);
+      renderAlerts();
+    }
+
+    function getNetDeviceIP(router) {
+      if (!router.allDevices || router.allDevices.length === 0) return '-';
+      const connected = router.allDevices.find(d => d.connection_state === 'connected');
+      return connected ? connected.ip : router.allDevices[0].ip || '-';
+    }
+
+    function renderFleet(routers) {
+      const grid = document.getElementById('routers-grid');
+      if (routers.length === 0) {
+        grid.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding: 48px; color: var(--charcoal);">No routers match your criteria.</div>';
         return;
       }
       
-      tbody.innerHTML = '';
-      
-      filtered.forEach(router => {
+      grid.innerHTML = routers.map((router, i) => {
         const isOnline = router.state === 'online';
-        const tr = document.createElement('tr');
-        tr.className = 'router-row';
-        tr.onclick = (e) => {
-          if(e.target.tagName === 'BUTTON') return;
-          toggleDetail(router, tr);
-        };
+        const carrier = router.modem?.carrier || '-';
+        const ip = getNetDeviceIP(router);
         
-                let actionHtml = '';
-        if (currentUser?.role === 'admin') {
-          actionHtml += `<button class="btn btn-danger btn-sm" onclick="rebootRouter(event, '${router.id}')">Reboot</button>`;
-        }
-        if (isOnline) {
-          actionHtml += ` <button class="btn btn-secondary btn-sm" onclick="openWifiModal(event, '${router.id}')">📶 WiFi</button>`;
-          actionHtml += ` <button class="btn btn-secondary btn-sm" id="btn-test-${router.id}" onclick="runSpeedTest(event, '${router.id}')">🏎️ Test</button>`;
-          actionHtml += ` <button class="btn btn-secondary btn-sm" onclick="showTrackMap(event, '${router.id}', '${router.name?.replace(/'/g, "\'") || 'Unknown'}')">📍 Track</button>`;
-        }
-        
-        // Carrier from modem
-        const carrier = router.modem ? router.modem.carrier : '-';
-        
-        // Webbing SIM info
-        let wbHtml = '<span style="color:var(--text-muted);">—</span>';
-        if (router.webbing && router.webbing.matched) {
+        let wbHtml = '-';
+        if (router.webbing?.matched) {
           const wb = router.webbing;
-          const statusColor = wb.status === 'Active' ? 'var(--success)' : (wb.status === 'Suspended' ? 'var(--warning)' : 'var(--danger)');
-          const branchLabel = wb.branch && wb.branch !== '--- Fello WEB lines' ? wb.branch : '<span style="color:var(--text-muted);font-size:11px;">inventory</span>';
-          wbHtml = `<span style="color:${statusColor};font-weight:600;font-size:11px;">${wb.status}</span> · ${branchLabel}`;
+          const sc = wb.status === 'Active' ? 'var(--success-color)' : 'var(--orange)';
+          wbHtml = `<span style="color:${sc};font-weight:600">${wb.status}</span> · ${wb.branch || 'inventory'} <br><span style="font-family:monospace;font-size:11px;color:var(--dark-gray-shade)">${wb.iccid || ''}</span>`;
         }
-          
-        tr.innerHTML = `
-          <td style="text-align:center;"><span class="status-dot ${isOnline ? 'online' : 'offline'}"></span></td>
-          <td style="font-weight:600;color:var(--text-main);">${router.name || 'Unknown'}</td>
-          <td style="font-family:monospace;color:var(--text-muted);">${router.serial_number || '-'}</td>
-          <td>${carrier}</td>
-          <td><span class="badge ${isOnline ? 'online' : 'offline'}">${router.state || 'unknown'}</span></td>
-          <td>${wbHtml}</td>
-          <td style="text-align:right;">${actionHtml}</td>
-        `;
-        
-        // Detail row
-        const detailTr = document.createElement('tr');
-        detailTr.className = 'detail-row';
-        detailTr.id = `detail-${router.id}`;
-        detailTr.innerHTML = `
-          <td colspan="8" style="padding:0;border:none;">
-            <div class="detail-content" id="detail-content-${router.id}">
-              <div style="color:var(--text-muted);font-style:italic;">Click to expand...</div>
+
+        let actions = '';
+        if (isOnline) {
+          actions += `<button class="btn btn-secondary btn-sm" onclick="navToWifi('${router.id}')">📶 WiFi</button>`;
+          actions += `<button class="btn btn-secondary btn-sm" onclick="navToSpeed('${router.id}')">🏎️ Test</button>`;
+          actions += `<button class="btn btn-secondary btn-sm" onclick="navToTrack('${router.id}', '${router.name?.replace(/'/g, "\\'")}')">📍 Track</button>`;
+        }
+        if (currentUser?.role === 'admin') {
+          actions += `<button class="btn btn-danger btn-sm" onclick="rebootRouter('${router.id}')">🔄 Reboot</button>`;
+        }
+
+        return `
+          <div class="terminal-card" style="animation-delay: ${Math.min(i*0.05, 0.5)}s">
+            <div>
+              <div class="terminal-header">
+                <div>
+                  <div class="terminal-name">${router.name || 'Unknown'}</div>
+                  <div class="terminal-serial">${router.serial_number || '-'}</div>
+                </div>
+                <div class="status-badge ${isOnline ? 'online' : 'offline'}">${router.state || 'unknown'}</div>
+              </div>
+              <div class="info-section">
+                <div class="info-row"><span class="info-label">Modem</span><span class="info-value">${carrier}</span></div>
+                <div class="info-row"><span class="info-label">IP Address</span><span class="info-value" style="font-family:monospace">${ip}</span></div>
+                <div class="info-row"><span class="info-label">Webbing SIM</span><span class="info-value" style="text-align:right">${wbHtml}</span></div>
+              </div>
             </div>
-          </td>
+            <div class="card-actions">${actions}</div>
+          </div>
         `;
-        
-        tbody.appendChild(tr);
-        tbody.appendChild(detailTr);
-      });
+      }).join('');
     }
 
-    function toggleDetail(router, rowEl) {
-      const detailRow = document.getElementById(`detail-${router.id}`);
-      if (detailRow.classList.contains('open')) {
-        detailRow.classList.remove('open');
+    function renderWifi(routers) {
+      const grid = document.getElementById('wifi-grid');
+      const online = routers.filter(r => r.state === 'online');
+      if (online.length === 0) {
+        grid.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding: 48px; color: var(--charcoal);">No online routers available for WiFi config.</div>';
         return;
       }
       
-      // Close all other details
-      document.querySelectorAll('.detail-row.open').forEach(el => el.classList.remove('open'));
-      detailRow.classList.add('open');
-      
-      const contentEl = document.getElementById(`detail-content-${router.id}`);
-      const devices = router.allDevices || [];
-      const wb = router.webbing || {};
-      const modem = router.modem || {};
-      
-      let html = '';
-      
-      // Webbing SIM detail
-      if (wb.matched) {
-        html += `
-          <div class="detail-title">📶 Webbing SIM</div>
-          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px;margin-bottom:16px;font-size:13px;">
-            <div><strong>Plan:</strong> ${wb.product || '-'}</div>
-            <div><strong>Status:</strong> <span style="color:${wb.status==='Active'?'var(--success)':'var(--warning)'};font-weight:600;">${wb.status}</span></div>
-            <div><strong>Branch:</strong> ${wb.branch || '-'}</div>
-            <div><strong>ICCID:</strong> <span style="font-family:monospace;">${wb.iccid || modem.iccid || '-'}</span></div>
-            <div><strong>MSISDN:</strong> ${wb.msisdn || '-'}</div>
-            <div><strong>IMEI:</strong> <span style="font-family:monospace;">${modem.imei || '-'}</span></div>
+      grid.innerHTML = online.map(router => `
+        <div class="terminal-card">
+          <div class="terminal-header">
+            <div>
+              <div class="terminal-name">${router.name}</div>
+              <div class="terminal-serial">${router.serial_number}</div>
+            </div>
+            <div class="status-badge online">online</div>
           </div>
-        `;
-      } else if (modem.iccid) {
-        html += `
-          <div class="detail-title">📶 SIM Info (no Webbing match)</div>
-          <div style="font-size:13px;margin-bottom:16px;">
-            <strong>ICCID:</strong> <span style="font-family:monospace;">${modem.iccid}</span> · 
-            <strong>IMEI:</strong> <span style="font-family:monospace;">${modem.imei || '-'}</span> · 
-            <strong>Carrier:</strong> ${modem.carrier || '-'}
-          </div>
-        `;
-      }
-      
-      // Net devices table
-      if (devices.length > 0) {
-        html += `
-          <div class="detail-title">🔌 Net Devices</div>
-          <table class="net-devices-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Type</th>
-                <th>Carrier</th>
-                <th>IP Address</th>
-                <th>State</th>
-              </tr>
-            </thead>
-            <tbody>
-        `;
-        devices.forEach(nd => {
-          const stateColor = nd.connection_state === 'connected' ? 'var(--success)' : (nd.connection_state === 'disconnected' ? 'var(--danger)' : 'var(--text-muted)');
-          html += `
-            <tr>
-              <td style="font-weight:500;">${nd.name || '-'}</td>
-              <td>${nd.type || '-'}</td>
-              <td>${nd.carrier || '-'}</td>
-              <td style="font-family:monospace;">${nd.ip || '-'}</td>
-              <td style="color:${stateColor};font-weight:500;text-transform:capitalize;">${nd.connection_state || '-'}</td>
-            </tr>
-          `;
-        });
-        html += `</tbody></table>`;
-      } else {
-        html += '<div style="color:var(--text-muted);">No net devices found for this router.</div>';
-      }
-      
-      contentEl.innerHTML = html;
+          <p style="font-size:13px; color:var(--charcoal); margin-bottom:16px;">Configure SSIDs and passwords for this router's local networks.</p>
+          <button class="btn btn-secondary btn-full" onclick="openWifiModal('${router.id}')">⚙️ Edit WiFi Settings</button>
+        </div>
+      `).join('');
     }
 
-    async function rebootRouter(event, routerId) {
-      event.stopPropagation();
-      if (!confirm('Are you sure you want to reboot this router? This will temporarily interrupt connectivity.')) return;
-      
-      try {
-        const res = await fetch(`/api/cradlepoint/routers/${routerId}/reboot`, { method: 'POST', credentials: 'same-origin' });
-        if (res.ok) {
-          alert('Reboot command sent successfully');
-        } else {
-          alert('Failed to send reboot command');
-        }
-      } catch (err) {
-        alert('Error: ' + err.message);
-      }
-    }
-
-    function renderAlerts(alerts) {
-      const list = document.getElementById('alerts-list');
-      if (!alerts || alerts.length === 0) {
-        list.innerHTML = '<li style="padding:32px;text-align:center;color:var(--text-muted);">No recent alerts.</li>';
+    function renderSpeedTests(routers) {
+      const grid = document.getElementById('speed-grid');
+      const online = routers.filter(r => r.state === 'online');
+      if (online.length === 0) {
+        grid.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding: 48px; color: var(--charcoal);">No online routers available.</div>';
         return;
       }
       
-      list.innerHTML = '';
-      alerts.forEach(alert => {
-        const d = new Date(alert.created_at || Date.now());
-        const timeStr = d.toLocaleString();
-        
-        const li = document.createElement('li');
-        li.className = 'alert-item';
-        li.innerHTML = `
-          <div class="alert-time">${timeStr}</div>
-          <div class="alert-type">${alert.type || 'Alert'}</div>
-          <div class="alert-router">${alert.router_name || alert.router_id || 'Unknown Router'}</div>
-          <div class="alert-msg">${alert.message || ''}</div>
-        `;
-        list.appendChild(li);
-      });
+      grid.innerHTML = online.map(router => `
+        <div class="terminal-card">
+          <div class="terminal-header">
+            <div>
+              <div class="terminal-name">${router.name}</div>
+              <div class="terminal-serial">${router.serial_number}</div>
+            </div>
+            <div class="status-badge online">online</div>
+          </div>
+          <div id="speed-result-${router.id}" style="margin-bottom: 16px; font-size:14px; color:var(--charcoal); min-height:60px;">
+            Ready to test network performance.
+          </div>
+          <button class="btn btn-primary btn-full" id="btn-speed-${router.id}" onclick="runSpeedTest('${router.id}')">🏎️ Run Speed Test</button>
+        </div>
+      `).join('');
     }
 
-    function toggleAlerts() {
+    function renderAlerts() {
       const list = document.getElementById('alerts-list');
-      const chev = document.getElementById('alerts-chevron');
-      if (list.classList.contains('open')) {
-        list.classList.remove('open');
-        chev.textContent = '▼';
-      } else {
-        list.classList.add('open');
-        chev.textContent = '▲';
+      if (alertsData.length === 0) {
+        list.innerHTML = '<div style="text-align:center; padding: 48px; color: var(--charcoal);">No active alerts.</div>';
+        return;
       }
+      list.innerHTML = alertsData.map(alert => `
+        <div class="alert-card">
+          <div class="alert-time">${new Date(alert.created_at).toLocaleString()}</div>
+          <div style="flex:1">
+            <div class="alert-type">${alert.type || 'Alert'}</div>
+            <div class="alert-router">${alert.router_name || alert.router_id || 'Unknown Router'}</div>
+            <div class="alert-msg">${alert.message || ''}</div>
+          </div>
+        </div>
+      `).join('');
     }
 
+    // Tab Navigators
+    function navToWifi(id) {
+      document.querySelector('[data-tab="tab-wifi"]').click();
+      openWifiModal(id);
+    }
+    function navToSpeed(id) {
+      document.querySelector('[data-tab="tab-speed"]').click();
+      setTimeout(() => document.getElementById(`btn-speed-${id}`).scrollIntoView({behavior:'smooth', block:'center'}), 100);
+    }
+    function navToTrack(id, name) {
+      document.querySelector('[data-tab="tab-gps"]').click();
+      currentMapRouterId = id;
+      document.getElementById('map-router-name').textContent = name;
+      document.getElementById('gps-pills').style.display = 'flex';
+      loadTrackMap(currentMapDays);
+    }
+
+    // Modals
+    function closeModal(id) { document.getElementById(id).style.display = 'none'; }
     
-    // -----------------------------------------
-    // WIFI CONFIG
-    // -----------------------------------------
-    let currentWifiRouterId = null;
-
-    async function openWifiModal(event, routerId) {
-      event.stopPropagation();
-      currentWifiRouterId = routerId;
+    async function openWifiModal(routerId) {
       document.getElementById('wifi-modal').style.display = 'flex';
-      document.getElementById('wifi-modal-content').innerHTML = '<div style="text-align:center;color:var(--text-muted);">Loading WiFi info...</div>';
+      const body = document.getElementById('wifi-modal-body');
+      body.innerHTML = '<div style="text-align:center; padding:24px;"><span class="refresh-dot" style="display:inline-block"></span> Loading...</div>';
       
       try {
         const res = await fetch(`/api/cradlepoint/routers/${routerId}/wifi`, { credentials: 'same-origin' });
         const data = await res.json();
-        
-        if (!res.ok || data.error) throw new Error(data.error || 'Failed to fetch WiFi config');
+        if (!res.ok || data.error) throw new Error(data.error || 'Failed to fetch config');
         
         const ssids = data.ssids || [];
         if (ssids.length === 0) {
-          document.getElementById('wifi-modal-content').innerHTML = '<div style="text-align:center;color:var(--text-muted);">No SSIDs found.</div>';
+          body.innerHTML = '<p>No SSIDs found for this router.</p>';
           return;
         }
 
-        let html = '';
-        ssids.forEach((ssid, idx) => {
-          html += `
-            <div class="wifi-item">
-              <div style="display:flex;justify-content:space-between;margin-bottom:12px;">
-                <span style="font-weight:600;font-size:14px;">Radio: ${ssid.band} (${ssid.enabled ? '<span style="color:var(--success)">Enabled</span>' : '<span style="color:var(--danger)">Disabled</span>'})</span>
-              </div>
-              <label>SSID Name</label>
-              <input type="text" id="ssid-name-${idx}" value="${ssid.name}">
-              
-              <label>Password</label>
-              <div class="password-wrapper">
-                <input type="password" id="ssid-pw-${idx}" value="${ssid.password}">
-                <button type="button" class="toggle-pw" onclick="togglePw(this, 'ssid-pw-${idx}')">Show</button>
-              </div>
-              
-              <button class="btn btn-primary btn-sm" style="margin-top:8px;" onclick="updateWifi('${routerId}', '${ssid.radioKey}', '${ssid.ssidKey}', ${idx})">Update WiFi</button>
-              <span id="wifi-msg-${idx}" style="font-size:12px;margin-left:8px;"></span>
+        body.innerHTML = ssids.map((ssid, idx) => `
+          <div style="border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 16px; margin-bottom: 16px;">
+            <div style="font-weight:600; margin-bottom:12px;">Radio: ${ssid.band} 
+              <span style="font-size:12px; color:${ssid.enabled?'var(--success-color)':'var(--light-red)'}">(${ssid.enabled?'Enabled':'Disabled'})</span>
             </div>
-          `;
-        });
-        document.getElementById('wifi-modal-content').innerHTML = html;
-        
+            <div class="form-group">
+              <label class="form-label">SSID Name</label>
+              <input type="text" class="form-input" id="ssid-name-${idx}" value="${ssid.name}">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Password</label>
+              <input type="text" class="form-input" id="ssid-pw-${idx}" value="${ssid.password}">
+            </div>
+            <button class="btn btn-primary btn-full" onclick="updateWifi('${routerId}', '${ssid.radioKey}', '${ssid.ssidKey}', ${idx})">Save Changes</button>
+          </div>
+        `).join('');
       } catch (err) {
-        document.getElementById('wifi-modal-content').innerHTML = `<div style="color:var(--danger);">${err.message}</div>`;
-      }
-    }
-
-    function closeWifiModal() {
-      document.getElementById('wifi-modal').style.display = 'none';
-      currentWifiRouterId = null;
-    }
-
-    function togglePw(btn, inputId) {
-      const input = document.getElementById(inputId);
-      if (input.type === 'password') {
-        input.type = 'text';
-        btn.textContent = 'Hide';
-      } else {
-        input.type = 'password';
-        btn.textContent = 'Show';
+        body.innerHTML = `<div style="color:var(--light-red)">${err.message}</div>`;
       }
     }
 
     async function updateWifi(routerId, radioKey, ssidKey, idx) {
       const newName = document.getElementById(`ssid-name-${idx}`).value;
       const newPw = document.getElementById(`ssid-pw-${idx}`).value;
-      const msgEl = document.getElementById(`wifi-msg-${idx}`);
-      
-      msgEl.textContent = 'Updating...';
-      msgEl.style.color = 'var(--text-muted)';
-      
       try {
         const res = await fetch(`/api/cradlepoint/routers/${routerId}/wifi`, {
           method: 'PUT',
@@ -821,167 +635,91 @@
           body: JSON.stringify({ radioKey, ssidKey, newSsid: newName, newPassword: newPw })
         });
         const data = await res.json();
-        
         if (!res.ok || data.error) throw new Error(data.error || 'Failed to update');
-        
-        msgEl.textContent = 'Success!';
-        msgEl.style.color = 'var(--success)';
-        setTimeout(() => { if(msgEl.textContent==='Success!') msgEl.textContent=''; }, 3000);
+        showToast('WiFi settings updated successfully');
+        closeModal('wifi-modal');
       } catch (err) {
-        msgEl.textContent = err.message;
-        msgEl.style.color = 'var(--danger)';
+        showToast(err.message, 'error');
       }
     }
 
-    // -----------------------------------------
-    // SPEED TEST
-    // -----------------------------------------
-    async function runSpeedTest(event, routerId) {
-      event.stopPropagation();
-      const btn = document.getElementById(`btn-test-${routerId}`);
-      if (!btn || btn.disabled) return;
+    // Speed Test
+    async function runSpeedTest(routerId) {
+      const btn = document.getElementById(`btn-speed-${routerId}`);
+      const resDiv = document.getElementById(`speed-result-${routerId}`);
+      if (btn.disabled) return;
       
       btn.disabled = true;
-      const originalText = btn.innerHTML;
-      btn.innerHTML = '⏳ Testing...';
-      
-      // Make sure detail row is open
-      const tr = document.querySelector(`.router-row:has(#btn-test-${routerId})`);
-      const router = routersData.find(r => r.id === routerId);
-      if (router && tr) {
-        const detailRow = document.getElementById(`detail-${router.id}`);
-        if (!detailRow.classList.contains('open')) {
-          toggleDetail(router, tr);
-        }
-      }
-      
-      const detailContent = document.getElementById(`detail-content-${routerId}`);
-      let resultsDiv = document.getElementById(`speedtest-results-${routerId}`);
-      if (!resultsDiv) {
-        resultsDiv = document.createElement('div');
-        resultsDiv.id = `speedtest-results-${routerId}`;
-        resultsDiv.style.marginTop = '16px';
-        resultsDiv.style.padding = '12px';
-        resultsDiv.style.background = '#fff';
-        resultsDiv.style.border = '1px solid var(--border-color)';
-        resultsDiv.style.borderRadius = '6px';
-        detailContent.appendChild(resultsDiv);
-      }
-      
-      resultsDiv.innerHTML = '<div style="color:var(--text-muted);font-size:13px;">Starting speed test...</div>';
+      btn.innerHTML = '⏳ Initiating...';
+      resDiv.innerHTML = '<div style="color:var(--blue)">Starting speed test...</div>';
       
       try {
-        const res = await fetch(`/api/cradlepoint/routers/${routerId}/speedtest`, {
-          method: 'POST',
-          credentials: 'same-origin'
-        });
+        const res = await fetch(`/api/cradlepoint/routers/${routerId}/speedtest`, { method: 'POST', credentials: 'same-origin' });
         const data = await res.json();
-        
-        if (!res.ok || data.error) throw new Error(data.error || 'Failed to start speed test');
-        
-        const testId = data.test?.id;
-        if (!testId) throw new Error('No test ID returned');
-        
-        pollSpeedTest(testId, routerId, resultsDiv, btn, originalText);
-        
+        if (!res.ok || data.error) throw new Error(data.error || 'Failed to start test');
+        pollSpeedTest(data.test?.id, routerId, resDiv, btn);
       } catch (err) {
         btn.disabled = false;
-        btn.innerHTML = originalText;
-        resultsDiv.innerHTML = `<div style="color:var(--danger);font-size:13px;">Error: ${err.message}</div>`;
+        btn.innerHTML = '🏎️ Run Speed Test';
+        resDiv.innerHTML = `<div style="color:var(--light-red)">Error: ${err.message}</div>`;
+        showToast(err.message, 'error');
       }
     }
 
-    async function pollSpeedTest(testId, routerId, resultsDiv, btn, originalText) {
+    async function pollSpeedTest(testId, routerId, resDiv, btn) {
       const poll = async () => {
         try {
           const res = await fetch(`/api/cradlepoint/speedtest/${testId}`, { credentials: 'same-origin' });
           const data = await res.json();
-          
-          if (!res.ok || data.error) throw new Error(data.error || 'Failed to check status');
+          if (!res.ok || data.error) throw new Error(data.error || 'Check status failed');
           
           if (data.status === 'completed' || data.status === 'failed') {
             btn.disabled = false;
-            btn.innerHTML = originalText;
-            
+            btn.innerHTML = '🏎️ Run Speed Test';
             if (data.status === 'failed') {
-              resultsDiv.innerHTML = `<div style="color:var(--danger);font-size:13px;">Test failed: ${data.error || 'Unknown error'}</div>`;
+              resDiv.innerHTML = `<div style="color:var(--light-red)">Test failed: ${data.error || 'Unknown error'}</div>`;
             } else {
-              resultsDiv.innerHTML = `
-                <div class="detail-title">🏎️ Speed Test Results</div>
-                <div style="display:flex;gap:24px;font-size:14px;">
-                  <div><strong>Download:</strong> <span style="color:var(--success);font-weight:600;font-size:16px;">${data.download_mbps || 0} Mbps</span></div>
-                  <div><strong>Upload:</strong> <span style="color:var(--primary);font-weight:600;font-size:16px;">${data.upload_mbps || 0} Mbps</span></div>
-                  <div><strong>Latency:</strong> <span>${data.latency_ms || 0} ms</span></div>
+              resDiv.innerHTML = `
+                <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; text-align:center;">
+                  <div style="background:var(--gray); padding:8px; border-radius:var(--radius-sm);">
+                    <div style="font-size:12px; color:var(--charcoal)">Download</div>
+                    <div style="color:var(--success-color); font-weight:700; font-size:18px;">${data.download_mbps || 0} <span style="font-size:12px">Mbps</span></div>
+                  </div>
+                  <div style="background:var(--gray); padding:8px; border-radius:var(--radius-sm);">
+                    <div style="font-size:12px; color:var(--charcoal)">Upload</div>
+                    <div style="color:var(--blue); font-weight:700; font-size:18px;">${data.upload_mbps || 0} <span style="font-size:12px">Mbps</span></div>
+                  </div>
+                  <div style="background:var(--gray); padding:8px; border-radius:var(--radius-sm);">
+                    <div style="font-size:12px; color:var(--charcoal)">Latency</div>
+                    <div style="color:var(--black); font-weight:700; font-size:18px;">${data.latency_ms || 0} <span style="font-size:12px">ms</span></div>
+                  </div>
                 </div>
               `;
             }
           } else {
-            resultsDiv.innerHTML = `<div style="color:var(--text-muted);font-size:13px;">Testing... Status: ${data.status}</div>`;
+            btn.innerHTML = `⏳ Testing (${data.status})...`;
             setTimeout(poll, 3000);
           }
         } catch (err) {
           btn.disabled = false;
-          btn.innerHTML = originalText;
-          resultsDiv.innerHTML = `<div style="color:var(--danger);font-size:13px;">Error: ${err.message}</div>`;
+          btn.innerHTML = '🏎️ Run Speed Test';
+          resDiv.innerHTML = `<div style="color:var(--light-red)">Error: ${err.message}</div>`;
         }
       };
-      
       setTimeout(poll, 3000);
     }
 
-    // -----------------------------------------
-    // GPS TRACK MAP
-    // -----------------------------------------
-    let map = null;
-    let mapPolyline = null;
-    let mapMarkers = [];
-    let currentMapRouterId = null;
-
-    function showTrackMap(event, routerId, routerName) {
-      event.stopPropagation();
-      currentMapRouterId = routerId;
-      document.getElementById('map-router-name').textContent = routerName;
-      document.getElementById('map-section').style.display = 'block';
-      
-      if (!map) {
-        map = L.map('map-container').setView([0, 0], 2);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-          maxZoom: 19,
-          attribution: '© OpenStreetMap contributors'
-        }).addTo(map);
-      }
-      
-      // Load 1 day by default
-      loadTrackMap(1);
-      
-      // Scroll to map
-      document.getElementById('map-section').scrollIntoView({ behavior: 'smooth' });
-      
-      // Fix leaflet resize issue when revealing map
-      setTimeout(() => map.invalidateSize(), 200);
-    }
-
-    function closeMap() {
-      document.getElementById('map-section').style.display = 'none';
-      currentMapRouterId = null;
+    // Map
+    function initMap() {
+      map = L.map('map-container').setView([0, 0], 2);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
     }
 
     async function loadTrackMap(days) {
       if (!currentMapRouterId) return;
-      
-      // Update pills
-      [1,3,7,30].forEach(d => {
-        const btn = document.getElementById(`btn-map-${d}`);
-        if(btn) {
-          if (d === days) btn.classList.add('active');
-          else btn.classList.remove('active');
-        }
-      });
-      
       document.getElementById('map-container').style.display = 'block';
       document.getElementById('map-msg').style.display = 'none';
       
-      // Clear old layers
       if (mapPolyline) map.removeLayer(mapPolyline);
       mapMarkers.forEach(m => map.removeLayer(m));
       mapMarkers = [];
@@ -989,11 +727,10 @@
       try {
         const res = await fetch(`/api/cradlepoint/routers/${currentMapRouterId}/history?days=${days}`, { credentials: 'same-origin' });
         const data = await res.json();
-        
         if (!res.ok || data.error) throw new Error(data.error || 'Failed to fetch history');
         
         const history = data.history || [];
-        const latlngs = history.map(h => [h.lat, h.lng]).filter(ll => ll[0] !== undefined && ll[1] !== undefined);
+        const latlngs = history.map(h => [h.lat, h.lng]).filter(ll => ll[0] && ll[1]);
         
         if (latlngs.length === 0) {
           document.getElementById('map-container').style.display = 'none';
@@ -1001,29 +738,29 @@
           return;
         }
         
-        mapPolyline = L.polyline(latlngs, { color: 'var(--primary)', weight: 3 }).addTo(map);
+        mapPolyline = L.polyline(latlngs, { color: 'var(--blue)', weight: 3 }).addTo(map);
         map.fitBounds(mapPolyline.getBounds(), { padding: [20, 20] });
         
-        // Start marker (oldest) is last in the array if sorted newest first, wait, let's just use indices
-        // Assuming order is chronological, start is 0, end is length-1
-        // Actually the API history might be newest first. Let's color the edges appropriately.
-        // If history[0] is newest, it's the end.
-        
-        const startMarker = L.circleMarker(latlngs[0], { radius: 6, fillColor: 'var(--success)', fillOpacity: 1, color: '#fff', weight: 2 }).addTo(map);
-        const endMarker = L.circleMarker(latlngs[latlngs.length - 1], { radius: 6, fillColor: 'var(--danger)', fillOpacity: 1, color: '#fff', weight: 2 }).addTo(map);
-        mapMarkers.push(startMarker, endMarker);
-        
+        const start = L.circleMarker(latlngs[0], { radius: 6, fillColor: 'var(--success-color)', fillOpacity: 1, color: '#fff', weight: 2 }).addTo(map);
+        const end = L.circleMarker(latlngs[latlngs.length - 1], { radius: 6, fillColor: 'var(--light-red)', fillOpacity: 1, color: '#fff', weight: 2 }).addTo(map);
+        mapMarkers.push(start, end);
       } catch (err) {
-        console.error('Error loading GPS history:', err);
+        showToast(err.message, 'error');
         document.getElementById('map-container').style.display = 'none';
-        const msg = document.getElementById('map-msg');
-        msg.style.display = 'block';
-        msg.textContent = `Error: ${err.message}`;
+        document.getElementById('map-msg').style.display = 'block';
       }
     }
 
-    // Start
-    document.addEventListener('DOMContentLoaded', init);
+    async function rebootRouter(id) {
+      if (!confirm('Are you sure you want to reboot this router?')) return;
+      try {
+        const res = await fetch(`/api/cradlepoint/routers/${id}/reboot`, { method: 'POST', credentials: 'same-origin' });
+        if (res.ok) showToast('Reboot command sent');
+        else throw new Error('Failed to send reboot command');
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
   </script>
 </body>
 </html>
