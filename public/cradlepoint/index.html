@@ -574,10 +574,11 @@
             </div>
             <div class="status-badge online">online</div>
           </div>
-          <div id="speed-result-${router.id}" style="margin-bottom: 16px; font-size:14px; color:var(--charcoal); min-height:60px;">
-            Ready to test network performance.
+          <div id="speed-result-${router.id}" style="margin-bottom: 12px; font-size:14px; color:var(--charcoal); min-height:80px;">
+            <div style="text-align:center; color:var(--dark-gray-shade)">Click below to check bandwidth</div>
           </div>
-          <button class="btn btn-primary btn-full" id="btn-speed-${router.id}" onclick="runSpeedTest('${router.id}')">🏎️ Run Speed Test</button>
+          <button class="btn btn-primary btn-full" id="btn-speed-${router.id}" onclick="checkBandwidth('${router.id}')" style="margin-bottom:8px;">📊 Check Bandwidth</button>
+          <a href="https://www.us0.cradlepointecm.com/#/devices/${router.id}/" target="_blank" class="btn btn-full" style="display:block;text-align:center;background:var(--gray);color:var(--charcoal);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;text-decoration:none;font-size:13px;">🌐 Open in NetCloud Manager</a>
         </div>
       `).join('');
     }
@@ -808,82 +809,48 @@
     }
 
     // Speed Test
-    async function runSpeedTest(routerId) {
+    async function checkBandwidth(routerId) {
       const btn = document.getElementById(`btn-speed-${routerId}`);
       const resDiv = document.getElementById(`speed-result-${routerId}`);
       if (btn.disabled) return;
       
       btn.disabled = true;
-      btn.innerHTML = '⏳ Initiating...';
-      resDiv.innerHTML = '<div style="color:var(--blue)">Starting speed test...</div>';
+      btn.innerHTML = '⏳ Loading...';
+      resDiv.innerHTML = '<div style="color:var(--blue)">Fetching bandwidth data...</div>';
       
       try {
-        const res = await fetch(`/api/cradlepoint/routers/${routerId}/speedtest`, { method: 'POST', credentials: 'same-origin' });
+        const res = await fetch(`/api/cradlepoint/routers/${routerId}/bandwidth`, { credentials: 'same-origin' });
         const data = await res.json();
-        if (!res.ok || data.error) throw new Error(data.error || 'Failed to start test');
-        const testId = data.testId || data.test?.id || (data.test?.resource_url?.match(/\/(\d+)\/?$/)?.[1]);
-        if (!testId) throw new Error('Could not get test ID from response');
-        pollSpeedTest(testId, routerId, resDiv, btn);
-      } catch (err) {
-        btn.disabled = false;
-        btn.innerHTML = '🏎️ Run Speed Test';
-        resDiv.innerHTML = `<div style="color:var(--light-red)">Error: ${err.message}</div>`;
-        showToast(err.message, 'error');
-      }
-    }
-
-    async function pollSpeedTest(testId, routerId, resDiv, btn) {
-      const startTime = Date.now();
-      const maxWait = 60000; // 60 seconds timeout
-      const poll = async () => {
-        // Timeout check
-        const elapsed = Math.floor((Date.now() - startTime) / 1000);
-        if (elapsed > maxWait / 1000) {
-          btn.disabled = false;
-          btn.innerHTML = '🏎️ Run Speed Test';
-          resDiv.innerHTML = `<div style="color:var(--light-red)">Speed test timed out after ${elapsed}s. The router may not be able to reach the test server.</div>`;
-          return;
-        }
+        if (!res.ok || data.error) throw new Error(data.error || 'Failed to fetch bandwidth');
         
-        try {
-          const res = await fetch(`/api/cradlepoint/speedtest/${testId}`, { credentials: 'same-origin' });
-          const data = await res.json();
-          if (!res.ok || data.error) throw new Error(data.error || 'Check status failed');
-          
-          if (data.status === 'completed' || data.status === 'failed') {
-            btn.disabled = false;
-            btn.innerHTML = '🏎️ Run Speed Test';
-            if (data.status === 'failed') {
-              resDiv.innerHTML = `<div style="color:var(--light-red)">Test failed: ${data.error || 'Unknown error'}</div>`;
-            } else {
-              resDiv.innerHTML = `
-                <div style="display:grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; text-align:center;">
-                  <div style="background:var(--gray); padding:8px; border-radius:var(--radius-sm);">
-                    <div style="font-size:12px; color:var(--charcoal)">Download</div>
-                    <div style="color:var(--success-color); font-weight:700; font-size:18px;">${data.download_mbps || 0} <span style="font-size:12px">Mbps</span></div>
-                  </div>
-                  <div style="background:var(--gray); padding:8px; border-radius:var(--radius-sm);">
-                    <div style="font-size:12px; color:var(--charcoal)">Upload</div>
-                    <div style="color:var(--blue); font-weight:700; font-size:18px;">${data.upload_mbps || 0} <span style="font-size:12px">Mbps</span></div>
-                  </div>
-                  <div style="background:var(--gray); padding:8px; border-radius:var(--radius-sm);">
-                    <div style="font-size:12px; color:var(--charcoal)">Latency</div>
-                    <div style="color:var(--black); font-weight:700; font-size:18px;">${data.latency_ms || 0} <span style="font-size:12px">ms</span></div>
-                  </div>
-                </div>
-              `;
-            }
-          } else {
-            btn.innerHTML = `⏳ Testing (${elapsed}s)...`;
-            setTimeout(poll, 5000);
-          }
-        } catch (err) {
-          btn.disabled = false;
-          btn.innerHTML = '🏎️ Run Speed Test';
-          resDiv.innerHTML = `<div style="color:var(--light-red)">Error: ${err.message}</div>`;
-        }
-      };
-      setTimeout(poll, 5000);
+        resDiv.innerHTML = `
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 8px; text-align:center; margin-bottom:8px;">
+            <div style="background:var(--gray); padding:10px; border-radius:var(--radius-sm);">
+              <div style="font-size:11px; color:var(--charcoal)">⬇️ Download (avg)</div>
+              <div style="color:var(--success-color); font-weight:700; font-size:20px;">${data.download_mbps} <span style="font-size:11px">Mbps</span></div>
+            </div>
+            <div style="background:var(--gray); padding:10px; border-radius:var(--radius-sm);">
+              <div style="font-size:11px; color:var(--charcoal)">⬆️ Upload (avg)</div>
+              <div style="color:var(--blue); font-weight:700; font-size:20px;">${data.upload_mbps} <span style="font-size:11px">Mbps</span></div>
+            </div>
+          </div>
+          <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 8px; text-align:center;">
+            <div style="background:var(--gray); padding:8px; border-radius:var(--radius-sm);">
+              <div style="font-size:11px; color:var(--charcoal)">Total Downloaded</div>
+              <div style="font-weight:600; font-size:14px;">${data.total_download}</div>
+            </div>
+            <div style="background:var(--gray); padding:8px; border-radius:var(--radius-sm);">
+              <div style="font-size:11px; color:var(--charcoal)">Total Uploaded</div>
+              <div style="font-weight:600; font-size:14px;">${data.total_upload}</div>
+            </div>
+          </div>
+          <div style="font-size:11px; color:var(--dark-gray-shade); margin-top:8px; text-align:center;">Based on last ${data.period || '24 hours'} of actual traffic</div>
+        `;
+      } catch (err) {
+        resDiv.innerHTML = `<div style="color:var(--light-red)">${err.message}</div>`;
+      }
+      btn.disabled = false;
+      btn.innerHTML = '📊 Check Bandwidth';
     }
 
     // Map

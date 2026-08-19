@@ -1470,8 +1470,83 @@ app.put('/api/cradlepoint/routers/:id/wifi', async (req, res) => {
   }
 });
 
-// ── Speed Tests ─────────────────────────────────────────────────────
-// POST: Trigger a speed test on a router
+// ── Bandwidth & Speed Tests ──────────────────────────────────────────
+
+// GET: Bandwidth data from net_device_usage_samples (actual throughput)
+app.get('/api/cradlepoint/routers/:id/bandwidth', async (req, res) => {
+  if (!CP_ECM_API_ID) return res.status(503).json({ error: 'Cradlepoint not configured' });
+  try {
+    const routerId = req.params.id;
+    
+    // Get net_devices for this router
+    const netDevData = await cpFetch('/net_devices/?router=' + routerId + '&limit=50');
+    const devices = netDevData.data || [];
+    
+    if (devices.length === 0) {
+      return res.json({ download_mbps: '0', upload_mbps: '0', total_download: 'N/A', total_upload: 'N/A', period: 'no data' });
+    }
+    
+    // Get usage samples from the last 24 hours
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+    let allSamples = [];
+    
+    for (const dev of devices.slice(0, 5)) {
+      try {
+        const samplesData = await cpFetch('/net_device_usage_samples/?net_device=' + dev.id + '&created_at__gt=' + encodeURIComponent(since) + '&limit=500&order_by=-created_at');
+        const samples = samplesData.data || [];
+        allSamples = allSamples.concat(samples);
+      } catch (e) {
+        console.log('[Cradlepoint] Usage sample error for device ' + dev.id + ':', e.message);
+      }
+    }
+    
+    console.log('[Cradlepoint] Bandwidth: ' + allSamples.length + ' usage samples from ' + devices.length + ' devices');
+    
+    if (allSamples.length === 0) {
+      return res.json({ download_mbps: '0', upload_mbps: '0', total_download: 'No data', total_upload: 'No data', period: 'no samples found' });
+    }
+    
+    // Calculate totals
+    let totalBytesIn = 0, totalBytesOut = 0;
+    let earliestTime = null, latestTime = null;
+    
+    for (const s of allSamples) {
+      totalBytesIn += (s.bytes_in || 0);
+      totalBytesOut += (s.bytes_out || 0);
+      const ts = new Date(s.created_at);
+      if (!earliestTime || ts < earliestTime) earliestTime = ts;
+      if (!latestTime || ts > latestTime) latestTime = ts;
+    }
+    
+    const spanSeconds = earliestTime && latestTime ? (latestTime - earliestTime) / 1000 : 1;
+    const avgDownBps = spanSeconds > 0 ? (totalBytesIn * 8) / spanSeconds : 0;
+    const avgUpBps = spanSeconds > 0 ? (totalBytesOut * 8) / spanSeconds : 0;
+    
+    const formatBytes = (bytes) => {
+      if (bytes >= 1073741824) return (bytes / 1073741824).toFixed(2) + ' GB';
+      if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + ' MB';
+      if (bytes >= 1024) return (bytes / 1024).toFixed(0) + ' KB';
+      return bytes + ' B';
+    };
+    
+    const hours = Math.round(spanSeconds / 3600);
+    const period = hours > 0 ? hours + ' hours' : Math.round(spanSeconds / 60) + ' minutes';
+    
+    res.json({
+      download_mbps: (avgDownBps / 1000000).toFixed(2),
+      upload_mbps: (avgUpBps / 1000000).toFixed(2),
+      total_download: formatBytes(totalBytesIn),
+      total_upload: formatBytes(totalBytesOut),
+      period: period,
+      samples: allSamples.length
+    });
+  } catch (err) {
+    console.error('[Cradlepoint] Bandwidth error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST: Trigger a speed test on a router (netperf — requires reachable server)
 app.post('/api/cradlepoint/routers/:id/speedtest', async (req, res) => {
   if (!req.user || req.user.role !== 'admin') {
     return res.status(403).json({ error: 'Admin access required' });
