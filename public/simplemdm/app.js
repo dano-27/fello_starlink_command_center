@@ -2129,19 +2129,21 @@
         initEventListeners();
         initGroupTabs();
 
-        // Check if server already has the API key configured
+        // Try to use server-side API key first (no client key needed)
         try {
-            const cfgRes = await fetch('/api/automation/config', { credentials: 'same-origin' });
-            const cfg = await cfgRes.json();
-            if (cfg.simpleMdmKeySet) {
-                // Server has the key — skip login, use server-side key
-                state.apiKey = 'server-managed';
-                showDashboard();
-                navigateToGroups();
-                return;
+            const testRes = await fetch('/api/simplemdm/assignment_groups?limit=1', { credentials: 'same-origin' });
+            if (testRes.ok) {
+                const data = await testRes.json();
+                if (data && !data.error) {
+                    // Server has the key — skip login
+                    state.apiKey = 'server-managed';
+                    showDashboard();
+                    navigateToGroups();
+                    return;
+                }
             }
         } catch (e) {
-            // Config check failed, fall through to normal login
+            // Server key not available, fall through to manual login
         }
 
         // Auto-fill saved API key from localStorage
