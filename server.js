@@ -1098,6 +1098,8 @@ app.get('/api/cradlepoint/fleet', async (req, res) => {
         state: r.state || 'unknown',
         serial_number: r.serial_number || '',
         mac: r.mac || '',
+        asset_id: r.asset_id || '',
+        description: r.description || '',
         group: r.group || null,
         firmware_version: r.actual_firmware || null,
         // Net device / modem info

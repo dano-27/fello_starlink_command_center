@@ -486,6 +486,7 @@
                 <div>
                   <div class="terminal-name">${router.name || 'Unknown'}</div>
                   <div class="terminal-serial">${router.serial_number || '-'}</div>
+                  ${router.asset_id ? `<div style="font-size:11px;color:var(--dark-gray-shade);font-family:monospace;margin-top:2px;">Asset: ${router.asset_id}</div>` : ''}
                 </div>
                 <div class="status-badge ${isOnline ? 'online' : 'offline'}">${router.state || 'unknown'}</div>
               </div>
