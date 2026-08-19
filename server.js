@@ -1501,7 +1501,7 @@ app.post('/api/cradlepoint/routers/:id/speedtest', async (req, res) => {
       config: {
         host: req.body.host || 'netperf.bufferbloat.net',
         max_test_concurrency: 1,
-        net_device_ids: [primaryModem.id],
+        net_device_ids: [parseInt(primaryModem.id)],
         port: req.body.port || 12865,
         size: null,
         test_timeout: 10,
