@@ -1184,7 +1184,7 @@ app.get('/api/cradlepoint/routers/:id/wifi', async (req, res) => {
     const routerUrl = CP_BASE_URL + '/routers/' + routerId + '/';
     
     // Get configuration manager for this router
-    const cfgData = await cpFetch('/configuration_managers/?router=' + encodeURIComponent(routerUrl) + '&limit=1');
+    const cfgData = await cpFetch('/configuration_managers/?router=' + routerId + '&limit=1');
     const configs = cfgData.data || [];
     if (configs.length === 0) {
       return res.json({ ssids: [], configId: null, error: 'No configuration found for this router' });
@@ -1243,7 +1243,7 @@ app.put('/api/cradlepoint/routers/:id/wifi', async (req, res) => {
     
     // Get the config manager ID
     const routerUrl = CP_BASE_URL + '/routers/' + routerId + '/';
-    const cfgData = await cpFetch('/configuration_managers/?router=' + encodeURIComponent(routerUrl) + '&limit=1');
+    const cfgData = await cpFetch('/configuration_managers/?router=' + routerId + '&limit=1');
     const configs = cfgData.data || [];
     if (configs.length === 0) {
       return res.status(404).json({ error: 'No configuration manager found' });
