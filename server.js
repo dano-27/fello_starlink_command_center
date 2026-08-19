@@ -1205,42 +1205,69 @@ app.get('/api/cradlepoint/routers/:id/wifi', async (req, res) => {
     const configId = configs[0].id;
     const configMgr = configs[0];
     
-    // Log what fields are available
-    console.log('[Cradlepoint] Config manager fields:', Object.keys(configMgr).join(', '));
-    console.log('[Cradlepoint] actual present:', !!configMgr.actual, '| actual type:', typeof configMgr.actual);
+    console.log('[Cradlepoint] Config manager keys:', Object.keys(configMgr).join(', '));
     
-    // 'actual' = complete running config on the device
-    // 'configuration' = device-level overrides/deltas
     const rawActual = configMgr.actual;
     const actual = Array.isArray(rawActual) ? (rawActual[0] || {}) : (rawActual || {});
     
     const rawConfig = configMgr.configuration;
     const deviceConfig = Array.isArray(rawConfig) ? (rawConfig[0] || {}) : (rawConfig || {});
     
-    // Also fetch the group config — disabled networks are often defined at group level
+    // Fetch the group config — disabled networks are defined at group level
     let groupConfig = {};
     try {
-      // Get the router to find its group
       const routerData = await cpFetch('/routers/' + routerId + '/');
       const groupUrl = routerData.group;
+      console.log('[Cradlepoint] Router group URL:', groupUrl);
+      
       if (groupUrl) {
-        // Extract group ID from URL
-        const groupId = groupUrl.match(/\/(\d+)\/$/)?.[1];
+        const groupId = groupUrl.match(/\/(\d+)\/?$/)?.[1];
+        console.log('[Cradlepoint] Group ID:', groupId);
+        
+        // Try filtering by group ID
+        let groupConfigs = [];
         if (groupId) {
-          const groupCfgData = await cpFetch('/configuration_managers/?group=' + groupId + '&limit=1');
-          const groupConfigs = groupCfgData.data || [];
-          if (groupConfigs.length > 0) {
-            const rawGroupConfig = groupConfigs[0].configuration;
-            groupConfig = Array.isArray(rawGroupConfig) ? (rawGroupConfig[0] || {}) : (rawGroupConfig || {});
-            console.log('[Cradlepoint] Group config wlan keys:', Object.keys(groupConfig?.wlan?.radio || {}).join(', '));
+          const r1 = await cpFetch('/configuration_managers/?group=' + groupId + '&limit=1');
+          groupConfigs = r1.data || [];
+          console.log('[Cradlepoint] Group config by ID: ' + groupConfigs.length + ' results');
+        }
+        
+        // If that didn't work, try the full URL
+        if (groupConfigs.length === 0 && groupUrl) {
+          const r2 = await cpFetch('/configuration_managers/?group=' + encodeURIComponent(groupUrl) + '&limit=1');
+          groupConfigs = r2.data || [];
+          console.log('[Cradlepoint] Group config by URL: ' + groupConfigs.length + ' results');
+        }
+        
+        // If still nothing, try fetching all and filtering
+        if (groupConfigs.length === 0) {
+          const r3 = await cpFetch('/configuration_managers/?limit=100');
+          const all = r3.data || [];
+          // Group config managers don't have a router field
+          groupConfigs = all.filter(c => !c.router && c.group && (c.group.includes('/' + groupId + '/') || c.group === groupUrl));
+          console.log('[Cradlepoint] Group config by scan: ' + groupConfigs.length + ' of ' + all.length + ' total');
+          
+          // If still nothing, log what we have
+          if (groupConfigs.length === 0) {
+            const types = all.map(c => ({ hasRouter: !!c.router, hasGroup: !!c.group, group: c.group }));
+            console.log('[Cradlepoint] All config managers:', JSON.stringify(types).substring(0, 500));
+          }
+        }
+        
+        if (groupConfigs.length > 0) {
+          const rawGC = groupConfigs[0].configuration;
+          groupConfig = Array.isArray(rawGC) ? (rawGC[0] || {}) : (rawGC || {});
+          const gRadios = groupConfig?.wlan?.radio || {};
+          for (const [rk, rv] of Object.entries(gRadios)) {
+            console.log('[Cradlepoint] Group radio.' + rk + '.bss:', Object.keys(rv?.bss || {}).join(', '));
           }
         }
       }
     } catch (err) {
-      console.log('[Cradlepoint] Could not fetch group config:', err.message);
+      console.log('[Cradlepoint] Group config error:', err.message);
     }
     
-    // Helper to deep merge (group defaults + device overrides)
+    // Deep merge helper
     function deepMerge(base, override) {
       const result = JSON.parse(JSON.stringify(base || {}));
       if (!override) return result;
@@ -1254,25 +1281,20 @@ app.get('/api/cradlepoint/routers/:id/wifi', async (req, res) => {
       return result;
     }
     
-    // Merge: actual > device overrides on top of group defaults
-    // If actual is available and has wlan, use that (it's the full running config)
-    // Otherwise, merge group + device configs
+    // Use actual if it has wlan data, otherwise merge group + device
     let mergedConfig;
     if (actual?.wlan?.radio && Object.keys(actual.wlan.radio).length > 0) {
-      // actual has the full running config
       mergedConfig = actual;
-      // Check BSS count
-      for (const [rk, rv] of Object.entries(actual.wlan.radio || {})) {
-        const bssKeys = Object.keys(rv?.bss || {});
-        console.log('[Cradlepoint] actual radio.' + rk + '.bss:', bssKeys.join(', '));
-      }
+      console.log('[Cradlepoint] Using actual config');
     } else {
-      // Merge group defaults with device overrides
       mergedConfig = deepMerge(groupConfig, deviceConfig);
-      console.log('[Cradlepoint] Using merged config (group + device)');
+      const mRadios = mergedConfig?.wlan?.radio || {};
+      let totalBss = 0;
+      for (const rv of Object.values(mRadios)) totalBss += Object.keys(rv?.bss || {}).length;
+      console.log('[Cradlepoint] Using merged config, total BSS entries:', totalBss);
     }
     
-    // Extract ALL SSIDs from merged config
+    // Extract ALL SSIDs
     const ssids = [];
     const wlanRadios = mergedConfig?.wlan?.radio || {};
     for (const [radioIdx, radio] of Object.entries(wlanRadios)) {
@@ -1286,40 +1308,16 @@ app.get('/api/cradlepoint/routers/:id/wifi', async (req, res) => {
           ssidKey: bssIdx,
           ssid: bss.ssid || '',
           password: bss.wpa_password || bss.wpapsk || '',
-          enabled: bss.enabled === true || bss.enabled === 1,
+          // enabled: default to true unless explicitly set to false
+          enabled: bss.enabled !== false && bss.enabled !== 0,
           band: band,
           security: bss.encryption_mode || (bss.wpa_password ? 'wpa2' : 'open'),
-          hidden: bss.broadcast === false || bss.hidden === true,
+          hidden: bss.broadcast === false,
           isolate: bss.isolate === true,
           wmm: bss.wmm !== false,
           _configPath: 'wlan.radio.' + radioIdx + '.bss.' + bssIdx,
           _source: actual?.wlan ? 'actual' : 'merged'
         });
-      }
-    }
-    
-    // Fallback: newer firmware path
-    if (ssids.length === 0) {
-      const wifiRadios = mergedConfig?.networking?.wifi?.radios || {};
-      for (const [radioKey, radio] of Object.entries(wifiRadios)) {
-        if (!radio || typeof radio !== 'object') continue;
-        const radioSsids = radio.ssids || {};
-        const band = radioKey.includes('5') ? '5 GHz' : '2.4 GHz';
-        for (const [ssidKey, ssidConfig] of Object.entries(radioSsids)) {
-          if (!ssidConfig || typeof ssidConfig !== 'object') continue;
-          ssids.push({
-            radioKey, ssidKey,
-            ssid: ssidConfig.ssid || ssidKey,
-            password: ssidConfig.wpa_password || '',
-            enabled: ssidConfig.enabled !== false,
-            band, security: ssidConfig.encryption_mode || 'wpa2',
-            hidden: ssidConfig.broadcast === false,
-            isolate: ssidConfig.isolate === true,
-            wmm: ssidConfig.wmm !== false,
-            _configPath: 'networking.wifi.radios.' + radioKey + '.ssids.' + ssidKey,
-            _source: 'merged'
-          });
-        }
       }
     }
     
