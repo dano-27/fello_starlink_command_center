@@ -1193,29 +1193,88 @@ app.get('/api/cradlepoint/routers/:id/wifi', async (req, res) => {
     const configId = configs[0].id;
     const config = configs[0].configuration || {};
     
-    // Navigate to WiFi radios
-    const wifi = config?.networking?.wifi?.radios || {};
+    // Debug: log the top-level config keys to understand structure
+    const topKeys = Object.keys(config);
+    console.log('[Cradlepoint] WiFi config keys for router ' + routerId + ':', topKeys.join(', '));
+    
+    // The WiFi config can be in different paths depending on router model/firmware
+    // Try multiple known paths
+    let wifi = config?.networking?.wifi?.radios || {};
+    
+    // Alternate path: wlan section
+    if (Object.keys(wifi).length === 0) {
+      wifi = config?.wlan?.radio || {};
+    }
+    // Alternate: directly under radios
+    if (Object.keys(wifi).length === 0) {
+      wifi = config?.radios || {};
+    }
+    
+    // Deep search: find any object that has 'ssids' or 'ssid' keys
     const ssids = [];
     
-    for (const [radioKey, radio] of Object.entries(wifi)) {
-      const band = radioKey.includes('5') ? '5 GHz' : radioKey.includes('6') ? '6 GHz' : '2.4 GHz';
-      const radioSsids = radio.ssids || {};
-      
-      for (const [ssidKey, ssidConfig] of Object.entries(radioSsids)) {
-        ssids.push({
-          radioKey: radioKey,
-          ssidKey: ssidKey,
-          ssid: ssidConfig.ssid || ssidKey,
-          password: ssidConfig.wpa_password || '',
-          enabled: ssidConfig.enabled !== false,
-          band: band,
-          security: ssidConfig.encryption_mode || 'wpa2',
-          hidden: ssidConfig.broadcast === false
-        });
+    function findSsids(obj, path) {
+      if (!obj || typeof obj !== 'object') return;
+      for (const [key, val] of Object.entries(obj)) {
+        if (key === 'ssids' && typeof val === 'object') {
+          // Found an ssids container
+          const radioKey = path.split('.').find(p => p.includes('radio') || p.includes('wifi') || p.includes('wlan')) || path;
+          const band = path.includes('5g') || path.includes('5G') || key.includes('5') ? '5 GHz' : '2.4 GHz';
+          for (const [ssidKey, ssidConfig] of Object.entries(val)) {
+            if (typeof ssidConfig === 'object') {
+              ssids.push({
+                radioKey: radioKey,
+                ssidKey: ssidKey,
+                ssid: ssidConfig.ssid || ssidConfig.name || ssidKey,
+                password: ssidConfig.wpa_password || ssidConfig.password || ssidConfig.psk || '',
+                enabled: ssidConfig.enabled !== false,
+                band: band,
+                security: ssidConfig.encryption_mode || ssidConfig.security || 'wpa2',
+                hidden: ssidConfig.broadcast === false || ssidConfig.hidden === true,
+                _path: path + '.ssids.' + ssidKey
+              });
+            }
+          }
+        } else if (typeof val === 'object' && !Array.isArray(val)) {
+          findSsids(val, path ? path + '.' + key : key);
+        }
       }
     }
     
-    console.log('[Cradlepoint] WiFi config for router ' + routerId + ': ' + ssids.length + ' SSIDs');
+    // First try the standard radios path
+    if (Object.keys(wifi).length > 0) {
+      for (const [radioKey, radio] of Object.entries(wifi)) {
+        const band = radioKey.includes('5') ? '5 GHz' : radioKey.includes('6') ? '6 GHz' : '2.4 GHz';
+        const radioSsids = radio.ssids || radio.bss || {};
+        
+        for (const [ssidKey, ssidConfig] of Object.entries(radioSsids)) {
+          if (typeof ssidConfig === 'object') {
+            ssids.push({
+              radioKey: radioKey,
+              ssidKey: ssidKey,
+              ssid: ssidConfig.ssid || ssidConfig.name || ssidKey,
+              password: ssidConfig.wpa_password || ssidConfig.password || ssidConfig.psk || '',
+              enabled: ssidConfig.enabled !== false,
+              band: band,
+              security: ssidConfig.encryption_mode || ssidConfig.security || 'wpa2',
+              hidden: ssidConfig.broadcast === false
+            });
+          }
+        }
+      }
+    }
+    
+    // If nothing found yet, do a deep search
+    if (ssids.length === 0) {
+      console.log('[Cradlepoint] Standard WiFi path empty, doing deep search. Config networking keys:', 
+        JSON.stringify(Object.keys(config?.networking || {})).substring(0, 200));
+      findSsids(config, '');
+    }
+    
+    console.log('[Cradlepoint] WiFi config for router ' + routerId + ': ' + ssids.length + ' SSIDs found');
+    if (ssids.length === 0) {
+      console.log('[Cradlepoint] Full config structure (first 500 chars):', JSON.stringify(config).substring(0, 500));
+    }
     res.json({ ssids: ssids, configId: configId });
   } catch (err) {
     console.error('[Cradlepoint] WiFi read error:', err.message);
