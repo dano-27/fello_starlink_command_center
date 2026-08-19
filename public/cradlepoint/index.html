@@ -639,7 +639,6 @@
               'Config Keys: ' + JSON.stringify(data._debug.configKeys) + '\n' +
               'Networking Keys: ' + JSON.stringify(data._debug.networkingKeys) + '\n\n' +
               'Config Preview:\n' + data._debug.configPreview + '</pre></details>';
-          }
           body.innerHTML = debugHtml;
           return;
         }
@@ -647,17 +646,17 @@
         body.innerHTML = ssids.map((ssid, idx) => `
           <div style="border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 16px; margin-bottom: 16px;">
             <div style="font-weight:600; margin-bottom:12px;">Radio: ${ssid.band} 
-              <span style="font-size:12px; color:${ssid.enabled?'var(--success-color)':'var(--light-red)'}">(${ssid.enabled?'Enabled':'Disabled'})</span>
+              <span style="font-size:12px; color:${ssid.enabled?'var(--success-color)':'var(--light-red)'}"> (${ssid.enabled?'Enabled':'Disabled'})</span>
             </div>
             <div class="form-group">
               <label class="form-label">SSID Name</label>
-              <input type="text" class="form-input" id="ssid-name-${idx}" value="${ssid.name}">
+              <input type="text" class="form-input" id="ssid-name-${idx}" value="${ssid.ssid || ''}">
             </div>
             <div class="form-group">
               <label class="form-label">Password</label>
-              <input type="text" class="form-input" id="ssid-pw-${idx}" value="${ssid.password}">
+              <input type="text" class="form-input" id="ssid-pw-${idx}" value="${ssid.password || ''}">
             </div>
-            <button class="btn btn-primary btn-full" onclick="updateWifi('${routerId}', '${ssid.radioKey}', '${ssid.ssidKey}', ${idx})">Save Changes</button>
+            <button class="btn btn-primary btn-full" onclick="updateWifi('${routerId}', '${ssid.radioKey}', '${ssid.ssidKey}', ${idx}, '${ssid._configPath || ''}')">Save Changes</button>
           </div>
         `).join('');
       } catch (err) {
@@ -665,7 +664,7 @@
       }
     }
 
-    async function updateWifi(routerId, radioKey, ssidKey, idx) {
+    async function updateWifi(routerId, radioKey, ssidKey, idx, configPath) {
       const newName = document.getElementById(`ssid-name-${idx}`).value;
       const newPw = document.getElementById(`ssid-pw-${idx}`).value;
       try {
@@ -673,7 +672,7 @@
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'same-origin',
-          body: JSON.stringify({ radioKey, ssidKey, newSsid: newName, newPassword: newPw })
+          body: JSON.stringify({ radioKey, ssidKey, newSsid: newName, newPassword: newPw, configPath })
         });
         const data = await res.json();
         if (!res.ok || data.error) throw new Error(data.error || 'Failed to update');
