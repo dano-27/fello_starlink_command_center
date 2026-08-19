@@ -3033,10 +3033,12 @@ app.post('/api/dcr/submit', async (req, res) => {
 
   const dcrData = req.body;
 
-  if (!dcrData || !dcrData.eventName) {
-    console.log('[DCR] Rejected — missing eventName. Body:', JSON.stringify(dcrData).substring(0, 200));
-    return res.status(400).json({ error: 'Missing eventName in DCR payload.' });
+  if (!dcrData || (!dcrData.eventName && !dcrData.orderNumber && !dcrData.contactName)) {
+    console.log('[DCR] Rejected — no identifying info. Body:', JSON.stringify(dcrData).substring(0, 200));
+    return res.status(400).json({ error: 'Missing orderNumber, eventName, or contactName in DCR payload.' });
   }
+  // Default eventName if empty
+  if (!dcrData.eventName) dcrData.eventName = dcrData.orderNumber || dcrData.company || 'Untitled Request';
 
   // Log the submission
   const submission = {
