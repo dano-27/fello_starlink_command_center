@@ -1911,7 +1911,7 @@
 
     function initEventListeners() {
         // Login form
-        dom.loginForm.addEventListener('submit', (e) => {
+        if (dom.loginForm) dom.loginForm.addEventListener('submit', (e) => {
             e.preventDefault();
             const key = dom.apiKeyInput.value.trim();
             if (!key) return;
@@ -1919,18 +1919,18 @@
         });
 
         // Toggle password visibility
-        dom.toggleKey.addEventListener('click', () => {
+        if (dom.toggleKey) dom.toggleKey.addEventListener('click', () => {
             const input = dom.apiKeyInput;
             input.type = input.type === 'password' ? 'text' : 'password';
         });
 
         // Tab switching
-        dom.tabGroups.addEventListener('click', () => switchTab('groups'));
-        dom.tabProvisioning.addEventListener('click', () => switchTab('provisioning'));
+        if (dom.tabGroups) dom.tabGroups.addEventListener('click', () => switchTab('groups'));
+        if (dom.tabProvisioning) dom.tabProvisioning.addEventListener('click', () => switchTab('provisioning'));
         if (dom.navRequests) dom.navRequests.addEventListener('click', () => switchTab('requests'));
 
         // Refresh — context-aware
-        dom.refreshBtn.addEventListener('click', () => {
+        if (dom.refreshBtn) dom.refreshBtn.addEventListener('click', () => {
             if (state.activeTab === 'provisioning') {
                 fetchProvQueue();
                 showToast('Refreshing queue…', 'info');
@@ -1944,7 +1944,7 @@
         });
 
         // Logout
-        dom.logoutBtn.addEventListener('click', () => {
+        if (dom.logoutBtn) dom.logoutBtn.addEventListener('click', () => {
             clearCredentials();
             resetStatFontSize();
             showLogin();
@@ -1953,10 +1953,10 @@
 
         // Search — context-aware
         let searchDebounce;
-        dom.searchInput.addEventListener('input', (e) => {
+        if (dom.searchInput) dom.searchInput.addEventListener('input', (e) => {
             clearTimeout(searchDebounce);
             const q = e.target.value;
-            dom.searchClear.classList.toggle('hidden', !q);
+            if (dom.searchClear) dom.searchClear.classList.toggle('hidden', !q);
 
             searchDebounce = setTimeout(() => {
                 if (state.currentView === 'groups') {
@@ -1967,7 +1967,7 @@
             }, 200);
         });
 
-        dom.searchClear.addEventListener('click', () => {
+        if (dom.searchClear) dom.searchClear.addEventListener('click', () => {
             dom.searchInput.value = '';
             dom.searchClear.classList.add('hidden');
             if (state.currentView === 'groups') {
