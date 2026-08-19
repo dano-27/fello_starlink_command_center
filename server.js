@@ -1183,49 +1183,48 @@ app.get('/api/cradlepoint/routers/:id/wifi', async (req, res) => {
     const routerId = req.params.id;
     const routerUrl = CP_BASE_URL + '/routers/' + routerId + '/';
     
-    // Try fetching config manager — try by ID first, then by URL
-    let cfgData = await cpFetch('/configuration_managers/?router=' + routerId + '&limit=1&fields=id,configuration');
+    // Fetch config manager with BOTH 'actual' (running config) and 'configuration' (pending overrides)
+    let cfgData = await cpFetch('/configuration_managers/?router=' + routerId + '&limit=1&fields=id,actual,configuration');
     let configs = cfgData.data || [];
     
     if (configs.length === 0) {
-      console.log('[Cradlepoint] No config found by ID, trying URL filter for router ' + routerId);
-      cfgData = await cpFetch('/configuration_managers/?router=' + encodeURIComponent(routerUrl) + '&limit=1&fields=id,configuration');
+      cfgData = await cpFetch('/configuration_managers/?router=' + encodeURIComponent(routerUrl) + '&limit=1&fields=id,actual,configuration');
       configs = cfgData.data || [];
     }
     
     if (configs.length === 0) {
-      // Last try: fetch all config managers and find one matching this router
-      console.log('[Cradlepoint] No config found by URL either, fetching all config managers');
-      cfgData = await cpFetch('/configuration_managers/?limit=50&fields=id,router,configuration');
-      configs = (cfgData.data || []).filter(c => {
-        const cRouter = c.router || '';
-        return cRouter.includes('/' + routerId + '/') || cRouter === routerId;
-      });
+      cfgData = await cpFetch('/configuration_managers/?limit=50&fields=id,router,actual,configuration');
+      configs = (cfgData.data || []).filter(c => (c.router || '').includes('/' + routerId + '/'));
     }
     
     if (configs.length === 0) {
-      console.log('[Cradlepoint] No configuration_manager found for router ' + routerId + ' after all attempts');
       return res.json({ ssids: [], configId: null, error: 'No configuration found for this router' });
     }
     
     const configId = configs[0].id;
-    // configuration can be an array (IBR900 returns [configObj, []]) or a plain object
+    
+    // 'actual' = what's running on the device right now (complete)
+    // 'configuration' = pending overrides/deltas
+    const rawActual = configs[0].actual;
+    const actual = Array.isArray(rawActual) ? (rawActual[0] || {}) : (rawActual || {});
+    
+    // Also get pending config for reference
     const rawConfig = configs[0].configuration;
-    const config = Array.isArray(rawConfig) ? (rawConfig[0] || {}) : (rawConfig || {});
+    const pending = Array.isArray(rawConfig) ? (rawConfig[0] || {}) : (rawConfig || {});
     
-    console.log('[Cradlepoint] Config type: ' + (Array.isArray(rawConfig) ? 'array' : 'object') + ', keys:', Object.keys(config).join(', '));
+    console.log('[Cradlepoint] WiFi for router ' + routerId + ' — actual keys:', Object.keys(actual).join(', '));
     
-    const ssids = [];
-    
-    // IBR900 structure: wlan.radio.{0,1}.bss.{0,1}
-    const wlanRadios = config?.wlan?.radio || {};
-    if (Object.keys(wlanRadios).length > 0) {
+    // Helper to extract SSIDs from a config object
+    function extractSsids(cfg, source) {
+      const ssids = [];
+      
+      // IBR900 path: wlan.radio.{0,1}.bss.{0,1}
+      const wlanRadios = cfg?.wlan?.radio || {};
       for (const [radioIdx, radio] of Object.entries(wlanRadios)) {
         if (!radio || typeof radio !== 'object') continue;
         const bssEntries = radio.bss || {};
         for (const [bssIdx, bss] of Object.entries(bssEntries)) {
           if (!bss || typeof bss !== 'object') continue;
-          // Radio 1 is typically 5GHz, Radio 0 is 2.4GHz
           const band = radioIdx === '1' ? '5 GHz' : '2.4 GHz';
           ssids.push({
             radioKey: radioIdx,
@@ -1236,37 +1235,46 @@ app.get('/api/cradlepoint/routers/:id/wifi', async (req, res) => {
             band: band,
             security: bss.encryption_mode || 'wpa2',
             hidden: bss.broadcast === false,
-            _configPath: 'wlan.radio.' + radioIdx + '.bss.' + bssIdx
+            _configPath: 'wlan.radio.' + radioIdx + '.bss.' + bssIdx,
+            _source: source
           });
         }
       }
+      
+      // Newer firmware path: networking.wifi.radios.{name}.ssids.{name}
+      if (ssids.length === 0) {
+        const wifiRadios = cfg?.networking?.wifi?.radios || {};
+        for (const [radioKey, radio] of Object.entries(wifiRadios)) {
+          if (!radio || typeof radio !== 'object') continue;
+          const radioSsids = radio.ssids || {};
+          const band = radioKey.includes('5') ? '5 GHz' : '2.4 GHz';
+          for (const [ssidKey, ssidConfig] of Object.entries(radioSsids)) {
+            if (!ssidConfig || typeof ssidConfig !== 'object') continue;
+            ssids.push({
+              radioKey: radioKey,
+              ssidKey: ssidKey,
+              ssid: ssidConfig.ssid || ssidKey,
+              password: ssidConfig.wpa_password || '',
+              enabled: ssidConfig.enabled !== false,
+              band: band,
+              security: ssidConfig.encryption_mode || 'wpa2',
+              hidden: ssidConfig.broadcast === false,
+              _configPath: 'networking.wifi.radios.' + radioKey + '.ssids.' + ssidKey,
+              _source: source
+            });
+          }
+        }
+      }
+      return ssids;
     }
     
-    // Also try networking.wifi.radios.{name}.ssids.{name} (newer firmware)
+    // Prefer 'actual' (the real running config) over 'configuration' (overrides only)
+    let ssids = extractSsids(actual, 'actual');
     if (ssids.length === 0) {
-      const wifiRadios = config?.networking?.wifi?.radios || {};
-      for (const [radioKey, radio] of Object.entries(wifiRadios)) {
-        if (!radio || typeof radio !== 'object') continue;
-        const radioSsids = radio.ssids || {};
-        const band = radioKey.includes('5') ? '5 GHz' : '2.4 GHz';
-        for (const [ssidKey, ssidConfig] of Object.entries(radioSsids)) {
-          if (!ssidConfig || typeof ssidConfig !== 'object') continue;
-          ssids.push({
-            radioKey: radioKey,
-            ssidKey: ssidKey,
-            ssid: ssidConfig.ssid || ssidKey,
-            password: ssidConfig.wpa_password || '',
-            enabled: ssidConfig.enabled !== false,
-            band: band,
-            security: ssidConfig.encryption_mode || 'wpa2',
-            hidden: ssidConfig.broadcast === false,
-            _configPath: 'networking.wifi.radios.' + radioKey + '.ssids.' + ssidKey
-          });
-        }
-      }
+      ssids = extractSsids(pending, 'pending');
     }
     
-    console.log('[Cradlepoint] WiFi for router ' + routerId + ': ' + ssids.length + ' SSIDs found');
+    console.log('[Cradlepoint] WiFi for router ' + routerId + ': ' + ssids.length + ' SSIDs found (source: ' + (ssids[0]?._source || 'none') + ')');
     res.json({ ssids: ssids, configId: configId });
   } catch (err) {
     console.error('[Cradlepoint] WiFi read error:', err.message);
