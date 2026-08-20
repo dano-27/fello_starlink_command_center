@@ -369,7 +369,8 @@ const AUTH_WHITELIST = [
   '/share', '/api/public/share',
   '/shared-header.css', '/shared-header.js', '/fello-logo.png',
   '/api/dcr/submit', '/api/dcr',
-  '/api/automation/provision'
+  '/api/automation/provision',
+  '/api/simplemdm/webhook'
 ];
 
 app.use((req, res, next) => {
@@ -3591,6 +3592,84 @@ const DEFAULT_APPS = [
   { name: 'Fello Connect', id: 687894 },
 ];
 
+// ── Pending Enrollment Map ──────────────────────────────────────────
+// Tracks serial → groupId for devices assigned via ABM but not yet enrolled.
+// When the device enrolls, the webhook handler moves it to the correct group.
+const PENDING_ENROLLMENTS_FILE = path.join(DATA_DIR, 'pending-enrollments.json');
+let pendingEnrollments = {};
+try {
+  if (fs.existsSync(PENDING_ENROLLMENTS_FILE)) {
+    pendingEnrollments = JSON.parse(fs.readFileSync(PENDING_ENROLLMENTS_FILE, 'utf8'));
+    console.log(`[ENROLL] Loaded ${Object.keys(pendingEnrollments).length} pending enrollment mappings`);
+  }
+} catch (_) {}
+function savePendingEnrollments() {
+  try { fs.writeFileSync(PENDING_ENROLLMENTS_FILE, JSON.stringify(pendingEnrollments, null, 2)); } catch (_) {}
+}
+
+// ── SimpleMDM Webhook: device.enrolled ──────────────────────────────
+// Configure this URL in SimpleMDM → Settings → Webhooks:
+// https://fellostarlinkcommandcenter-production.up.railway.app/api/simplemdm/webhook
+app.post('/api/simplemdm/webhook', async (req, res) => {
+  const event = req.body;
+  console.log(`[WEBHOOK] Received: ${event?.type || 'unknown'}`);
+
+  if (event?.type === 'device.enrolled') {
+    const deviceId = event?.data?.device?.id;
+    if (!deviceId) return res.sendStatus(200);
+
+    // Look up the device to get its serial
+    const rawKey = getMdmAccountKey('fello');
+    try {
+      const deviceData = await smdmRequest(rawKey, `/devices/${deviceId}`);
+      const serial = (deviceData.data?.attributes?.serial_number || '').toUpperCase();
+      const deviceName = deviceData.data?.attributes?.name || serial;
+      console.log(`[WEBHOOK] Device enrolled: ${deviceName} (${serial}), ID: ${deviceId}`);
+
+      if (serial && pendingEnrollments[serial]) {
+        const { groupId, groupName, plannedName } = pendingEnrollments[serial];
+        console.log(`[WEBHOOK] 🎯 Found pending assignment: ${serial} → group "${groupName}" (${groupId})`);
+
+        // Assign to the correct group
+        const auth = 'Basic ' + Buffer.from(rawKey + ':').toString('base64');
+        const assignResp = await fetch(`https://a.simplemdm.com/api/v1/assignment_groups/${groupId}/devices/${deviceId}`, {
+          method: 'POST',
+          headers: { Authorization: auth },
+        });
+
+        if (assignResp.status === 204 || assignResp.ok) {
+          console.log(`[WEBHOOK] ✓ Moved ${serial} to group "${groupName}" (${groupId})`);
+
+          // Rename the device if we have a planned name
+          if (plannedName) {
+            try {
+              await smdmRequest(rawKey, `/devices/${deviceId}`, 'PATCH', {
+                name: plannedName,
+                device_name: plannedName,
+              });
+              console.log(`[WEBHOOK]   📝 Renamed → "${plannedName}"`);
+            } catch (renameErr) {
+              console.error(`[WEBHOOK]   ⚠ Rename failed: ${renameErr.message}`);
+            }
+          }
+        } else {
+          console.error(`[WEBHOOK] ✗ Failed to assign ${serial} to group ${groupId}: ${assignResp.status}`);
+        }
+
+        // Remove from pending
+        delete pendingEnrollments[serial];
+        savePendingEnrollments();
+      } else {
+        console.log(`[WEBHOOK] No pending assignment for ${serial}`);
+      }
+    } catch (err) {
+      console.error(`[WEBHOOK] Error processing enrolled device ${deviceId}:`, err.message);
+    }
+  }
+
+  return res.sendStatus(200);
+});
+
 // ── DEP Sync ────────────────────────────────────────────────────────
 
 // ── List configured MDM accounts ────────────────────────────────────
@@ -3784,9 +3863,16 @@ app.post('/api/simplemdm/groups/:groupId/assign-serials', async (req, res) => {
             results.errors.push({ serial: sn, error: `DEP assignment failed (${assignResp.status})` });
           }
         } else {
-          // DEP device but not yet enrolled — flag it
-          results.notFound.push({ serial: sn, reason: 'In DEP but not enrolled yet (device needs to be powered on)' });
-          console.log(`[ASSIGN]   ⚠ ${sn} found in DEP but not enrolled`);
+          // DEP device but not yet enrolled — store pending enrollment for webhook
+          pendingEnrollments[sn] = {
+            groupId,
+            groupName: groupName || `Group ${groupId}`,
+            plannedName: orderNumber ? `${orderNumber} (${String(sequenceNumber + 1).padStart(2, '0')})` : null,
+            assignedAt: new Date().toISOString(),
+          };
+          savePendingEnrollments();
+          results.notFound.push({ serial: sn, reason: 'In DEP but not enrolled yet — will auto-assign on enrollment' });
+          console.log(`[ASSIGN]   ⚠ ${sn} found in DEP but not enrolled — pending enrollment saved`);
         }
         continue;
       }
@@ -3869,7 +3955,19 @@ app.post('/api/simplemdm/groups/:groupId/assign-serials', async (req, res) => {
             deviceId: null,
           });
         }
+
+        // Store pending enrollments so webhook can move devices to correct group on enrollment
+        for (const d of results.abmPending) {
+          pendingEnrollments[d.serial] = {
+            groupId,
+            groupName: groupName || `Group ${groupId}`,
+            plannedName: results.assigned.find(r => r.serial === d.serial)?.plannedName || null,
+            assignedAt: new Date().toISOString(),
+          };
+        }
+        savePendingEnrollments();
         console.log(`[ASSIGN] ✓ ABM assignment submitted (activity: ${abmResult.data?.id || 'unknown'})`);
+        console.log(`[ASSIGN] 📋 ${results.abmPending.length} pending enrollment(s) saved for webhook`);
 
         // Trigger SimpleMDM DEP sync with retry so devices appear
         let syncSuccess = false;
