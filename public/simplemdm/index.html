@@ -44,11 +44,10 @@
                 <!-- Device details populated by JS -->
             </div>
             <div class="modal-footer">
-                <h4>Remote Actions</h4>
-                <div class="detail-section" id="device-map-section" style="margin-top:16px;">
-                    <h4 style="margin-bottom:8px;color:#ccd6f6;">📍 Device Location</h4>
-                    <div id="device-map" style="width:100%;height:250px;border-radius:10px;overflow:hidden;"></div>
-                    <p id="device-map-empty" class="hidden" style="text-align:center;color:#8892b0;padding:20px;font-size:0.85rem;">
+                <div class="detail-section" id="device-map-section" style="margin-top:0;">
+                    <h4 style="margin-bottom:8px;color:#ccd6f6;font-size:0.85rem;text-transform:uppercase;letter-spacing:0.5px;">📍 Location</h4>
+                    <div id="device-map" style="width:100%;height:220px;border-radius:10px;overflow:hidden;"></div>
+                    <p id="device-map-empty" class="hidden" style="text-align:center;color:#8892b0;padding:16px;font-size:0.85rem;">
                         No location data available for this device.
                     </p>
                     <div id="track-controls" style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
@@ -57,7 +56,7 @@
                         <label style="color:#8892b0;font-size:0.8rem;">To:</label>
                         <input type="date" id="track-to" style="background:#1a1f36;color:#ccd6f6;border:1px solid #2a3050;border-radius:6px;padding:4px 8px;font-size:0.8rem;">
                         <button class="btn btn-outline btn-sm" id="show-track-btn">📍 Show Track</button>
-                        <button class="btn btn-outline btn-sm hidden" id="clear-track-btn" style="color:#e74c3c;border-color:#e74c3c;">✕ Clear Track</button>
+                        <button class="btn btn-outline btn-sm hidden" id="clear-track-btn" style="color:#e74c3c;border-color:#e74c3c;">✕ Clear</button>
                     </div>
                 </div>
                 <div class="modal-actions">

@@ -1074,31 +1074,81 @@
 
     function renderModalBody(device) {
         const attrs = device.attributes || device;
+        const serial = getSerial(device);
+        const model = getModel(device);
+        const osVersion = getOSVersion(device);
+        const batteryRaw = attrs.battery_level || '';
+        // Fix double-percent: battery_level already contains "%" from API
+        const battery = batteryRaw ? String(batteryRaw).replace(/%+$/, '') + '%' : '—';
+        const capacity = attrs.device_capacity ? `${attrs.device_capacity} GB` : '—';
+        const available = attrs.available_device_capacity ? `${parseFloat(attrs.available_device_capacity).toFixed(1)} GB` : '—';
+        const supervised = attrs.is_supervised ? '✓ Supervised' : '';
+        const dep = attrs.is_dep_enrollment || attrs.dep_enrolled ? '✓ DEP' : '';
 
-        const fields = [
-            { label: 'Device Name', value: getDeviceName(device) },
-            { label: 'Model', value: getModel(device) },
-            { label: 'Serial Number', value: getSerial(device) },
-            { label: 'OS Version', value: getOSVersion(device) },
-            { label: 'IMEI', value: attrs.imei || '—' },
-            { label: 'MEID', value: attrs.meid || '—' },
-            { label: 'WiFi MAC', value: attrs.wifi_mac || '—' },
-            { label: 'Bluetooth MAC', value: attrs.bluetooth_mac || '—' },
-            { label: 'Battery Level', value: attrs.battery_level ? `${attrs.battery_level}%` : '—' },
-            { label: 'Capacity', value: attrs.device_capacity ? `${attrs.device_capacity} GB` : '—' },
-            { label: 'Available Space', value: attrs.available_device_capacity ? `${attrs.available_device_capacity} GB` : '—' },
-            { label: 'Last Seen', value: formatDate(attrs.last_seen_at || attrs.last_seen) },
-            { label: 'Enrollment Date', value: formatDate(attrs.enrolled_at || attrs.enrollment_date) },
-            { label: 'Phone Number', value: attrs.phone_number || '—', fullWidth: false },
-            { label: 'Device ID', value: device.id || '—' },
-            { label: 'Build Version', value: attrs.build_version || '—' },
-        ];
+        // Determine device icon based on model
+        const isIPad = model.toLowerCase().includes('ipad');
+        const isIPhone = model.toLowerCase().includes('iphone');
+        const deviceIcon = isIPad ? '📱' : isIPhone ? '📱' : '💻';
 
-        let html = '<div class="detail-grid">';
-        fields.forEach(f => {
-            const cls = f.fullWidth ? ' full-width' : '';
+        // Battery color
+        const batteryNum = parseInt(batteryRaw) || 0;
+        const batteryColor = batteryNum > 50 ? '#4ade80' : batteryNum > 20 ? '#fbbf24' : '#ef4444';
+        const batteryIcon = batteryNum > 75 ? '🔋' : batteryNum > 25 ? '🔋' : '🪫';
+
+        // Hero section
+        let html = `
+            <div style="display:flex;align-items:center;gap:16px;padding:16px 0;border-bottom:1px solid #e2e8f0;margin-bottom:16px;">
+                <div style="font-size:2.8rem;line-height:1;">${deviceIcon}</div>
+                <div style="flex:1;min-width:0;">
+                    <div style="font-size:0.8rem;color:#64748b;margin-bottom:2px;">${escapeHtml(model)}</div>
+                    <div style="font-weight:600;font-size:1.05rem;color:#1e293b;">${escapeHtml(serial)}</div>
+                    <div style="display:flex;gap:12px;margin-top:6px;flex-wrap:wrap;">
+                        ${supervised ? `<span style="font-size:0.72rem;background:#dbeafe;color:#1d4ed8;padding:2px 8px;border-radius:10px;font-weight:500;">${supervised}</span>` : ''}
+                        ${dep ? `<span style="font-size:0.72rem;background:#fce7f3;color:#be185d;padding:2px 8px;border-radius:10px;font-weight:500;">${dep}</span>` : ''}
+                        <span style="font-size:0.72rem;background:#f0fdf4;color:#15803d;padding:2px 8px;border-radius:10px;font-weight:500;">iOS ${escapeHtml(osVersion)}</span>
+                    </div>
+                </div>
+                <div style="text-align:center;min-width:60px;">
+                    <div style="font-size:1.4rem;">${batteryIcon}</div>
+                    <div style="font-size:0.85rem;font-weight:600;color:${batteryColor};">${battery}</div>
+                </div>
+            </div>
+        `;
+
+        // Storage bar
+        if (attrs.device_capacity && attrs.available_device_capacity) {
+            const usedPct = Math.round(((attrs.device_capacity - attrs.available_device_capacity) / attrs.device_capacity) * 100);
+            const barColor = usedPct > 90 ? '#ef4444' : usedPct > 70 ? '#f59e0b' : '#3b82f6';
             html += `
-                <div class="detail-item${cls}">
+                <div style="margin-bottom:16px;">
+                    <div style="display:flex;justify-content:space-between;font-size:0.75rem;color:#64748b;margin-bottom:4px;">
+                        <span>Storage</span>
+                        <span>${available} free of ${capacity}</span>
+                    </div>
+                    <div style="height:6px;background:#e2e8f0;border-radius:3px;overflow:hidden;">
+                        <div style="height:100%;width:${usedPct}%;background:${barColor};border-radius:3px;transition:width 0.3s;"></div>
+                    </div>
+                </div>
+            `;
+        }
+
+        // Detail fields — only show non-empty
+        const fields = [
+            { label: 'WiFi MAC', value: attrs.wifi_mac },
+            { label: 'Bluetooth MAC', value: attrs.bluetooth_mac },
+            { label: 'IMEI', value: attrs.imei },
+            { label: 'ICCID', value: attrs.iccid },
+            { label: 'Phone', value: attrs.phone_number },
+            { label: 'Last Seen', value: formatDate(attrs.last_seen_at || attrs.last_seen) },
+            { label: 'Enrolled', value: formatDate(attrs.enrolled_at || attrs.enrollment_date) },
+            { label: 'Build', value: attrs.build_version },
+            { label: 'Device ID', value: device.id },
+        ].filter(f => f.value && f.value !== '—' && f.value !== 'null');
+
+        html += '<div class="detail-grid">';
+        fields.forEach(f => {
+            html += `
+                <div class="detail-item">
                     <span class="detail-label">${f.label}</span>
                     <span class="detail-value">${escapeHtml(String(f.value))}</span>
                 </div>
