@@ -1238,17 +1238,24 @@
             if (!tokenResp.ok) throw new Error('Failed to get auth token');
             const { token } = await tokenResp.json();
 
-            const cobrowseUrl = `https://cobrowse.io/dashboard/devices?token=${encodeURIComponent(token)}&filter_app=Fello+Remote&navigation=none`;
+            // Filter by serial number to auto-connect to this specific device
+            const params = new URLSearchParams({
+                token,
+                filter_serial_number: serial,
+                navigation: 'none',
+            });
+            const cobrowseUrl = `https://cobrowse.io/connect?${params.toString()}`;
             dom.screenViewerIframe.src = cobrowseUrl;
-            dom.screenViewerStatus.textContent = 'Select a device to connect';
+            dom.screenViewerStatus.textContent = `Connecting to ${name}…`;
             dom.screenViewerIframe.onload = () => {
                 dom.screenViewerLoading.classList.add('hidden');
                 dom.screenViewerIframe.classList.remove('hidden');
+                dom.screenViewerStatus.textContent = `Connected to ${name}`;
             };
 
             setTimeout(() => {
                 if (!dom.screenViewerIframe.classList.contains('hidden')) return;
-                showScreenViewerError('Connection timed out. Check that Cobrowse.io is configured.');
+                showScreenViewerError('Connection timed out. The device may not have Fello Connect running.');
             }, 20000);
 
         } catch (err) {
