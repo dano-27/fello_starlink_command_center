@@ -1234,23 +1234,27 @@
         }
 
         try {
-            const tokenResp = await fetch('/api/cobrowse/token', { method: 'POST' });
-            if (!tokenResp.ok) throw new Error('Failed to get auth token');
-            const { token } = await tokenResp.json();
-
-            // Filter by serial number to auto-connect to this specific device
-            const params = new URLSearchParams({
-                token,
-                filter_serial_number: serial,
-                navigation: 'none',
+            // Use server-side connect which finds the right device, cleans up stale duplicates,
+            // and returns a direct connect URL
+            const connectResp = await fetch('/api/cobrowse/connect', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ serial, deviceName: name }),
             });
-            const cobrowseUrl = `https://cobrowse.io/connect?${params.toString()}`;
-            dom.screenViewerIframe.src = cobrowseUrl;
-            dom.screenViewerStatus.textContent = `Connecting to ${name}…`;
+            const connectData = await connectResp.json();
+
+            if (connectData.error) {
+                showScreenViewerError(connectData.error);
+                return;
+            }
+
+            dom.screenViewerIframe.src = connectData.connectUrl;
+            dom.screenViewerStatus.textContent = `Connecting to ${connectData.deviceName || name}…`;
             dom.screenViewerIframe.onload = () => {
                 dom.screenViewerLoading.classList.add('hidden');
                 dom.screenViewerIframe.classList.remove('hidden');
-                dom.screenViewerStatus.textContent = `Connected to ${name}`;
+                dom.screenViewerStatus.textContent = `Connected to ${connectData.deviceName || name}`;
             };
 
             setTimeout(() => {
