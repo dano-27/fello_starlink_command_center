@@ -3652,6 +3652,14 @@ app.post('/api/simplemdm/webhook', async (req, res) => {
               console.error(`[WEBHOOK]   ⚠ Rename failed: ${renameErr.message}`);
             }
           }
+
+          // Push apps to force immediate install (apps default to "Manual")
+          try {
+            await smdmRequest(rawKey, `/assignment_groups/${groupId}/push_apps`, 'POST');
+            console.log(`[WEBHOOK]   📲 Apps pushed to group "${groupName}"`);
+          } catch (pushErr) {
+            console.error(`[WEBHOOK]   ⚠ Push apps failed: ${pushErr.message}`);
+          }
         } else {
           console.error(`[WEBHOOK] ✗ Failed to assign ${serial} to group ${groupId}: ${assignResp.status}`);
         }
@@ -3660,7 +3668,23 @@ app.post('/api/simplemdm/webhook', async (req, res) => {
         delete pendingEnrollments[serial];
         savePendingEnrollments();
       } else {
-        console.log(`[WEBHOOK] No pending assignment for ${serial}`);
+        // No pending assignment — but still push apps for all groups the device is in
+        console.log(`[WEBHOOK] No pending assignment for ${serial}, pushing apps for existing groups...`);
+        try {
+          const deviceDetail = await smdmRequest(rawKey, `/devices/${deviceId}`);
+          const groups = deviceDetail.data?.relationships?.groups?.data || [];
+          const auth = 'Basic ' + Buffer.from(rawKey + ':').toString('base64');
+          for (const g of groups) {
+            if (g.group_type === 'static') {
+              try {
+                await smdmRequest(rawKey, `/assignment_groups/${g.id}/push_apps`, 'POST');
+                console.log(`[WEBHOOK]   📲 Apps pushed for group ${g.id}`);
+              } catch (_) {}
+            }
+          }
+        } catch (pushErr) {
+          console.error(`[WEBHOOK]   ⚠ Could not push apps: ${pushErr.message}`);
+        }
       }
     } catch (err) {
       console.error(`[WEBHOOK] Error processing enrolled device ${deviceId}:`, err.message);
