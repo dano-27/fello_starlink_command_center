@@ -44,34 +44,41 @@
                 <!-- Device details populated by JS -->
             </div>
             <div class="modal-footer">
-                <div class="detail-section" id="device-map-section" style="margin-top:0;">
-                    <h4 style="margin-bottom:8px;color:#ccd6f6;font-size:0.85rem;text-transform:uppercase;letter-spacing:0.5px;">📍 Location</h4>
-                    <div id="device-map" style="width:100%;height:220px;border-radius:10px;overflow:hidden;"></div>
-                    <p id="device-map-empty" class="hidden" style="text-align:center;color:#8892b0;padding:16px;font-size:0.85rem;">
+                <!-- Location Section -->
+                <div class="device-location-card" id="device-map-section">
+                    <div class="location-header">
+                        <span class="location-title">📍 Location</span>
+                        <div class="track-controls" id="track-controls">
+                            <input type="date" id="track-from" class="track-date-input">
+                            <span class="track-separator">→</span>
+                            <input type="date" id="track-to" class="track-date-input">
+                            <button class="btn btn-sm btn-track" id="show-track-btn">Show Track</button>
+                            <button class="btn btn-sm btn-track-clear hidden" id="clear-track-btn">✕</button>
+                        </div>
+                    </div>
+                    <div id="device-map" class="device-map"></div>
+                    <p id="device-map-empty" class="device-map-empty hidden">
                         No location data available for this device.
                     </p>
-                    <div id="track-controls" style="margin-top:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                        <label style="color:#8892b0;font-size:0.8rem;">From:</label>
-                        <input type="date" id="track-from" style="background:#1a1f36;color:#ccd6f6;border:1px solid #2a3050;border-radius:6px;padding:4px 8px;font-size:0.8rem;">
-                        <label style="color:#8892b0;font-size:0.8rem;">To:</label>
-                        <input type="date" id="track-to" style="background:#1a1f36;color:#ccd6f6;border:1px solid #2a3050;border-radius:6px;padding:4px 8px;font-size:0.8rem;">
-                        <button class="btn btn-outline btn-sm" id="show-track-btn">📍 Show Track</button>
-                        <button class="btn btn-outline btn-sm hidden" id="clear-track-btn" style="color:#e74c3c;border-color:#e74c3c;">✕ Clear</button>
-                    </div>
                 </div>
-                <div class="modal-actions">
-                    <button class="btn btn-action btn-screen" id="action-view-screen">
-                        <span class="action-icon">📺</span> View Screen
-                    </button>
-                    <button class="btn btn-action btn-lock" id="action-lock">
-                        <span class="action-icon">🔒</span> Lock Device
-                    </button>
-                    <button class="btn btn-action btn-restart" id="action-restart">
-                        <span class="action-icon">🔄</span> Restart
-                    </button>
-                    <button class="btn btn-action btn-shutdown" id="action-shutdown">
-                        <span class="action-icon">⏻</span> Shutdown
-                    </button>
+
+                <!-- Action Buttons -->
+                <div class="modal-actions-section">
+                    <span class="actions-label">Actions</span>
+                    <div class="modal-actions">
+                        <button class="btn btn-action btn-screen" id="action-view-screen">
+                            📺 View Screen
+                        </button>
+                        <button class="btn btn-action btn-lock" id="action-lock">
+                            🔒 Lock
+                        </button>
+                        <button class="btn btn-action btn-restart" id="action-restart">
+                            🔄 Restart
+                        </button>
+                        <button class="btn btn-action btn-shutdown" id="action-shutdown">
+                            ⏻ Shutdown
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
