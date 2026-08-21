@@ -370,7 +370,8 @@ const AUTH_WHITELIST = [
   '/shared-header.css', '/shared-header.js', '/fello-logo.png',
   '/api/dcr/submit', '/api/dcr',
   '/api/automation/provision',
-  '/api/simplemdm/webhook'
+  '/api/simplemdm/webhook',
+  '/api/location/report'
 ];
 
 app.use((req, res, next) => {
