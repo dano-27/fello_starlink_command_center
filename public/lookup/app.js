@@ -320,10 +320,11 @@
           '</div>' +
         '</div>' +
         '<div class="cc-order-actions">' +
-          '<button class="cc-pulse-btn" onclick="window.open(\'/pulse?order=' + esc(crm.flyOrderId) + '\', \'_blank\')" title="Open Fello Pulse dashboard">📡 Fello Pulse</button>' +
+          '<button class="cc-pulse-btn" onclick="window.generateShareLink(\'' + esc(crm.flyOrderId) + '\', \'' + esc(crm.customerName || '') + '\', \'' + esc(crm.eventName || '') + '\', \'' + esc(crm.startDate || '') + '\', \'' + esc(crm.endDate || '') + '\', ' + (crm.totalGbAmount || 0) + ')" title="Generate Fello Pulse share link">📡 Fello Pulse</button>' +
           '<button class="cc-order-expand" onclick="var d=document.getElementById(\'cc-order-details\');d.style.display=d.style.display===\'none\'?\'block\':\'none\';this.textContent=d.style.display===\'none\'?\'▼ Details\':\'▲ Hide\'" title="Show full order details">▼ Details</button>' +
         '</div>' +
       '</div>' +
+      '<div id="share-result-' + esc(crm.flyOrderId) + '" style="display:none;border-top:1px solid var(--border);padding:10px 16px;"></div>' +
       '<div id="cc-order-details" style="display:none;border-top:1px solid var(--border);padding:16px 20px;">' +
         renderCrmOrderSection(crm).replace(/^<div class="section"[^>]*>/, '').replace(/<\/div>$/, '') +
       '</div>' +
@@ -991,6 +992,15 @@
         console.log('[SiteCheck] Auto-running for order address:', window._orderShippingAddress);
         window.runSiteCheck();
       }, 500);
+    }
+
+    // Auto-generate Fello Pulse share link for orders
+    if (data.crmOrder && data.crmOrder.flyOrderId) {
+      const crm = data.crmOrder;
+      setTimeout(() => {
+        console.log('[Pulse] Auto-generating share link for order:', crm.flyOrderId);
+        window.generateShareLink(crm.flyOrderId, crm.customerName || '', crm.eventName || '', crm.startDate || '', crm.endDate || '', crm.totalGbAmount || 0);
+      }, 1000);
     }
   }
 
@@ -2552,6 +2562,7 @@ window.generateShareLink = async function(orderId, customerName, eventName, star
   var resultDiv = document.getElementById('share-result-' + orderId);
   if (!resultDiv) return;
   
+  resultDiv.style.display = 'block';
   resultDiv.innerHTML = '<span style="font-size:12px;color:var(--muted);">Generating Fello Pulse link...</span>';
   
   // Extract session token — try cookie first, then localStorage backup
