@@ -5358,6 +5358,40 @@ app.get('/api/simplemdm/devices/:deviceId/coverage', async (req, res) => {
                 }
               }
             }
+
+            // Fallback 2b: Query IMS NextGen for order shipping address
+            if (!lat && orderNum) {
+              try {
+                const imsToken = process.env.IMS_TOKEN || '2423|rydhEvIv6ZsEABia67jH5ffhMUJLthtu3YrfySpx93f5cc0e';
+                const imsBase = process.env.IMS_BASE_URL || 'https://ims-v4-migration-prod-876702752852.us-east4.run.app';
+                const imsResp = await fetch(`${imsBase}/api/nextgen/v1/orders/${orderNum}`, {
+                  headers: { 'Authorization': `Bearer ${imsToken}` }
+                });
+                if (imsResp.ok) {
+                  const imsOrder = await imsResp.json();
+                  const addr1 = imsOrder.ship_address1 || '';
+                  const city = imsOrder.ship_city || '';
+                  const state = imsOrder.ship_state || '';
+                  const zip = imsOrder.ship_zip || '';
+                  const fullAddress = [addr1, city, state, zip].filter(Boolean).join(', ');
+                  if (fullAddress.length > 5) {
+                    // Geocode the address
+                    const geoRes = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(fullAddress)}&format=json&limit=1`, {
+                      headers: { 'User-Agent': 'FelloCommandCenter/1.0' }
+                    });
+                    const geoData = await geoRes.json();
+                    if (geoData.length > 0) {
+                      lat = parseFloat(geoData[0].lat);
+                      lon = parseFloat(geoData[0].lon);
+                      locationSource = `order address (${fullAddress})`;
+                      console.log(`[Coverage] Geocoded ${orderNum}: ${fullAddress} → ${lat},${lon}`);
+                    }
+                  }
+                }
+              } catch (imsErr) {
+                console.warn(`[Coverage] IMS lookup failed for ${orderNum}:`, imsErr.message);
+              }
+            }
           }
           if (lat) break;
         } catch (_) {}
