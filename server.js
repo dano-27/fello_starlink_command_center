@@ -7128,6 +7128,7 @@ app.get('/api/webbing/branches/:branchId/usage', async (req, res) => {
         
         return {
           SSID: device.SSID, Serial: device.Serial, IMEI: device.IMEI,
+          ICCID: device.ICCID,
           ProductName: device.ProductName, TotalUsage: usageMB,
           TotalUsageDays: usageDays, ServiceDeviceID: device.ServiceDeviceID,
           StatusName: device.StatusName
@@ -7135,6 +7136,7 @@ app.get('/api/webbing/branches/:branchId/usage', async (req, res) => {
       } catch (err) {
         return {
           SSID: device.SSID, Serial: device.Serial, IMEI: device.IMEI,
+          ICCID: device.ICCID,
           ProductName: device.ProductName, TotalUsage: 0,
           TotalUsageDays: 0, ServiceDeviceID: device.ServiceDeviceID,
           StatusName: device.StatusName

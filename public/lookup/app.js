@@ -1486,8 +1486,9 @@
         row.usageGB = null;
         row.usageDays = null;
         const match = results.find(r => 
-          (r.Serial && (r.Serial === row.simSerial || r.SSID === row.simSerial)) ||
-          (r.IMEI && r.IMEI === row.imei)
+          (r.Serial && row.simSerial && (r.Serial === row.simSerial || r.SSID === row.simSerial)) ||
+          (r.IMEI && row.imei && r.IMEI === row.imei) ||
+          (r.ICCID && row.iccid && r.ICCID.replace(/\s/g,'') === row.iccid.replace(/\s/g,''))
         );
         if (match) {
           row.usageGB = (match.TotalUsage / 1024).toFixed(3);
