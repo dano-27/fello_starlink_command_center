@@ -5648,10 +5648,11 @@ try {
   console.error('[Location] Error loading history:', err.message);
 }
 
-// Cobrowse device map cache (UUID → hardware serial)
-let cobrowseDeviceMap = {}; // { cobrowseDeviceId: { serial, name, lastUpdated } }
+// Cobrowse device map cache (for UUID → hardware serial mapping)
+let cobrowseDeviceMap = []; // Full device list from Cobrowse
 let cobrowseMapLastRefresh = 0;
 const COBROWSE_MAP_TTL = 5 * 60 * 1000; // refresh every 5 minutes
+const locationReportThrottle = {}; // serial → last report timestamp
 
 async function refreshCobrowseDeviceMap() {
   if (Date.now() - cobrowseMapLastRefresh < COBROWSE_MAP_TTL) return;
@@ -5663,18 +5664,16 @@ async function refreshCobrowseDeviceMap() {
     });
     if (!resp.ok) return;
     const devices = await resp.json();
-    const newMap = {};
-    for (const d of devices) {
-      const cd = d.custom_data || {};
-      if (cd.serial_number) {
-        // Index by Cobrowse device_id AND by device_name
-        if (d.id) newMap[d.id] = { serial: cd.serial_number, name: cd.device_name || '' };
-        if (cd.device_name) newMap[cd.device_name] = { serial: cd.serial_number, name: cd.device_name };
-      }
-    }
-    cobrowseDeviceMap = newMap;
+    cobrowseDeviceMap = devices.filter(d => d.custom_data?.serial_number).map(d => ({
+      cobrowseId: d.id,
+      serial: d.custom_data.serial_number,
+      name: d.custom_data.device_name || '',
+      online: d.online || false,
+      connectable: d.connectable || false,
+      lastActive: d.last_active || '',
+    }));
     cobrowseMapLastRefresh = Date.now();
-    console.log(`[Location] Refreshed Cobrowse device map: ${Object.keys(newMap).length} entries`);
+    console.log(`[Location] Refreshed Cobrowse map: ${cobrowseDeviceMap.length} devices with serials`);
   } catch (err) {
     console.warn('[Location] Cobrowse map refresh failed:', err.message);
   }
@@ -5684,6 +5683,15 @@ async function refreshCobrowseDeviceMap() {
 app.post('/api/location/report', async (req, res) => {
   const { deviceId, serial, lat, lng, deviceName } = req.body;
   if (!lat || !lng) return res.status(400).json({ error: 'lat and lng required' });
+
+  // Rate limit: max 1 report per 30 seconds per device
+  const throttleKey = serial || deviceId || 'unknown';
+  const now = Date.now();
+  if (locationReportThrottle[throttleKey] && (now - locationReportThrottle[throttleKey]) < 30000) {
+    return res.json({ ok: true, throttled: true });
+  }
+  locationReportThrottle[throttleKey] = now;
+
   const locData = {
     lat: parseFloat(lat),
     lng: parseFloat(lng),
@@ -5696,32 +5704,35 @@ app.post('/api/location/report', async (req, res) => {
   // Update latest location in memory
   if (serial) deviceLocations[serial] = locData;
   if (deviceId) deviceLocations[deviceId] = locData;
-  if (deviceName) deviceLocations[deviceName] = locData;
+  if (deviceName && !['iPad', 'iPhone', 'iPod'].includes(deviceName)) {
+    deviceLocations[deviceName] = locData;
+  }
 
   // Cross-reference Cobrowse to find hardware serial from UUID
-  // The app sends identifierForVendor as serial, but we need the hardware serial
   const isUUID = serial && /^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/i.test(serial);
   if (isUUID) {
     try {
       await refreshCobrowseDeviceMap();
-      // Try to match by device name (e.g. "iPad" → Cobrowse "iPad - GG7FV11EQ1KV")
-      // Or match by Cobrowse device_id
       let hwSerial = null;
 
-      // Check if any Cobrowse entry matches
-      const cbEntry = cobrowseDeviceMap[serial] || cobrowseDeviceMap[deviceId];
-      if (cbEntry) {
-        hwSerial = cbEntry.serial;
+      // Strategy 1: If only ONE Cobrowse device is online/connectable, use that
+      const onlineDevices = cobrowseDeviceMap.filter(d => d.connectable || d.online);
+      if (onlineDevices.length === 1) {
+        hwSerial = onlineDevices[0].serial;
       }
 
-      // Also try matching by finding Cobrowse device with same device_name prefix
+      // Strategy 2: Match by specific (non-generic) device name
+      if (!hwSerial && deviceName && !['iPad', 'iPhone', 'iPod'].includes(deviceName)) {
+        const nameMatch = cobrowseDeviceMap.find(d => 
+          d.name === deviceName || d.name.startsWith(deviceName + ' ')
+        );
+        if (nameMatch) hwSerial = nameMatch.serial;
+      }
+
+      // Strategy 3: If device name contains serial info (e.g. "SH6120 (01)")
       if (!hwSerial && deviceName) {
-        for (const [key, val] of Object.entries(cobrowseDeviceMap)) {
-          if (val.name && (val.name.includes(deviceName) || deviceName.includes(val.name))) {
-            hwSerial = val.serial;
-            break;
-          }
-        }
+        const exactMatch = cobrowseDeviceMap.find(d => d.name === deviceName);
+        if (exactMatch) hwSerial = exactMatch.serial;
       }
 
       if (hwSerial) {
@@ -5730,7 +5741,6 @@ app.post('/api/location/report', async (req, res) => {
         console.log(`[Location] Mapped UUID ${serial.substring(0,8)}... → hardware serial ${hwSerial} via Cobrowse`);
       }
     } catch (e) {
-      // Non-critical, just log
       console.warn('[Location] Cobrowse cross-ref failed:', e.message);
     }
   }
