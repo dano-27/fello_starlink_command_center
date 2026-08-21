@@ -5268,8 +5268,10 @@ app.get('/api/simplemdm/devices/:deviceId/enrich', async (req, res) => {
               product: wbMatch.ProductName || '',
               status: wbMatch.StatusName || '',
               branch: wbMatch.BranchName || '',
+              branchId: wbMatch.BranchID || null,
               msisdn: wbMatch.MSISDN || '',
               serial: wbMatch.Serial || '',
+              serviceDeviceId: wbMatch.ServiceDeviceID || null,
               dataUsage: wbMatch.DataUsage || null,
             };
             break;
@@ -5306,6 +5308,146 @@ app.get('/api/webbing/lookup/iccid/:iccid', (req, res) => {
     });
   } else {
     res.json({ matched: false });
+  }
+});
+
+// ── Device Coverage Check — uses GPS or fallback order address ──
+app.get('/api/simplemdm/devices/:deviceId/coverage', async (req, res) => {
+  const accountId = req.query.account || 'fello';
+  const rawKey = getMdmAccountKey(accountId);
+  const { deviceId } = req.params;
+
+  try {
+    // Get device info from SimpleMDM
+    const deviceData = await smdmRequest(rawKey, `/devices/${deviceId}`);
+    const attrs = deviceData.data?.attributes || {};
+    const serial = attrs.serial_number || '';
+    const currentCarrier = (attrs.service_subscriptions || [])[0]?.current_carrier_network || '';
+
+    // Try to get GPS from location history
+    let lat = null, lon = null, locationSource = null;
+    const locBySerial = deviceLocations[serial];
+    if (locBySerial && locBySerial.lat && locBySerial.lng) {
+      lat = locBySerial.lat;
+      lon = locBySerial.lng;
+      locationSource = 'gps';
+    }
+
+    // Fallback: use order/group address from site checks
+    if (!lat) {
+      const groups = deviceData.data?.relationships?.groups?.data || [];
+      const siteChecks = loadSiteChecks();
+      
+      // Try group name → branchId matching
+      for (const g of groups) {
+        try {
+          const groupData = await smdmRequest(rawKey, `/assignment_groups/${g.id}`);
+          const groupName = groupData.data?.attributes?.name || '';
+          // Extract order number from group name (e.g. "SH6120 - GSWS Columbus" → "SH6120")
+          const orderNum = groupName.split(/\s*[-–]\s*/)[0]?.trim();
+          if (orderNum) {
+            // Check site checks by branchId or order number
+            for (const [branchId, check] of Object.entries(siteChecks)) {
+              if (check.latitude && check.longitude) {
+                const checkAddr = (check.inputAddress || '').toLowerCase();
+                if (checkAddr.includes(orderNum.toLowerCase()) || branchId === orderNum) {
+                  lat = check.latitude;
+                  lon = check.longitude;
+                  locationSource = `site-check (${check.inputAddress})`;
+                  break;
+                }
+              }
+            }
+          }
+          if (lat) break;
+        } catch (_) {}
+      }
+    }
+
+    if (!lat || !lon) {
+      return res.json({ available: false, reason: 'No GPS data or order address found' });
+    }
+
+    // Call CoverageMap API
+    const cmKey = process.env.COVERAGEMAP_KEY || 'e3f45af8095f4148998998511ad55754';
+    const cmRes = await fetch(`https://enterprise.coveragemap.com/api/v1/signal-strength/lookup?latitude=${lat}&longitude=${lon}`, {
+      headers: { 'Authorization': `Bearer ${cmKey}`, 'Accept': 'application/json' }
+    });
+    const cmData = await cmRes.json();
+
+    const carrierPlanMap = { 'T-Mobile': 11126, 'AT&T': 11125, 'Verizon': 11127 };
+    const allowedCarriers = ['T-Mobile', 'AT&T', 'Verizon'];
+    const coverage = {};
+
+    if (cmData.status === 200 && Array.isArray(cmData.data)) {
+      for (const entry of cmData.data) {
+        const carrier = entry.provider?.name;
+        const tech = entry.technology?.code;
+        if (!carrier || !tech || !allowedCarriers.includes(carrier)) continue;
+        if (!coverage[carrier]) coverage[carrier] = {};
+        coverage[carrier][tech] = {
+          signal: entry.signal?.signal,
+          quarterMile: entry.signal?.quarterMile,
+        };
+      }
+    }
+
+    // Build carriers array
+    let bestSignal = -999, recommended = null;
+    const carriers = Object.entries(coverage).map(([name, techs]) => {
+      const sig = techs['5G']?.signal || techs['4G']?.signal || -999;
+      if (sig > bestSignal && carrierPlanMap[name]) {
+        bestSignal = sig;
+        recommended = name;
+      }
+      return {
+        name,
+        signalDbm: sig,
+        has5G: !!techs['5G'],
+        has4G: !!techs['4G'],
+        tech5G: techs['5G'] || null,
+        tech4G: techs['4G'] || null,
+        planId: carrierPlanMap[name] || null,
+      };
+    }).sort((a, b) => b.signalDbm - a.signalDbm);
+
+    // Mark recommended
+    carriers.forEach(c => { c.recommended = c.name === recommended; });
+
+    const currentIsOptimal = currentCarrier === recommended;
+
+    console.log(`[Coverage] Device ${serial}: ${locationSource} (${lat},${lon}) → recommended=${recommended} (${bestSignal}dBm), current=${currentCarrier}, optimal=${currentIsOptimal}`);
+
+    res.json({
+      available: true,
+      locationSource,
+      latitude: lat,
+      longitude: lon,
+      currentCarrier,
+      recommended,
+      currentIsOptimal,
+      carriers,
+    });
+  } catch (err) {
+    console.error(`[Coverage] Error for device ${deviceId}:`, err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Switch Webbing SIM Plan ──
+app.post('/api/webbing/devices/:serviceDeviceId/switch-plan', async (req, res) => {
+  const { serviceDeviceId } = req.params;
+  const { planId, carrierName } = req.body;
+  if (!planId) return res.status(400).json({ error: 'Missing planId' });
+
+  try {
+    const client = getWebbingClient();
+    await client.changePlan(parseInt(serviceDeviceId), parseInt(planId));
+    console.log(`[Webbing] Switched device ${serviceDeviceId} to plan ${planId} (${carrierName})`);
+    res.json({ success: true, carrierName, planId });
+  } catch (err) {
+    console.error(`[Webbing] Switch plan failed for ${serviceDeviceId}:`, err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 

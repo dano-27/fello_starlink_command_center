@@ -1206,32 +1206,42 @@
         const enrichSection = document.getElementById('device-enrich-section');
         if (!enrichSection) return;
 
+        // Store webbing data for coverage switch
+        let enrichData = null;
+
         try {
             const resp = await fetch(`/api/simplemdm/devices/${deviceId}/enrich`, { credentials: 'same-origin' });
             if (!resp.ok) throw new Error('Failed to load');
-            const data = await resp.json();
+            enrichData = await resp.json();
 
             let html = '';
 
             // ── Webbing SIM match ──
-            if (data.webbing?.matched) {
+            if (enrichData.webbing?.matched) {
                 html += `<div class="device-section-card" style="background:#eff6ff;border-color:#bfdbfe;">
                     <div class="device-section-title">📡 SIM Plan (Webbing)</div>
                     <div class="detail-grid">
-                        <div class="detail-item"><span class="detail-label">Plan</span><span class="detail-value">${escapeHtml(data.webbing.product)}</span></div>
-                        <div class="detail-item"><span class="detail-label">Status</span><span class="detail-value">${escapeHtml(data.webbing.status)}</span></div>
-                        ${data.webbing.msisdn ? `<div class="detail-item"><span class="detail-label">MSISDN</span><span class="detail-value">${escapeHtml(data.webbing.msisdn)}</span></div>` : ''}
-                        ${data.webbing.branch ? `<div class="detail-item"><span class="detail-label">Branch</span><span class="detail-value">${escapeHtml(data.webbing.branch)}</span></div>` : ''}
+                        <div class="detail-item"><span class="detail-label">Plan</span><span class="detail-value">${escapeHtml(enrichData.webbing.product)}</span></div>
+                        <div class="detail-item"><span class="detail-label">Status</span><span class="detail-value">${escapeHtml(enrichData.webbing.status)}</span></div>
+                        ${enrichData.webbing.msisdn ? `<div class="detail-item"><span class="detail-label">MSISDN</span><span class="detail-value">${escapeHtml(enrichData.webbing.msisdn)}</span></div>` : ''}
+                        ${enrichData.webbing.branch ? `<div class="detail-item"><span class="detail-label">Branch</span><span class="detail-value">${escapeHtml(enrichData.webbing.branch)}</span></div>` : ''}
                     </div>
                 </div>`;
             }
 
+            // ── Coverage placeholder ──
+            html += `<div id="device-coverage-section">
+                <div class="device-section-card" style="border-style:dashed;">
+                    <div style="text-align:center;padding:8px;color:#94a3b8;font-size:0.8rem;">📶 Checking carrier coverage…</div>
+                </div>
+            </div>`;
+
             // ── Managed Apps ──
-            if (data.managedApps && data.managedApps.length > 0) {
+            if (enrichData.managedApps && enrichData.managedApps.length > 0) {
                 html += `<div class="device-section-card">
-                    <div class="device-section-title">📦 Managed Apps (${data.managedAppCount})</div>
+                    <div class="device-section-title">📦 Managed Apps (${enrichData.managedAppCount})</div>
                     <div class="device-apps-list">`;
-                data.managedApps.forEach(app => {
+                enrichData.managedApps.forEach(app => {
                     html += `<div class="device-app-item">
                         <span class="device-app-name">${escapeHtml(app.name)}</span>
                         <span class="device-app-version">${escapeHtml(app.version || '')}</span>
@@ -1249,7 +1259,115 @@
         } catch (err) {
             enrichSection.innerHTML = `<div style="color:#94a3b8;font-size:0.8rem;text-align:center;padding:8px;">Could not load enrichment data</div>`;
         }
+
+        // ── Fetch coverage async (separate call) ──
+        fetchDeviceCoverage(deviceId, enrichData);
     }
+
+    async function fetchDeviceCoverage(deviceId, enrichData) {
+        const coverageSection = document.getElementById('device-coverage-section');
+        if (!coverageSection) return;
+
+        try {
+            const resp = await fetch(`/api/simplemdm/devices/${deviceId}/coverage`, { credentials: 'same-origin' });
+            if (!resp.ok) throw new Error('Coverage check failed');
+            const cov = await resp.json();
+
+            if (!cov.available) {
+                coverageSection.innerHTML = `<div class="device-section-card" style="border-style:dashed;">
+                    <div class="device-section-title">📶 Carrier Coverage</div>
+                    <div style="color:#94a3b8;font-size:0.85rem;padding:4px 0;">No location data available to check coverage</div>
+                </div>`;
+                return;
+            }
+
+            let html = `<div class="device-section-card">
+                <div class="device-section-title">📶 Carrier Coverage</div>
+                <div style="font-size:0.72rem;color:#94a3b8;margin-bottom:10px;">
+                    Source: ${cov.locationSource === 'gps' ? '📍 Device GPS' : '📋 ' + escapeHtml(cov.locationSource || 'Order address')}
+                </div>
+                <div class="coverage-carriers">`;
+
+            cov.carriers.forEach(c => {
+                // Signal bar width (scale: -120 dBm = 0%, -50 dBm = 100%)
+                const pct = Math.max(0, Math.min(100, ((c.signalDbm + 120) / 70) * 100));
+                const barColor = c.recommended ? '#16a34a' : '#3b82f6';
+                const techLabel = c.has5G ? '5G' : c.has4G ? '4G' : '—';
+                const techBadgeColor = c.has5G ? '#7c3aed' : '#64748b';
+                const isCurrent = cov.currentCarrier === c.name;
+
+                html += `<div class="coverage-carrier-row ${c.recommended ? 'coverage-recommended' : ''}">
+                    <div class="coverage-carrier-name">
+                        ${escapeHtml(c.name)}
+                        ${c.recommended ? '<span class="coverage-star">★</span>' : ''}
+                        ${isCurrent ? '<span class="coverage-current-tag">current</span>' : ''}
+                    </div>
+                    <div class="coverage-bar-wrap">
+                        <div class="coverage-bar">
+                            <div class="coverage-bar-fill" style="width:${pct}%;background:${barColor};"></div>
+                        </div>
+                    </div>
+                    <div class="coverage-signal">${c.signalDbm} dBm</div>
+                    <span class="coverage-tech" style="background:${techBadgeColor};">${techLabel}</span>
+                </div>`;
+            });
+
+            html += `</div>`;
+
+            // Recommendation + switch button
+            if (cov.recommended && !cov.currentIsOptimal && enrichData?.webbing?.serviceDeviceId) {
+                const recCarrier = cov.carriers.find(c => c.recommended);
+                html += `<div class="coverage-recommendation">
+                    <span>★ <strong>${escapeHtml(cov.recommended)}</strong> has better signal (${recCarrier?.signalDbm || '?'} dBm${recCarrier?.has5G ? ', 5G' : ''})</span>
+                    <button class="btn coverage-switch-btn" onclick="window._switchCarrier('${enrichData.webbing.serviceDeviceId}', ${recCarrier?.planId}, '${escapeHtml(cov.recommended)}', '${escapeHtml(cov.currentCarrier)}')">
+                        ⚡ Switch to ${escapeHtml(cov.recommended)}
+                    </button>
+                </div>`;
+            } else if (cov.currentIsOptimal) {
+                html += `<div class="coverage-optimal">
+                    ✓ <strong>${escapeHtml(cov.currentCarrier)}</strong> is the best carrier at this location
+                </div>`;
+            }
+
+            html += `</div>`;
+            coverageSection.innerHTML = html;
+        } catch (err) {
+            coverageSection.innerHTML = `<div class="device-section-card" style="border-style:dashed;">
+                <div class="device-section-title">📶 Carrier Coverage</div>
+                <div style="color:#94a3b8;font-size:0.85rem;padding:4px 0;">Could not check coverage</div>
+            </div>`;
+        }
+    }
+
+    // Global handler for carrier switch (needs to be accessible from onclick)
+    window._switchCarrier = async function(serviceDeviceId, planId, newCarrier, currentCarrier) {
+        const confirmed = await showConfirm(
+            `⚡ Switch Carrier`,
+            `Switch this device's SIM plan from <strong>${currentCarrier}</strong> to <strong>${newCarrier}</strong>?\n\nThis will change the Webbing SIM plan immediately. The device may take a few minutes to reconnect.`,
+            '📶'
+        );
+        if (!confirmed) return;
+
+        const btn = document.querySelector('.coverage-switch-btn');
+        if (btn) { btn.disabled = true; btn.textContent = 'Switching…'; }
+
+        try {
+            const resp = await fetch(`/api/webbing/devices/${serviceDeviceId}/switch-plan`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ planId, carrierName: newCarrier }),
+            });
+            const result = await resp.json();
+            if (!resp.ok) throw new Error(result.error || 'Switch failed');
+
+            showToast(`✓ Switched to ${newCarrier}. Device will reconnect shortly.`, 'success');
+            if (btn) { btn.textContent = `✓ Switched to ${newCarrier}`; btn.style.background = '#16a34a'; }
+        } catch (err) {
+            showToast(`Failed to switch carrier: ${err.message}`, 'error');
+            if (btn) { btn.disabled = false; btn.textContent = `⚡ Switch to ${newCarrier}`; }
+        }
+    };
 
     function formatDate(dateStr) {
         if (!dateStr) return '—';
