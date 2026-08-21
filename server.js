@@ -8028,7 +8028,7 @@ app.get('/api/lookup', async (req, res) => {
             simStatus: matchedSim.status || matchedSim.StatusName,
             simIp: matchedSim.ip || matchedSim.IP || ''
           });
-          ipad.matchedSimSerial = matchedSim.serial;
+          ipad.matchedSimSerial = matchedSim.serial || matchedSim.Serial || matchedSim.SSID || '';
           matchedSim.matchedIpadName = ipad.name;
           matchedSim.matchedIpadSerial = ipad.serial;
           ipad.abmLookupStatus = 'iccid-matched';
