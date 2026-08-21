@@ -5333,7 +5333,38 @@ app.get('/api/simplemdm/devices/:deviceId/coverage', async (req, res) => {
       locationSource = 'gps';
     }
 
-    // Fallback: use order/group address from site checks
+    // Fallback 2: Webbing cell tower triangulation via ICCID match
+    if (!lat) {
+      try {
+        const subs = attrs.service_subscriptions || [];
+        for (const sub of subs) {
+          const iccid = String(sub.iccid || '').replace(/\s/g, '');
+          if (iccid && webbingDeviceCache.length > 0) {
+            const wbMatch = webbingDeviceCache.find(d =>
+              String(d.ICCID || '').replace(/\s/g, '') === iccid
+            );
+            if (wbMatch && wbMatch.ServiceDeviceID) {
+              const client = getWebbingClient();
+              const locResult = await client.getLocation(wbMatch.ServiceDeviceID);
+              const locInfo = locResult?.LocationInfo || locResult;
+              const cellLat = parseFloat(locInfo?.Latitude || locInfo?.lat || 0);
+              const cellLon = parseFloat(locInfo?.Longitude || locInfo?.lng || locInfo?.lon || 0);
+              if (cellLat && cellLon && cellLat !== 0 && cellLon !== 0) {
+                lat = cellLat;
+                lon = cellLon;
+                locationSource = 'cell tower (Webbing)';
+                console.log(`[Coverage] Cell tower location for ${serial}: ${lat},${lon}`);
+                break;
+              }
+            }
+          }
+        }
+      } catch (cellErr) {
+        console.warn(`[Coverage] Webbing cell tower lookup failed:`, cellErr.message);
+      }
+    }
+
+    // Fallback 3: use order/group address from site checks or IMS
     if (!lat) {
       const groups = deviceData.data?.relationships?.groups?.data || [];
       const siteChecks = loadSiteChecks();
