@@ -722,6 +722,7 @@ ${(mdm.length > 0 || web.length > 0) ? `
         os: ipad.osVersion || ipad.os_version || '',
         battery: ipad.batteryLevel || ipad.battery_level || null,
         capacity: ipad.capacity || '',
+        availableCapacity: ipad.availableCapacity || '',
         lastSeenAt: ipad.lastSeenAt ? new Date(ipad.lastSeenAt).toLocaleString() : '',
         enrolledAt: ipad.enrolledAt ? new Date(ipad.enrolledAt).toLocaleDateString() : '',
         phoneNumber: ipad.phoneNumber || '',
@@ -757,6 +758,7 @@ ${(mdm.length > 0 || web.length > 0) ? `
         os: d.osVersion || d.os_version || '',
         battery: d.batteryLevel || d.battery_level || null,
         capacity: d.capacity || '',
+        availableCapacity: d.availableCapacity || '',
         lastSeenAt: d.lastSeenAt ? new Date(d.lastSeenAt).toLocaleString() : '',
         enrolledAt: d.enrolledAt ? new Date(d.enrolledAt).toLocaleDateString() : '',
         phoneNumber: d.phoneNumber || '',
@@ -806,7 +808,7 @@ ${(mdm.length > 0 || web.length > 0) ? `
         simStatusRaw: w.status || '',
         deviceType: deviceType,
         name: fullName, ipadSerial: '', model: modelDisplay, os: '', battery: null,
-        capacity: '', lastSeenAt: '', enrolledAt: '',
+        capacity: '', availableCapacity: '', lastSeenAt: '', enrolledAt: '',
         phoneNumber: '', wifiMac: '', mdmImei: '',
         imei: w.imei || '',
         eid: '',
@@ -836,7 +838,7 @@ ${(mdm.length > 0 || web.length > 0) ? `
           model: t.hardwareVersion || 'Starlink',
           os: t.softwareVersion || '',
           battery: null,
-          capacity: '', lastSeenAt: '', enrolledAt: '',
+          capacity: '', availableCapacity: '', lastSeenAt: '', enrolledAt: '',
           phoneNumber: '', wifiMac: '', mdmImei: '',
           imei: '',
           eid: '',
@@ -1708,7 +1710,7 @@ ${(mdm.length > 0 || web.length > 0) ? `
     { id: 11127, label: 'Verizon — Pay as You Go (US/VZ, CA/TELUS, MX)' },
   ];
 
-  window.openDeviceDrawer = function(idx) {
+  window.openDeviceDrawer = async function(idx) {
     const row = window._fleetRows[idx];
     if (!row) return;
     window._currentDrawerAccount = row.mdmAccount || 'fello';
@@ -1725,7 +1727,71 @@ ${(mdm.length > 0 || web.length > 0) ? `
 
     let html = '';
 
-    // ── Device Info ──
+    // ── Hero Section ──
+    const isIPad = (row.model || '').toLowerCase().includes('ipad');
+    const isIPhone = (row.model || '').toLowerCase().includes('iphone');
+    const deviceIcon = isIPad || isIPhone ? '📱' : row.deviceType === 'starlink' ? '🛰️' : row.deviceType === 'hotspot' ? '📶' : row.deviceType === 'router' ? '🌐' : '💻';
+    const batteryNum = parseInt(String(row.battery).replace(/%/g, '')) || 0;
+    const batteryStr = row.battery ? String(row.battery).replace(/%+$/, '') + '%' : '—';
+    const batteryColor = batteryNum > 50 ? '#16a34a' : batteryNum > 20 ? '#d97706' : batteryNum > 0 ? '#dc2626' : '#94a3b8';
+    const batteryIcon = batteryNum > 75 ? '🔋' : batteryNum > 25 ? '🔋' : batteryNum > 0 ? '🪫' : '';
+
+    html += `
+      <div style="display:flex;align-items:center;gap:14px;padding:16px 20px;background:linear-gradient(135deg,rgba(59,130,246,0.06),rgba(139,92,246,0.04));border-bottom:1px solid var(--border,#e2e8f0);">
+        <div style="font-size:2.2rem;">${deviceIcon}</div>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:1rem;font-weight:700;color:var(--text,#1e293b);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(row.model || row.name || 'Device')}</div>
+          <div style="font-size:0.78rem;color:var(--muted,#94a3b8);font-family:monospace;">${esc(row.ipadSerial || row.simSerial || '')}</div>
+          <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;">
+            ${row.os ? '<span style="font-size:0.7rem;padding:2px 8px;border-radius:6px;background:rgba(34,197,94,0.1);color:#16a34a;font-weight:600;">iOS ' + esc(row.os) + '</span>' : ''}
+            ${row.simStatus && String(row.simStatus).toLowerCase().includes('active') ? '<span style="font-size:0.7rem;padding:2px 8px;border-radius:6px;background:rgba(34,197,94,0.1);color:#16a34a;font-weight:600;">✓ Active</span>' : ''}
+            ${row.carrier ? '<span style="font-size:0.7rem;padding:2px 8px;border-radius:6px;background:rgba(59,130,246,0.1);color:#3b82f6;font-weight:600;">📶 ' + esc(row.carrier) + '</span>' : ''}
+          </div>
+        </div>
+        ${batteryNum > 0 ? '<div style="text-align:center;"><div style="font-size:1.3rem;">' + batteryIcon + '</div><div style="font-size:0.8rem;font-weight:600;color:' + batteryColor + ';">' + batteryStr + '</div></div>' : ''}
+      </div>
+    `;
+
+    // ── Quick Action Buttons ──
+    if (hasIpad) {
+      const did = row.mdmId;
+      const acct = row.mdmAccount || 'fello';
+      html += `
+        <div style="display:flex;gap:6px;padding:10px 16px;flex-wrap:wrap;border-bottom:1px solid var(--border,#e2e8f0);">
+          <button class="action-btn" style="flex:1;" onclick="window.startScreenShare('${esc(row.ipadSerial)}', '${esc(row.name)}')">📺 Screen</button>
+          <button class="action-btn" style="flex:1;" onclick="window.mdmAction(${did}, 'lock', this)">🔒 Lock</button>
+          <button class="action-btn" style="flex:1;" onclick="window.mdmAction(${did}, 'restart', this)">🔄 Restart</button>
+          <button class="action-btn" style="flex:1;" onclick="window.mdmAction(${did}, 'shutdown', this)">⏻ Off</button>
+        </div>
+      `;
+    }
+
+    // ── Storage Bar ──
+    if (row.capacity) {
+      const totalGB = parseFloat(row.capacity) || 0;
+      const availGB = parseFloat(row.availableCapacity) || 0;
+      if (totalGB > 0) {
+        const usedPct = Math.round(((totalGB - availGB) / totalGB) * 100);
+        const barColor = usedPct > 90 ? '#ef4444' : usedPct > 70 ? '#f59e0b' : '#3b82f6';
+        html += `
+          <div style="padding:10px 20px;border-bottom:1px solid var(--border,#e2e8f0);">
+            <div style="display:flex;justify-content:space-between;font-size:0.75rem;color:var(--muted,#94a3b8);margin-bottom:4px;">
+              <span>Storage</span><span>${availGB.toFixed(1)} GB free of ${totalGB} GB</span>
+            </div>
+            <div style="height:6px;background:var(--bg,#f1f5f9);border-radius:3px;overflow:hidden;">
+              <div style="height:100%;width:${usedPct}%;background:${barColor};border-radius:3px;transition:width 0.3s;"></div>
+            </div>
+          </div>
+        `;
+      }
+    }
+
+    // ── Async Enrichment Placeholder (Apps + Coverage) ──
+    if (hasIpad) {
+      html += `<div id="drawer-enrich-section" style="border-bottom:1px solid var(--border,#e2e8f0);"><div style="text-align:center;padding:10px;color:#94a3b8;font-size:0.75rem;">Loading apps & coverage…</div></div>`;
+    }
+
+    // ── Device Info (collapsible, detailed fields) ──
     html += `
       <div class="drawer-section">
         <div class="drawer-section-header" onclick="this.parentElement.classList.toggle('collapsed')">
@@ -1733,20 +1799,23 @@ ${(mdm.length > 0 || web.length > 0) ? `
         </div>
         <div class="drawer-section-body">
           <div class="info-grid">
-            <div class="info-item"><div class="info-label">iPad Name</div><div class="info-value">${esc(row.name) || '—'}</div></div>
-            <div class="info-item"><div class="info-label">iPad Serial</div><div class="info-value">${esc(row.ipadSerial) || '—'}</div></div>
-            <div class="info-item"><div class="info-label">Model</div><div class="info-value">${esc(row.model) || '—'}</div></div>
-            <div class="info-item"><div class="info-label">OS</div><div class="info-value">${esc(row.os) || '—'}</div></div>
-            <div class="info-item"><div class="info-label">Battery</div><div class="info-value">${row.battery || '—'}</div></div>
-            <div class="info-item"><div class="info-label">Last Seen</div><div class="info-value">${esc(row.lastSeenAt) || '—'}</div></div>
-            <div class="info-item"><div class="info-label">IMEI</div><div class="info-value">${esc(row.imei) || '—'}</div></div>
-            <div class="info-item"><div class="info-label">EID</div><div class="info-value" style="font-size:0.65rem">${esc(row.eid) || '—'}</div></div>
-            <div class="info-item"><div class="info-label">SIM Serial</div><div class="info-value">${esc(row.simSerial) || '—'}</div></div>
-            <div class="info-item"><div class="info-label">ICCID</div><div class="info-value" style="font-size:0.65rem">${esc(row.iccid) || '—'}</div></div>
-            <div class="info-item"><div class="info-label">Carrier</div><div class="info-value">${esc(row.carrier) || '—'}</div></div>
-            <div class="info-item"><div class="info-label">SIM Status</div><div class="info-value">${row.simStatus ? getStatusBadge(row.simStatus) : '—'}</div></div>
-            <div class="info-item"><div class="info-label">Plan</div><div class="info-value">${esc(row.plan) || '—'}</div></div>
-            <div class="info-item"><div class="info-label">IP Address</div><div class="info-value">${esc(row.ip) || '—'}</div></div>
+            ${row.name ? '<div class="info-item"><div class="info-label">Device Name</div><div class="info-value">' + esc(row.name) + '</div></div>' : ''}
+            ${row.ipadSerial ? '<div class="info-item"><div class="info-label">Serial</div><div class="info-value">' + esc(row.ipadSerial) + '</div></div>' : ''}
+            ${row.model ? '<div class="info-item"><div class="info-label">Model</div><div class="info-value">' + esc(row.model) + '</div></div>' : ''}
+            ${row.os ? '<div class="info-item"><div class="info-label">OS Version</div><div class="info-value">' + esc(row.os) + '</div></div>' : ''}
+            ${row.battery ? '<div class="info-item"><div class="info-label">Battery</div><div class="info-value">' + batteryStr + '</div></div>' : ''}
+            ${row.lastSeenAt ? '<div class="info-item"><div class="info-label">Last Seen</div><div class="info-value">' + esc(row.lastSeenAt) + '</div></div>' : ''}
+            ${row.enrolledAt ? '<div class="info-item"><div class="info-label">Enrolled</div><div class="info-value">' + esc(row.enrolledAt) + '</div></div>' : ''}
+            ${row.wifiMac ? '<div class="info-item"><div class="info-label">WiFi MAC</div><div class="info-value">' + esc(row.wifiMac) + '</div></div>' : ''}
+            ${row.ip ? '<div class="info-item"><div class="info-label">IP Address</div><div class="info-value">' + esc(row.ip) + '</div></div>' : ''}
+            ${row.imei ? '<div class="info-item"><div class="info-label">IMEI</div><div class="info-value" style="font-size:0.7rem;font-family:monospace">' + esc(row.imei) + '</div></div>' : ''}
+            ${row.eid ? '<div class="info-item"><div class="info-label">EID (eSIM)</div><div class="info-value" style="font-size:0.6rem;font-family:monospace">' + esc(row.eid) + '</div></div>' : ''}
+            ${row.iccid ? '<div class="info-item"><div class="info-label">ICCID</div><div class="info-value" style="font-size:0.65rem;font-family:monospace">' + esc(row.iccid) + '</div></div>' : ''}
+            ${row.simSerial ? '<div class="info-item"><div class="info-label">SIM Serial</div><div class="info-value">' + esc(row.simSerial) + '</div></div>' : ''}
+            ${row.carrier ? '<div class="info-item"><div class="info-label">Carrier</div><div class="info-value">' + esc(row.carrier) + '</div></div>' : ''}
+            ${row.simStatus ? '<div class="info-item"><div class="info-label">SIM Status</div><div class="info-value">' + getStatusBadge(row.simStatus) + '</div></div>' : ''}
+            ${row.plan ? '<div class="info-item"><div class="info-label">Plan</div><div class="info-value">' + esc(row.plan) + '</div></div>' : ''}
+            ${row.mdmId ? '<div class="info-item"><div class="info-label">MDM ID</div><div class="info-value">' + row.mdmId + '</div></div>' : ''}
           </div>
         </div>
       </div>
@@ -1972,6 +2041,91 @@ ${(mdm.length > 0 || web.length > 0) ? `
     // Auto-load telemetry if SIM exists
     if (hasSim) {
       window.loadTelemetry(row.simDeviceId);
+    }
+
+    // Async enrichment: fetch apps + coverage for MDM devices
+    if (hasIpad && row.mdmId) {
+      const enrichContainer = document.getElementById('drawer-enrich-section');
+      if (enrichContainer) {
+        const acct = row.mdmAccount || 'fello';
+        try {
+          const enrichResp = await fetch(`/api/simplemdm/devices/${row.mdmId}/enrich?account=${acct}`);
+          const enrichData = await enrichResp.json();
+          let enrichHtml = '';
+
+          // Managed Apps
+          const apps = enrichData.managedApps || [];
+          if (apps.length > 0) {
+            enrichHtml += '<div style="padding:12px 20px;"><div style="font-size:0.75rem;font-weight:700;color:var(--text,#1e293b);margin-bottom:8px;">📦 Managed Apps</div>';
+            enrichHtml += '<div style="display:flex;flex-wrap:wrap;gap:4px;">';
+            apps.forEach(function(a) {
+              enrichHtml += '<span style="font-size:0.7rem;padding:3px 8px;border-radius:6px;background:var(--bg,#f1f5f9);color:var(--text,#1e293b);">' + esc(a.name || a) + (a.version ? ' v' + esc(a.version) : '') + '</span>';
+            });
+            enrichHtml += '</div></div>';
+          }
+
+          // Webbing SIM info
+          if (enrichData.webbing && enrichData.webbing.matched) {
+            const wb = enrichData.webbing;
+            enrichHtml += '<div style="padding:8px 20px;border-top:1px solid var(--border,#e2e8f0);"><div style="font-size:0.75rem;font-weight:700;color:var(--text,#1e293b);margin-bottom:6px;">📡 Webbing SIM</div>';
+            enrichHtml += '<div class="info-grid">';
+            if (wb.product) enrichHtml += '<div class="info-item"><div class="info-label">Plan</div><div class="info-value" style="font-size:0.7rem">' + esc(wb.product) + '</div></div>';
+            if (wb.status) enrichHtml += '<div class="info-item"><div class="info-label">Status</div><div class="info-value">' + esc(wb.status) + '</div></div>';
+            if (wb.msisdn) enrichHtml += '<div class="info-item"><div class="info-label">MSISDN</div><div class="info-value" style="font-size:0.7rem;font-family:monospace">' + esc(wb.msisdn) + '</div></div>';
+            enrichHtml += '</div></div>';
+          }
+
+          enrichContainer.innerHTML = enrichHtml || '';
+
+          // Now fetch coverage
+          try {
+            const covResp = await fetch(`/api/simplemdm/devices/${row.mdmId}/coverage?account=${acct}`);
+            const covData = await covResp.json();
+            if (covData.available && covData.carriers) {
+              let covHtml = '<div style="padding:12px 20px;border-top:1px solid var(--border,#e2e8f0);">';
+              covHtml += '<div style="font-size:0.75rem;font-weight:700;color:var(--text,#1e293b);margin-bottom:8px;">📡 Coverage at Location</div>';
+              covHtml += '<div style="font-size:0.65rem;color:var(--muted,#94a3b8);margin-bottom:8px;">Source: ' + esc(covData.locationSource || '') + '</div>';
+              covHtml += '<div style="display:flex;gap:8px;">';
+              covData.carriers.forEach(function(c) {
+                const dbm = c.signalDbm || -100;
+                let bars = 1, barColor = '#ef4444', qual = 'Poor';
+                if (dbm >= -75) { bars = 4; barColor = '#22c55e'; qual = 'Excellent'; }
+                else if (dbm >= -85) { bars = 3; barColor = '#22c55e'; qual = 'Good'; }
+                else if (dbm >= -95) { bars = 2; barColor = '#f59e0b'; qual = 'Fair'; }
+                const isRec = c.recommended;
+                const borderColor = isRec ? barColor : 'var(--border,#e2e8f0)';
+                covHtml += '<div style="flex:1;border:2px solid ' + borderColor + ';border-radius:8px;padding:10px;text-align:center;position:relative;' + (isRec ? 'background:' + barColor + '08;' : '') + '">';
+                if (isRec) covHtml += '<div style="position:absolute;top:-8px;left:50%;transform:translateX(-50%);background:' + barColor + ';color:white;font-size:0.55rem;font-weight:700;padding:1px 6px;border-radius:4px;">★ BEST</div>';
+                covHtml += '<div style="font-size:0.75rem;font-weight:700;">' + esc(c.name) + '</div>';
+                // Signal bars
+                covHtml += '<div style="display:flex;gap:2px;justify-content:center;margin:6px 0;">';
+                for (let i = 1; i <= 4; i++) {
+                  const h = 4 + i * 4;
+                  covHtml += '<div style="width:4px;height:' + h + 'px;border-radius:1px;background:' + (i <= bars ? barColor : '#e2e8f0') + ';"></div>';
+                }
+                covHtml += '</div>';
+                covHtml += '<div style="font-size:0.65rem;color:var(--muted,#94a3b8);">' + dbm + ' dBm</div>';
+                covHtml += '<div style="font-size:0.6rem;color:var(--muted,#94a3b8);margin-top:2px;">' + qual + '</div>';
+                if (c.has5G) covHtml += '<div style="font-size:0.55rem;margin-top:3px;padding:1px 4px;border-radius:3px;background:rgba(139,92,246,0.1);color:#7c3aed;display:inline-block;">5G</div>';
+                covHtml += '</div>';
+              });
+              covHtml += '</div>';
+              if (covData.currentIsOptimal) {
+                covHtml += '<div style="margin-top:8px;text-align:center;font-size:0.7rem;color:#16a34a;font-weight:600;">✓ ' + esc(covData.currentCarrier || '') + ' is optimal at this location</div>';
+              } else if (covData.recommended) {
+                covHtml += '<div style="margin-top:8px;text-align:center;font-size:0.7rem;color:#f59e0b;font-weight:600;">⚡ ' + esc(covData.recommended) + ' has better coverage here</div>';
+              }
+              covHtml += '</div>';
+              enrichContainer.innerHTML += covHtml;
+            }
+          } catch (covErr) {
+            console.warn('[Drawer] Coverage fetch failed:', covErr.message);
+          }
+        } catch (err) {
+          console.warn('[Drawer] Enrichment fetch failed:', err.message);
+          enrichContainer.innerHTML = '';
+        }
+      }
     }
   };
 
