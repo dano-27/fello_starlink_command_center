@@ -584,6 +584,16 @@
     window._currentBranchName = branchId;
     window._starlinkFleet = slFleet;
 
+    // Extract shipping address from CRM order for auto-site-check
+    window._orderShippingAddress = '';
+    if (data.crmOrder && data.crmOrder.shipping) {
+      const s = data.crmOrder.shipping;
+      const parts = [s.address1, s.city, s.state, s.zip].filter(Boolean);
+      if (parts.length >= 2) {
+        window._orderShippingAddress = parts.join(', ');
+      }
+    }
+
     const nonMdmDevices = web.filter(w => !w.matchedIpadName).length;
     const mdmMatched = stats.matchedCount || 0;
     // Counts "match" if SIM lines = MDM devices + identified non-MDM devices
@@ -640,7 +650,7 @@ ${(mdm.length > 0 || web.length > 0) ? `
         
         <!-- Address Input -->
         <div style="padding:16px 20px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
-          <input type="text" id="site-check-address" placeholder="Enter deployment address..." value="${esc(siteCheck?.inputAddress || '')}" style="flex:1;min-width:280px;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:13px;">
+          <input type="text" id="site-check-address" placeholder="Enter deployment address..." value="${esc(siteCheck?.inputAddress || window._orderShippingAddress || '')}" style="flex:1;min-width:280px;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:13px;">
           <button class="btn btn-primary" onclick="window.runSiteCheck()" id="site-check-btn">🔍 Check Coverage</button>
         </div>
         
@@ -904,6 +914,12 @@ ${(mdm.length > 0 || web.length > 0) ? `
     
     if (siteCheck && (siteCheck.results || siteCheck.carriers)) {
       setTimeout(() => window.renderSiteCheckResults(siteCheck), 0);
+    } else if (window._orderShippingAddress && !siteCheck?.inputAddress) {
+      // Auto-run site check with the order's shipping address
+      setTimeout(() => {
+        console.log('[SiteCheck] Auto-running for order address:', window._orderShippingAddress);
+        window.runSiteCheck();
+      }, 500);
     }
   }
 
