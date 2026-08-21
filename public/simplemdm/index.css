@@ -910,6 +910,114 @@ body {
     word-break: break-all;
 }
 
+/* Device Hero */
+.device-hero {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 12px 0 16px;
+    border-bottom: 1px solid #e2e8f0;
+    margin-bottom: 16px;
+}
+.device-hero-icon { font-size: 2.5rem; line-height: 1; }
+.device-hero-info { flex: 1; min-width: 0; }
+.device-hero-model { font-size: 0.78rem; color: #64748b; margin-bottom: 1px; }
+.device-hero-serial { font-weight: 600; font-size: 1.05rem; color: #1e293b; }
+.device-hero-badges { display: flex; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+.device-hero-battery { text-align: center; min-width: 54px; }
+
+.badge {
+    font-size: 0.7rem;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-weight: 500;
+    white-space: nowrap;
+}
+.badge-blue { background: #dbeafe; color: #1d4ed8; }
+.badge-pink { background: #fce7f3; color: #be185d; }
+.badge-green { background: #f0fdf4; color: #15803d; }
+
+/* Device Storage */
+.device-storage { margin-bottom: 16px; }
+.device-storage-header {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.75rem;
+    color: #64748b;
+    margin-bottom: 4px;
+}
+.device-storage-bar {
+    height: 6px;
+    background: #e2e8f0;
+    border-radius: 3px;
+    overflow: hidden;
+}
+.device-storage-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.3s;
+}
+
+/* Section Cards */
+.device-section-card {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-top: 14px;
+}
+.device-section-title {
+    font-size: 0.78rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: #475569;
+    margin-bottom: 10px;
+}
+
+/* Security Row */
+.device-security-row {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-top: 14px;
+    padding: 10px 0;
+    border-top: 1px solid #f1f5f9;
+}
+.device-security-badge {
+    font-size: 0.72rem;
+    font-weight: 500;
+    padding: 3px 10px;
+    border-radius: 10px;
+    white-space: nowrap;
+}
+
+/* App List */
+.device-apps-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.device-app-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 10px;
+    background: #fff;
+    border-radius: 6px;
+    border: 1px solid #e2e8f0;
+}
+.device-app-name {
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: #1e293b;
+}
+.device-app-version {
+    font-size: 0.75rem;
+    color: #94a3b8;
+    font-family: monospace;
+}
+
 .modal-footer {
     padding: 24px 28px 28px;
     border-top: 1px solid var(--border);

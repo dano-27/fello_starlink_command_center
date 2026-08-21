@@ -5224,6 +5224,91 @@ app.delete('/api/simplemdm/devices/:deviceId/lost_mode', async (req, res) => {
   }
 });
 
+// ── Device Enrichment — cellular, security, managed apps, Webbing ──
+app.get('/api/simplemdm/devices/:deviceId/enrich', async (req, res) => {
+  const accountId = req.query.account || 'fello';
+  const rawKey = getMdmAccountKey(accountId);
+  const auth = 'Basic ' + Buffer.from(rawKey + ':').toString('base64');
+  const { deviceId } = req.params;
+
+  try {
+    // Fetch managed apps for this device
+    let managedApps = [];
+    try {
+      const appsResp = await fetch(`https://a.simplemdm.com/api/v1/devices/${deviceId}/installed_apps?limit=200`, {
+        headers: { Authorization: auth },
+      });
+      if (appsResp.ok) {
+        const appsData = await appsResp.json();
+        managedApps = (appsData.data || [])
+          .filter(a => a.attributes?.managed === true)
+          .map(a => ({
+            name: a.attributes?.name || '',
+            identifier: a.attributes?.identifier || '',
+            version: a.attributes?.short_version || a.attributes?.version || '',
+          }));
+      }
+    } catch (_) {}
+
+    // Webbing cross-reference — look up all ICCIDs from device's service_subscriptions
+    // We need the device data from SimpleMDM first
+    let webbingMatch = null;
+    try {
+      const deviceData = await smdmRequest(rawKey, `/devices/${deviceId}`);
+      const subs = deviceData.data?.attributes?.service_subscriptions || [];
+      for (const sub of subs) {
+        const iccid = String(sub.iccid || '').replace(/\s/g, '');
+        if (iccid && webbingDeviceCache.length > 0) {
+          const wbMatch = webbingDeviceCache.find(d => 
+            String(d.ICCID || '').replace(/\s/g, '') === iccid
+          );
+          if (wbMatch) {
+            webbingMatch = {
+              matched: true,
+              product: wbMatch.ProductName || '',
+              status: wbMatch.StatusName || '',
+              branch: wbMatch.BranchName || '',
+              msisdn: wbMatch.MSISDN || '',
+              serial: wbMatch.Serial || '',
+              dataUsage: wbMatch.DataUsage || null,
+            };
+            break;
+          }
+        }
+      }
+    } catch (_) {}
+
+    res.json({
+      managedApps,
+      managedAppCount: managedApps.length,
+      webbing: webbingMatch || { matched: false },
+    });
+  } catch (err) {
+    console.error(`[ENRICH] Error for device ${deviceId}:`, err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Webbing ICCID Lookup ──
+app.get('/api/webbing/lookup/iccid/:iccid', (req, res) => {
+  const iccid = String(req.params.iccid).replace(/\s/g, '');
+  const match = webbingDeviceCache.find(d =>
+    String(d.ICCID || '').replace(/\s/g, '') === iccid
+  );
+  if (match) {
+    res.json({
+      matched: true,
+      product: match.ProductName || '',
+      status: match.StatusName || '',
+      branch: match.BranchName || '',
+      msisdn: match.MSISDN || '',
+      serial: match.Serial || '',
+    });
+  } else {
+    res.json({ matched: false });
+  }
+});
+
 // Generic SimpleMDM proxy — forwards /api/simplemdm/* to SimpleMDM API
 app.all('/api/simplemdm/*', async (req, res) => {
   const accountId = req.query.account || req.body?.account || 'fello';

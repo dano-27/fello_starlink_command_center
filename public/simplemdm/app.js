@@ -1078,85 +1078,177 @@
         const model = getModel(device);
         const osVersion = getOSVersion(device);
         const batteryRaw = attrs.battery_level || '';
-        // Fix double-percent: battery_level already contains "%" from API
         const battery = batteryRaw ? String(batteryRaw).replace(/%+$/, '') + '%' : '—';
         const capacity = attrs.device_capacity ? `${attrs.device_capacity} GB` : '—';
         const available = attrs.available_device_capacity ? `${parseFloat(attrs.available_device_capacity).toFixed(1)} GB` : '—';
-        const supervised = attrs.is_supervised ? '✓ Supervised' : '';
-        const dep = attrs.is_dep_enrollment || attrs.dep_enrolled ? '✓ DEP' : '';
+        const supervised = attrs.is_supervised;
+        const dep = attrs.is_dep_enrollment || attrs.dep_enrolled;
 
-        // Determine device icon based on model
         const isIPad = model.toLowerCase().includes('ipad');
-        const isIPhone = model.toLowerCase().includes('iphone');
-        const deviceIcon = isIPad ? '📱' : isIPhone ? '📱' : '💻';
+        const deviceIcon = isIPad ? '📱' : model.toLowerCase().includes('iphone') ? '📱' : '💻';
 
-        // Battery color
         const batteryNum = parseInt(batteryRaw) || 0;
-        const batteryColor = batteryNum > 50 ? '#4ade80' : batteryNum > 20 ? '#fbbf24' : '#ef4444';
+        const batteryColor = batteryNum > 50 ? '#16a34a' : batteryNum > 20 ? '#d97706' : '#dc2626';
         const batteryIcon = batteryNum > 75 ? '🔋' : batteryNum > 25 ? '🔋' : '🪫';
 
-        // Hero section
-        let html = `
-            <div style="display:flex;align-items:center;gap:16px;padding:16px 0;border-bottom:1px solid #e2e8f0;margin-bottom:16px;">
-                <div style="font-size:2.8rem;line-height:1;">${deviceIcon}</div>
-                <div style="flex:1;min-width:0;">
-                    <div style="font-size:0.8rem;color:#64748b;margin-bottom:2px;">${escapeHtml(model)}</div>
-                    <div style="font-weight:600;font-size:1.05rem;color:#1e293b;">${escapeHtml(serial)}</div>
-                    <div style="display:flex;gap:12px;margin-top:6px;flex-wrap:wrap;">
-                        ${supervised ? `<span style="font-size:0.72rem;background:#dbeafe;color:#1d4ed8;padding:2px 8px;border-radius:10px;font-weight:500;">${supervised}</span>` : ''}
-                        ${dep ? `<span style="font-size:0.72rem;background:#fce7f3;color:#be185d;padding:2px 8px;border-radius:10px;font-weight:500;">${dep}</span>` : ''}
-                        <span style="font-size:0.72rem;background:#f0fdf4;color:#15803d;padding:2px 8px;border-radius:10px;font-weight:500;">iOS ${escapeHtml(osVersion)}</span>
+        // Extract cellular from service_subscriptions
+        const subs = attrs.service_subscriptions || [];
+        const primarySub = subs[0] || {};
+
+        let html = '';
+
+        // ── Hero ──
+        html += `
+            <div class="device-hero">
+                <div class="device-hero-icon">${deviceIcon}</div>
+                <div class="device-hero-info">
+                    <div class="device-hero-model">${escapeHtml(model)}</div>
+                    <div class="device-hero-serial">${escapeHtml(serial)}</div>
+                    <div class="device-hero-badges">
+                        ${supervised ? '<span class="badge badge-blue">✓ Supervised</span>' : ''}
+                        ${dep ? '<span class="badge badge-pink">✓ DEP</span>' : ''}
+                        <span class="badge badge-green">iOS ${escapeHtml(osVersion)}</span>
                     </div>
                 </div>
-                <div style="text-align:center;min-width:60px;">
-                    <div style="font-size:1.4rem;">${batteryIcon}</div>
+                <div class="device-hero-battery">
+                    <div style="font-size:1.3rem;">${batteryIcon}</div>
                     <div style="font-size:0.85rem;font-weight:600;color:${batteryColor};">${battery}</div>
                 </div>
             </div>
         `;
 
-        // Storage bar
+        // ── Storage bar ──
         if (attrs.device_capacity && attrs.available_device_capacity) {
             const usedPct = Math.round(((attrs.device_capacity - attrs.available_device_capacity) / attrs.device_capacity) * 100);
             const barColor = usedPct > 90 ? '#ef4444' : usedPct > 70 ? '#f59e0b' : '#3b82f6';
             html += `
-                <div style="margin-bottom:16px;">
-                    <div style="display:flex;justify-content:space-between;font-size:0.75rem;color:#64748b;margin-bottom:4px;">
-                        <span>Storage</span>
-                        <span>${available} free of ${capacity}</span>
+                <div class="device-storage">
+                    <div class="device-storage-header">
+                        <span>Storage</span><span>${available} free of ${capacity}</span>
                     </div>
-                    <div style="height:6px;background:#e2e8f0;border-radius:3px;overflow:hidden;">
-                        <div style="height:100%;width:${usedPct}%;background:${barColor};border-radius:3px;transition:width 0.3s;"></div>
+                    <div class="device-storage-bar">
+                        <div class="device-storage-fill" style="width:${usedPct}%;background:${barColor};"></div>
                     </div>
                 </div>
             `;
         }
 
-        // Detail fields — only show non-empty
-        const fields = [
+        // ── Cellular & eSIM card ──
+        if (primarySub.imei || primarySub.eid || primarySub.iccid || primarySub.current_carrier_network) {
+            html += `<div class="device-section-card">
+                <div class="device-section-title">📶 Cellular</div>
+                <div class="detail-grid">`;
+            if (primarySub.current_carrier_network) {
+                html += `<div class="detail-item"><span class="detail-label">Carrier</span><span class="detail-value">${escapeHtml(primarySub.current_carrier_network)}</span></div>`;
+            }
+            if (primarySub.imei) {
+                html += `<div class="detail-item"><span class="detail-label">IMEI</span><span class="detail-value" style="font-family:monospace;font-size:0.85rem;">${escapeHtml(primarySub.imei)}</span></div>`;
+            }
+            if (primarySub.eid) {
+                html += `<div class="detail-item" style="grid-column:1/-1;"><span class="detail-label">EID (eSIM)</span><span class="detail-value" style="font-family:monospace;font-size:0.82rem;">${escapeHtml(primarySub.eid)}</span></div>`;
+            }
+            if (primarySub.iccid) {
+                html += `<div class="detail-item"><span class="detail-label">ICCID</span><span class="detail-value" style="font-family:monospace;font-size:0.85rem;">${escapeHtml(primarySub.iccid)}</span></div>`;
+            }
+            if (primarySub.phone_number) {
+                html += `<div class="detail-item"><span class="detail-label">Phone</span><span class="detail-value">${escapeHtml(primarySub.phone_number)}</span></div>`;
+            }
+            html += `</div></div>`;
+        }
+
+        // ── Security status ──
+        const securityBadges = [];
+        if (attrs.passcode_present === false) securityBadges.push({ text: '⚠️ No Passcode', color: '#f59e0b', bg: '#fefce8' });
+        if (attrs.passcode_present === true) securityBadges.push({ text: '✓ Passcode', color: '#16a34a', bg: '#f0fdf4' });
+        if (attrs.is_activation_lock_enabled === true) securityBadges.push({ text: '🔒 Activation Lock', color: '#dc2626', bg: '#fef2f2' });
+        if (attrs.lost_mode_enabled === true) securityBadges.push({ text: '📍 Lost Mode', color: '#dc2626', bg: '#fef2f2' });
+        if (attrs.is_cloud_backup_enabled === true) securityBadges.push({ text: '☁️ Backup On', color: '#16a34a', bg: '#f0fdf4' });
+        if (attrs.is_cloud_backup_enabled === false) securityBadges.push({ text: '☁️ No Backup', color: '#94a3b8', bg: '#f1f5f9' });
+
+        if (securityBadges.length > 0) {
+            html += `<div class="device-security-row">`;
+            securityBadges.forEach(b => {
+                html += `<span class="device-security-badge" style="color:${b.color};background:${b.bg};">${b.text}</span>`;
+            });
+            html += `</div>`;
+        }
+
+        // ── Network & Info grid ──
+        const infoFields = [
+            { label: 'IP Address', value: attrs.last_seen_ip },
+            { label: 'Time Zone', value: attrs.time_zone },
             { label: 'WiFi MAC', value: attrs.wifi_mac },
-            { label: 'Bluetooth MAC', value: attrs.bluetooth_mac },
-            { label: 'IMEI', value: attrs.imei },
-            { label: 'ICCID', value: attrs.iccid },
-            { label: 'Phone', value: attrs.phone_number },
+            { label: 'Bluetooth', value: attrs.bluetooth_mac },
             { label: 'Last Seen', value: formatDate(attrs.last_seen_at || attrs.last_seen) },
             { label: 'Enrolled', value: formatDate(attrs.enrolled_at || attrs.enrollment_date) },
             { label: 'Build', value: attrs.build_version },
             { label: 'Device ID', value: device.id },
-        ].filter(f => f.value && f.value !== '—' && f.value !== 'null');
+        ].filter(f => f.value && f.value !== '—');
 
-        html += '<div class="detail-grid">';
-        fields.forEach(f => {
-            html += `
-                <div class="detail-item">
-                    <span class="detail-label">${f.label}</span>
-                    <span class="detail-value">${escapeHtml(String(f.value))}</span>
-                </div>
-            `;
+        html += '<div class="detail-grid" style="margin-top:16px;">';
+        infoFields.forEach(f => {
+            html += `<div class="detail-item"><span class="detail-label">${f.label}</span><span class="detail-value">${escapeHtml(String(f.value))}</span></div>`;
         });
         html += '</div>';
 
+        // ── Async enrichment placeholder (apps + Webbing) ──
+        html += `<div id="device-enrich-section" style="margin-top:16px;">
+            <div style="text-align:center;padding:12px;color:#94a3b8;font-size:0.8rem;">Loading apps & connectivity…</div>
+        </div>`;
+
         dom.modalBody.innerHTML = html;
+
+        // ── Fetch enrichment data async ──
+        fetchDeviceEnrichment(device.id);
+    }
+
+    async function fetchDeviceEnrichment(deviceId) {
+        const enrichSection = document.getElementById('device-enrich-section');
+        if (!enrichSection) return;
+
+        try {
+            const resp = await fetch(`/api/simplemdm/devices/${deviceId}/enrich`, { credentials: 'same-origin' });
+            if (!resp.ok) throw new Error('Failed to load');
+            const data = await resp.json();
+
+            let html = '';
+
+            // ── Webbing SIM match ──
+            if (data.webbing?.matched) {
+                html += `<div class="device-section-card" style="background:#eff6ff;border-color:#bfdbfe;">
+                    <div class="device-section-title">📡 SIM Plan (Webbing)</div>
+                    <div class="detail-grid">
+                        <div class="detail-item"><span class="detail-label">Plan</span><span class="detail-value">${escapeHtml(data.webbing.product)}</span></div>
+                        <div class="detail-item"><span class="detail-label">Status</span><span class="detail-value">${escapeHtml(data.webbing.status)}</span></div>
+                        ${data.webbing.msisdn ? `<div class="detail-item"><span class="detail-label">MSISDN</span><span class="detail-value">${escapeHtml(data.webbing.msisdn)}</span></div>` : ''}
+                        ${data.webbing.branch ? `<div class="detail-item"><span class="detail-label">Branch</span><span class="detail-value">${escapeHtml(data.webbing.branch)}</span></div>` : ''}
+                    </div>
+                </div>`;
+            }
+
+            // ── Managed Apps ──
+            if (data.managedApps && data.managedApps.length > 0) {
+                html += `<div class="device-section-card">
+                    <div class="device-section-title">📦 Managed Apps (${data.managedAppCount})</div>
+                    <div class="device-apps-list">`;
+                data.managedApps.forEach(app => {
+                    html += `<div class="device-app-item">
+                        <span class="device-app-name">${escapeHtml(app.name)}</span>
+                        <span class="device-app-version">${escapeHtml(app.version || '')}</span>
+                    </div>`;
+                });
+                html += `</div></div>`;
+            } else {
+                html += `<div class="device-section-card">
+                    <div class="device-section-title">📦 Managed Apps</div>
+                    <div style="color:#94a3b8;font-size:0.85rem;padding:4px 0;">No managed apps installed</div>
+                </div>`;
+            }
+
+            enrichSection.innerHTML = html;
+        } catch (err) {
+            enrichSection.innerHTML = `<div style="color:#94a3b8;font-size:0.8rem;text-align:center;padding:8px;">Could not load enrichment data</div>`;
+        }
     }
 
     function formatDate(dateStr) {
