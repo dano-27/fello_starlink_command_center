@@ -50,6 +50,9 @@
     { key: 'ip',           label: 'IP Address',    source: 'sim',     default: false, group: 'SIM' },
     { key: 'simModel',     label: 'SIM Device',    source: 'sim',     default: false, group: 'SIM' },
     { key: 'vendor',       label: 'Vendor',        source: 'sim',     default: false, group: 'SIM' },
+    // Usage
+    { key: 'usageGB',      label: 'Usage (GB)',    source: 'usage',   default: true,  group: 'Usage' },
+    { key: 'usageDays',    label: 'Active Days',   source: 'usage',   default: false, group: 'Usage' },
   ];
 
   // Load saved column prefs from localStorage
@@ -1172,6 +1175,14 @@
       case 'model':
         if (!val) return empty;
         return '<span style="font-size:11px;color:var(--text-muted);">' + esc(String(val)) + '</span>';
+      case 'usageGB':
+        if (val === undefined || val === null) return '<span style="color:#d1d5db;font-size:10px;">—</span>';
+        var gb = parseFloat(val);
+        var uColor = gb > 1 ? '#3b82f6' : gb > 0 ? '#16a34a' : '#94a3b8';
+        return '<span style="font-weight:600;font-size:11px;color:' + uColor + ';">' + gb.toFixed(3) + '</span>';
+      case 'usageDays':
+        if (val === undefined || val === null) return '<span style="color:#d1d5db;">—</span>';
+        return '<span style="font-size:11px;color:var(--text-muted);">' + val + '</span>';
       default:
         return val ? esc(String(val)) : empty;
     }
@@ -1454,9 +1465,7 @@
     const resultsDiv = document.getElementById('usage-results');
     const btn = document.getElementById('usage-calc-btn');
     btn.disabled = true;
-    btn.textContent = '⏳ Calculating...';
-    resultsDiv.style.display = 'block';
-    resultsDiv.innerHTML = '<div class="usage-loading">Fetching usage data for all lines... This may take a moment.</div>';
+    btn.textContent = '⏳...';
     
     try {
       const res = await fetch(`/api/webbing/branches/${branchId}/usage?start=${encodeURIComponent(start)}&end=${encodeURIComponent(end)}&interval=Unknown`);
@@ -1465,12 +1474,52 @@
       
       const results = data.results || [];
       const totals = data.totals || {};
-      const totalGB = (totals.totalUsage / 1024).toFixed(3);
-      renderUsageTable(results, totals, startEl.value, endEl.value);
       window._usageResults = { results, totals, start: startEl.value, end: endEl.value };
       
+      // Merge usage into fleet rows
+      const fleetRows = window._fleetRows || [];
+      fleetRows.forEach(row => {
+        row.usageGB = null;
+        row.usageDays = null;
+        const match = results.find(r => 
+          (r.Serial && (r.Serial === row.simSerial || r.SSID === row.simSerial)) ||
+          (r.IMEI && r.IMEI === row.imei)
+        );
+        if (match) {
+          row.usageGB = (match.TotalUsage / 1024).toFixed(3);
+          row.usageDays = match.TotalUsageDays || 0;
+        }
+      });
+      
+      // Re-render fleet table with usage data
+      const visCols = ALL_COLUMNS.filter(c => visibleColumns.includes(c.key));
+      const fleetWrap = document.getElementById('fleet-table-wrap');
+      if (fleetWrap) fleetWrap.innerHTML = buildFleetTable(fleetRows, visCols);
+      
+      // Show total in a compact summary
+      const totalGB = (totals.totalUsage / 1024).toFixed(3);
+      const linesWithUsage = results.filter(r => r.TotalUsage > 0).length;
+      if (resultsDiv) {
+        resultsDiv.style.display = 'block';
+        resultsDiv.innerHTML = `
+          <div class="cc-coverage-card">
+            <div class="cc-coverage-header">
+              <span>📊 Usage Summary — ${esc(startEl.value)} → ${esc(endEl.value)}</span>
+              <div style="display:flex;gap:8px;align-items:center;">
+                <span class="cc-fleet-count" style="background:rgba(59,130,246,0.1);color:#3b82f6;font-weight:700;">${totalGB} GB total</span>
+                <span class="cc-fleet-count">${results.length} lines</span>
+                <span class="cc-fleet-count" style="background:rgba(34,197,94,0.1);color:#16a34a;">${linesWithUsage} active</span>
+                <button class="cc-order-expand" onclick="window.exportUsageCSV()" title="Export CSV">📥 Export</button>
+              </div>
+            </div>
+          </div>`;
+      }
+      
     } catch (err) {
-      resultsDiv.innerHTML = `<div class="usage-loading" style="color:var(--red);">Error: ${err.message}</div>`;
+      if (resultsDiv) {
+        resultsDiv.style.display = 'block';
+        resultsDiv.innerHTML = `<div style="padding:10px;color:var(--red);font-size:12px;">Error: ${err.message}</div>`;
+      }
     } finally {
       btn.disabled = false;
       btn.textContent = '📊 Calculate';
