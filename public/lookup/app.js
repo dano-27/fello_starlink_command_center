@@ -282,6 +282,53 @@
     '</div>';
   }
 
+  function renderCompactOrderBar(crm) {
+    if (!crm || !crm.flyOrderId) return '';
+    var ship = crm.shipping || {};
+    var addressParts = [ship.address1, ship.city, ship.state, ship.zip].filter(Boolean);
+    var addressStr = addressParts.join(', ') || 'No address on file';
+    var statusColor = crm.status === 'confirmed' ? '#16a34a' : 
+                      crm.status === 'pending' ? '#d97706' : '#94a3b8';
+    
+    return '<div class="cc-order-bar">' +
+      '<div class="cc-order-accent"></div>' +
+      '<div class="cc-order-content">' +
+        '<div class="cc-order-main">' +
+          '<div class="cc-order-field">' +
+            '<div class="cc-order-label">Order</div>' +
+            '<div class="cc-order-value cc-order-id">' + esc(crm.flyOrderId) + '</div>' +
+          '</div>' +
+          '<div class="cc-order-divider"></div>' +
+          '<div class="cc-order-field" style="flex:1.5;">' +
+            '<div class="cc-order-label">Customer</div>' +
+            '<div class="cc-order-value">' + esc(crm.customerName) + '</div>' +
+          '</div>' +
+          '<div class="cc-order-divider"></div>' +
+          '<div class="cc-order-field">' +
+            '<div class="cc-order-label">Status</div>' +
+            '<div><span style="font-size:11px;font-weight:600;color:' + statusColor + ';background:' + statusColor + '15;padding:2px 8px;border-radius:6px;text-transform:uppercase;">' + esc(crm.status || 'unknown') + '</span></div>' +
+          '</div>' +
+          '<div class="cc-order-divider"></div>' +
+          '<div class="cc-order-field" style="flex:2;">' +
+            '<div class="cc-order-label">📍 Address</div>' +
+            '<div class="cc-order-value" style="font-size:12px;">' + esc(addressStr) + '</div>' +
+          '</div>' +
+          '<div class="cc-order-divider"></div>' +
+          '<div class="cc-order-field">' +
+            '<div class="cc-order-label">Items</div>' +
+            '<div class="cc-order-value">' + esc(crm.rentalCount || 0) + '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="cc-order-actions">' +
+          '<button class="cc-order-expand" onclick="var d=document.getElementById(\'cc-order-details\');d.style.display=d.style.display===\'none\'?\'block\':\'none\';this.textContent=d.style.display===\'none\'?\'▼ Details\':\'▲ Hide\'" title="Show full order details">▼ Details</button>' +
+        '</div>' +
+      '</div>' +
+      '<div id="cc-order-details" style="display:none;border-top:1px solid var(--border);padding:16px 20px;">' +
+        renderCrmOrderSection(crm).replace(/^<div class="section"[^>]*>/, '').replace(/<\/div>$/, '') +
+      '</div>' +
+    '</div>';
+  }
+
   function renderStarlinkFleetSection(fleet) {
     var terminals = fleet.terminals || [];
     if (!terminals || terminals.length === 0) return '';
@@ -624,73 +671,101 @@
         </div>
       </div>
 
-${data.crmOrder ? renderCrmOrderSection(data.crmOrder) : ''}
+      <!-- 2-Column Layout -->
+      <div class="cc-layout">
 
-${slFleet && slTerminals.length > 0 ? renderStarlinkFleetSection(slFleet) : ''}
+        <!-- ═══ LEFT COLUMN: Order + Fleet ═══ -->
+        <div class="cc-main">
 
-${(mdm.length > 0 || web.length > 0) ? `
-      <!-- Quick Actions -->
-      <div class="actions-bar">
-        <button class="btn btn-warning" onclick="window.bulkAction('${esc(branchId)}', 'suspend')">⏸ Bulk Suspend SIMs</button>
-        <button class="btn btn-success" onclick="window.bulkAction('${esc(branchId)}', 'activate')">▶ Bulk Activate SIMs</button>
-        <button class="btn btn-outline" style="border-color:var(--red);color:var(--red);" onclick="window.bulkLostMode('enable')">🔴 Enable Lost Mode All</button>
-        <button class="btn btn-outline" style="border-color:var(--green);color:var(--green);" onclick="window.bulkLostMode('disable')">🟢 Disable Lost Mode All</button>
-      </div>` : (data.crmOrder ? `
-      <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:20px;text-align:center;">
-        <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:6px;">📋 IMS Order Found — No Devices Deployed Yet</div>
-        <div style="font-size:13px;color:var(--muted);">This order exists in IMS NextGen but has no devices assigned in SimpleMDM or Webbing. Devices will appear here once deployed.</div>
-      </div>` : '')}
+          ${data.crmOrder ? renderCompactOrderBar(data.crmOrder) : ''}
 
-      <!-- Site Checker & Carrier Assignment -->
-      <div class="site-checker-panel" style="background:var(--surface);border:1px solid var(--border);border-radius:12px;margin-bottom:20px;overflow:hidden;">
-        <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;">
-          <h3 style="margin:0;font-size:15px;font-weight:700;color:var(--text);">📡 Site Checker & Carrier Assignment</h3>
-          <span id="site-check-status" style="font-size:12px;color:var(--muted);">${siteCheck?.appliedCarrier ? 'Currently applied: ' + esc(siteCheck.appliedCarrier) : ''}</span>
-        </div>
-        
-        <!-- Address Input -->
-        <div style="padding:16px 20px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;">
-          <input type="text" id="site-check-address" placeholder="Enter deployment address..." value="${esc(siteCheck?.inputAddress || window._orderShippingAddress || '')}" style="flex:1;min-width:280px;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:13px;">
-          <button class="btn btn-primary" onclick="window.runSiteCheck()" id="site-check-btn">🔍 Check Coverage</button>
-        </div>
-        
-        <!-- Coverage Results -->
-        <div id="site-check-results" style="display:none;padding:16px 20px;background:rgba(0,0,0,0.02);"></div>
-        
-        <!-- Carrier Assignment -->
-        <div style="padding:16px 20px;border-top:1px solid var(--border);display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
-          <span style="font-weight:700;font-size:14px;">Switch Carrier:</span>
-          <select id="bulk-carrier-select" style="flex:1;min-width:200px;max-width:420px;padding:10px 14px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:13px;font-weight:500;cursor:pointer;">
-            <option value="" disabled selected>Select a carrier plan…</option>
-            <option value="11105">🌐 Multi-Carrier — Pay as You Go (US, CA, MX)</option>
-            <option value="11125">📶 AT&T — Pay as You Go (US/AT&T, CA/BELL, MX)</option>
-            <option value="11126">📶 T-Mobile — Pay as You Go (US/TMO, CA/ROGERS, MX)</option>
-            <option value="11127">📶 Verizon — Pay as You Go (US/VZ, CA/TELUS, MX)</option>
-          </select>
-          <button class="btn btn-primary" onclick="window.bulkChangeCarrier()" style="white-space:nowrap;">🔄 Apply to All SIMs</button>
-          <span style="font-size:12px;color:var(--muted);">Current: <strong id="current-plan-label" style="color:var(--text);">${esc(web.length > 0 ? (web[0].productName || web[0].ProductName || '—') : '—')}</strong></span>
-        </div>
-      </div>
+          ${slFleet && slTerminals.length > 0 ? renderStarlinkFleetSection(slFleet) : ''}
 
-      <!-- Data Usage Calculator -->
-      <div class="usage-calculator">
-        <div class="usage-calc-header">
-          <h3 class="usage-calc-title">📊 Data Usage Calculator</h3>
+          ${(mdm.length === 0 && web.length === 0 && data.crmOrder) ? `
+          <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:16px;text-align:center;">
+            <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:6px;">📋 IMS Order Found — No Devices Deployed Yet</div>
+            <div style="font-size:13px;color:var(--muted);">Devices will appear here once deployed.</div>
+          </div>` : ''}
+
+          <!-- Fleet Table (populated after rows are built) -->
+          <div id="cc-fleet-placeholder"></div>
         </div>
-        <div class="usage-calc-controls">
-          <div class="usage-calc-dates">
-            <div class="usage-date-group">
-              <label class="usage-date-label">Start Date</label>
-              <input type="date" id="usage-start-date" class="usage-date-input">
+
+        <!-- ═══ RIGHT SIDEBAR: Tools ═══ -->
+        <div class="cc-sidebar">
+
+          <!-- Coverage Card -->
+          <div class="cc-card">
+            <div class="cc-card-header">
+              <span>📡 Coverage</span>
+              <span id="site-check-status" style="font-size:11px;color:var(--muted);">${siteCheck?.appliedCarrier ? '✓ ' + esc(siteCheck.appliedCarrier) : ''}</span>
             </div>
-            <div class="usage-date-group">
-              <label class="usage-date-label">End Date</label>
-              <input type="date" id="usage-end-date" class="usage-date-input">
+            <div class="cc-card-body">
+              <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
+                <input type="text" id="site-check-address" placeholder="Deployment address..." value="${esc(siteCheck?.inputAddress || window._orderShippingAddress || '')}" style="flex:1;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:12px;">
+                <button class="btn btn-primary" onclick="window.runSiteCheck()" id="site-check-btn" style="padding:8px 12px;font-size:12px;white-space:nowrap;">🔍 Check</button>
+              </div>
+              <div id="site-check-results" style="display:none;"></div>
             </div>
-            <button class="btn btn-primary" id="usage-calc-btn" onclick="window.calculateUsage()">📊 Calculate Usage</button>
           </div>
+
+          <!-- Quick Actions Card -->
+          ${(mdm.length > 0 || web.length > 0) ? `
+          <div class="cc-card">
+            <div class="cc-card-header"><span>⚡ Quick Actions</span></div>
+            <div class="cc-card-body">
+              <div class="cc-action-grid">
+                <button class="cc-action-btn cc-action-warn" onclick="window.bulkAction('${esc(branchId)}', 'suspend')">⏸ Suspend SIMs</button>
+                <button class="cc-action-btn cc-action-success" onclick="window.bulkAction('${esc(branchId)}', 'activate')">▶ Activate SIMs</button>
+                <button class="cc-action-btn cc-action-danger" onclick="window.bulkLostMode('enable')">🔴 Lost Mode On</button>
+                <button class="cc-action-btn cc-action-safe" onclick="window.bulkLostMode('disable')">🟢 Lost Mode Off</button>
+              </div>
+            </div>
+          </div>` : ''}
+
+          <!-- Carrier Assignment Card -->
+          ${web.length > 0 ? `
+          <div class="cc-card">
+            <div class="cc-card-header">
+              <span>🔄 Switch Carrier</span>
+              <span style="font-size:11px;color:var(--muted);">Now: <strong style="color:var(--text);">${esc(web.length > 0 ? (web[0].productName || web[0].ProductName || '—') : '—')}</strong></span>
+            </div>
+            <div class="cc-card-body">
+              <select id="bulk-carrier-select" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:12px;margin-bottom:8px;">
+                <option value="" disabled selected>Select a carrier plan…</option>
+                <option value="11105">🌐 Multi-Carrier (US, CA, MX)</option>
+                <option value="11125">📶 AT&T (US/AT&T, CA/BELL)</option>
+                <option value="11126">📶 T-Mobile (US/TMO, CA/ROGERS)</option>
+                <option value="11127">📶 Verizon (US/VZ, CA/TELUS)</option>
+              </select>
+              <button class="btn btn-primary" onclick="window.bulkChangeCarrier()" style="width:100%;padding:8px;font-size:12px;">🔄 Apply to All SIMs</button>
+              <span id="current-plan-label" style="display:none;">${esc(web.length > 0 ? (web[0].productName || web[0].ProductName || '—') : '—')}</span>
+            </div>
+          </div>` : ''}
+
+          <!-- Data Usage Card -->
+          <div class="cc-card">
+            <div class="cc-card-header"><span>📊 Data Usage</span></div>
+            <div class="cc-card-body">
+              <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">
+                <input type="date" id="usage-start-date" style="flex:1;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:11px;">
+                <span style="color:var(--muted);font-size:11px;">→</span>
+                <input type="date" id="usage-end-date" style="flex:1;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:11px;">
+              </div>
+              <button class="btn btn-primary" id="usage-calc-btn" onclick="window.calculateUsage()" style="width:100%;padding:8px;font-size:12px;">📊 Calculate Usage</button>
+              <div id="usage-results" style="margin-top:8px;"></div>
+            </div>
+          </div>
+
+          <!-- Fello Pulse -->
+          ${data.crmOrder ? `
+          <div class="cc-card">
+            <div class="cc-card-body" style="text-align:center;padding:12px;">
+              <button class="btn btn-primary" onclick="window.open('/pulse?order=${esc(data.crmOrder?.flyOrderId || '')}', '_blank')" style="width:100%;padding:8px;font-size:12px;">📡 Fello Pulse</button>
+            </div>
+          </div>` : ''}
+
         </div>
-        <div id="usage-results" class="usage-results"></div>
       </div>
     `;
 
@@ -891,8 +966,8 @@ ${(mdm.length > 0 || web.length > 0) ? `
 
     // Render the table
     const visCols = ALL_COLUMNS.filter(c => visibleColumns.includes(c.key));
-    html += `
-      <div class="section" id="sec-unified">
+    const fleetTableHtml = `
+      <div class="section" id="sec-unified" style="margin-bottom:0;">
         <div class="section-header" onclick="this.parentElement.classList.toggle('collapsed')">
           <div class="section-title"><span class="section-icon">📋</span> Fleet Overview — Device + SIM Pairs</div>
           <div class="chevron">▼</div>
@@ -910,6 +985,12 @@ ${(mdm.length > 0 || web.length > 0) ? `
     `;
 
     resultsContainer.innerHTML = html;
+    
+    // Inject fleet table into placeholder
+    const fleetPlaceholder = document.getElementById('cc-fleet-placeholder');
+    if (fleetPlaceholder) {
+      fleetPlaceholder.innerHTML = fleetTableHtml;
+    }
     
     // Wire up column picker
     initColumnPicker();
