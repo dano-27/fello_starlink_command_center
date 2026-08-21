@@ -1126,7 +1126,7 @@
         <tbody>
           ${rows.length === 0 ? `<tr><td colspan="${visCols.length}">No devices found.</td></tr>` : ''}
           ${rows.map((r, idx) => `
-            <tr data-row-idx="${idx}" style="cursor:pointer;${!r.linked ? 'opacity: 0.6;' : ''}" onclick="window.openDeviceDrawer(${idx})">
+            <tr data-row-idx="${idx}" style="cursor:pointer;" onclick="window.openDeviceDrawer(${idx})">
               ${visCols.map(c => {
                 const style = c.key === ipadBorderCol ? 'border-right: 2px solid var(--border);' : '';
                 return `<td style="${style}" class="${isMonoCol(c.key) ? 'mono' : ''}">${formatCell(c.key, r[c.key], r)}</td>`;
@@ -1143,7 +1143,7 @@
   }
 
   function formatCell(key, val, row) {
-    const empty = '<span style="color:var(--text-muted)">—</span>';
+    const empty = '<span style="color:#d1d5db;">—</span>';
     switch(key) {
       case 'linked':
         if (row.linked) return '<span style="color: var(--green); font-weight: bold;">✓</span>';
@@ -1152,14 +1152,28 @@
         if (row.deviceType === 'starlink') return '<span title="Starlink">🛰️</span>';
         if (row.deviceType === 'sim') return '<span title="SIM-Only Device">📡</span>';
         return '<span style="color: var(--amber);">✗</span>';
+      case 'name':
+        return val ? '<span style="font-weight:600;color:var(--text-main);">' + esc(String(val)) + '</span>' : empty;
       case 'battery':
-        return val ? val + (String(val).includes('%') ? '' : '%') : '—';
+        if (!val) return empty;
+        var pct = parseInt(String(val).replace(/%/g, '')) || 0;
+        var bColor = pct > 50 ? '#16a34a' : pct > 20 ? '#d97706' : '#dc2626';
+        return '<span style="font-weight:600;color:' + bColor + ';">' + pct + '%</span>';
+      case 'carrier':
+        if (!val) return empty;
+        return '<span style="font-size:10px;padding:2px 6px;border-radius:4px;background:rgba(59,130,246,0.08);color:#3b82f6;font-weight:600;">' + esc(String(val)) + '</span>';
       case 'simStatus':
-        return val ? getStatusBadge(val) : '—';
+        return val ? getStatusBadge(val) : empty;
       case 'imei':
       case 'iccid':
       case 'eid':
-        return val ? `<span style="font-size:0.75rem">${esc(String(val))}</span>` : empty;
+        return val ? '<span style="font-size:0.7rem;">' + esc(String(val)) + '</span>' : empty;
+      case 'lastSeenAt':
+        if (!val) return empty;
+        return '<span style="font-size:11px;color:var(--text-muted);">' + esc(String(val)) + '</span>';
+      case 'model':
+        if (!val) return empty;
+        return '<span style="font-size:11px;color:var(--text-muted);">' + esc(String(val)) + '</span>';
       default:
         return val ? esc(String(val)) : empty;
     }
