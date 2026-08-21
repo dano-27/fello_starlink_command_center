@@ -628,13 +628,14 @@
     const stats = data.stats || {};
     const usage = data.usage || {};
     const branchId = data.branchName || query;
-    const numericBranchId = data.branchId || null;
+    const numericBranchId = data.branchId || (web.length > 0 ? (web[0].branchId || web[0].BranchID || null) : null);
     const siteCheck = data.siteCheck || null;
     const slFleet = data.starlinkFleet || null;
     const slTerminals = (slFleet && slFleet.terminals) || [];
     window._currentBranchId = numericBranchId;
     window._currentBranchName = branchId;
     window._starlinkFleet = slFleet;
+    console.log('[Lookup] branchId:', numericBranchId, 'branchName:', branchId, 'webbing devices:', web.length);
 
     // Extract shipping address from CRM order for auto-site-check
     window._orderShippingAddress = '';
@@ -1475,9 +1476,12 @@
       const results = data.results || [];
       const totals = data.totals || {};
       window._usageResults = { results, totals, start: startEl.value, end: endEl.value };
+      console.log('[Usage] API returned', results.length, 'results, totalDevices:', totals.totalDevices, 'totalUsage:', totals.totalUsage);
+      if (results.length > 0) console.log('[Usage] First result:', JSON.stringify(results[0]));
       
       // Merge usage into fleet rows
       const fleetRows = window._fleetRows || [];
+      console.log('[Usage] Fleet rows:', fleetRows.length, 'First row simSerial:', fleetRows[0]?.simSerial, 'imei:', fleetRows[0]?.imei);
       fleetRows.forEach(row => {
         row.usageGB = null;
         row.usageDays = null;
