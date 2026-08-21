@@ -693,8 +693,8 @@
             <div class="cc-card-header"><span>⚡ Actions</span></div>
             <div class="cc-card-body" style="padding:8px 10px;">
               <div class="cc-action-grid" style="margin-bottom:${web.length > 0 ? '8px' : '0'};">
-                <button class="cc-action-btn cc-action-warn" onclick="window.bulkAction('${esc(branchId)}', 'suspend')">⏸ Suspend</button>
-                <button class="cc-action-btn cc-action-success" onclick="window.bulkAction('${esc(branchId)}', 'activate')">▶ Activate</button>
+                <button class="cc-action-btn cc-action-warn" onclick="window.bulkAction('${esc(branchId)}', 'suspend')">⏸ Suspend Service</button>
+                <button class="cc-action-btn cc-action-success" onclick="window.bulkAction('${esc(branchId)}', 'activate')">▶ Resume Service</button>
                 <button class="cc-action-btn cc-action-danger" onclick="window.bulkLostMode('enable')">🔴 Lost Mode</button>
                 <button class="cc-action-btn cc-action-safe" onclick="window.bulkLostMode('disable')">🟢 Unlock</button>
               </div>
@@ -1201,13 +1201,14 @@
 
   // Group Actions (Global for inline handlers)
   window.bulkAction = async function(branchId, action) {
-    if (!confirm(`Are you sure you want to bulk ${action} all SIMs for branch ${branchId}?`)) return;
+    const actionLabel = action === 'activate' ? 'resume service for' : 'suspend service for';
+    if (!confirm(`Are you sure you want to ${actionLabel} all SIMs in branch ${branchId}?`)) return;
     try {
       const res = await fetch(`/api/webbing/branches/${encodeURIComponent(branchId)}/${action}`, {
         method: 'POST'
       });
       if (!res.ok) throw new Error('Action failed');
-      alert(`Successfully triggered bulk ${action}.`);
+      alert(`Successfully triggered ${actionLabel} all SIMs.`);
       handleSearch(); // Refresh
     } catch (err) {
       alert('Error: ' + err.message);
@@ -1498,8 +1499,8 @@
 
       <!-- Controls -->
       <div class="actions-bar" style="margin-bottom: 24px;">
-        <button class="btn btn-success" onclick="window.deviceAction('${esc(dev.iccid)}', 'activate')">▶ Activate</button>
-        <button class="btn btn-warning" onclick="window.deviceAction('${esc(dev.iccid)}', 'suspend')">⏸ Suspend</button>
+        <button class="btn btn-success" onclick="window.deviceAction('${esc(dev.iccid)}', 'activate')">▶ Resume Service</button>
+        <button class="btn btn-warning" onclick="window.deviceAction('${esc(dev.iccid)}', 'suspend')">⏸ Suspend Service</button>
       </div>
 
       <!-- Info Grid -->
@@ -1973,10 +1974,10 @@
           <div class="drawer-section-body">
             <div class="sim-toggle-row">
               <button class="sim-toggle-btn active-btn" onclick="window.simAction(${sid}, 'activate', this)">
-                ▶ Activate
+                ▶ Resume Service
               </button>
               <button class="sim-toggle-btn suspend-btn" onclick="window.simAction(${sid}, 'suspend', this)">
-                ⏸ Suspend
+                ⏸ Suspend Service
               </button>
             </div>
           </div>
