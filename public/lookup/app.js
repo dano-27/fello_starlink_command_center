@@ -723,9 +723,9 @@
             <div class="cc-card-header"><span>📊 Data Usage</span></div>
             <div class="cc-card-body" style="padding:8px 10px;">
               <div style="display:flex;gap:4px;align-items:center;margin-bottom:6px;">
-                <input type="date" id="usage-start-date" style="flex:1;padding:5px 6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:10px;">
+                <input type="date" id="usage-start-date" value="${data.crmOrder?.startDate || ''}" style="flex:1;padding:5px 6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:10px;">
                 <span style="color:var(--muted);font-size:10px;">→</span>
-                <input type="date" id="usage-end-date" style="flex:1;padding:5px 6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:10px;">
+                <input type="date" id="usage-end-date" value="${data.crmOrder?.endDate || ''}" style="flex:1;padding:5px 6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:10px;">
               </div>
               <button class="btn btn-primary" id="usage-calc-btn" onclick="window.calculateUsage()" style="width:100%;padding:6px;font-size:11px;">📊 Calculate Usage</button>
               <div id="usage-results" style="margin-top:6px;"></div>
@@ -981,6 +981,14 @@
         console.log('[Pulse] Auto-generating share link for order:', crm.flyOrderId);
         window.generateShareLink(crm.flyOrderId, crm.customerName || '', crm.eventName || '', crm.startDate || '', crm.endDate || '', crm.totalGbAmount || 0);
       }, 1000);
+    }
+
+    // Auto-calculate data usage if order has dates
+    if (data.crmOrder?.startDate && data.crmOrder?.endDate) {
+      setTimeout(() => {
+        console.log('[Usage] Auto-calculating for rental dates:', data.crmOrder.startDate, '→', data.crmOrder.endDate);
+        window.calculateUsage();
+      }, 1500);
     }
   }
 
