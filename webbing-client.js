@@ -319,7 +319,7 @@ class WebbingClient {
    */
   async getLocation(identifier) {
     return this.call('service', 'GetLocationInfo', {
-      GetLocationInfoRequest: {
+      locationRequest: {
         ServiceDeviceIdentifier: buildIdentifier(identifier)
       }
     });
