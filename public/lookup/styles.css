@@ -1733,6 +1733,29 @@ td.mono {
   box-shadow: 0 2px 8px rgba(232, 128, 42, 0.3);
 }
 
+/* Coverage Results Card (main column) */
+.cc-coverage-card {
+  background: var(--surface, #fff);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+.cc-coverage-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+  background: var(--bg, #fafbfc);
+}
+.cc-coverage-body {
+  padding: 14px;
+}
+
 /* Quick Action Grid */
 .cc-action-grid {
   display: grid;

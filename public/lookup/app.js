@@ -665,6 +665,9 @@
             <div style="font-size:13px;color:var(--muted);">Devices will appear here once deployed.</div>
           </div>` : ''}
 
+          <!-- Coverage Results (renders here from sidebar trigger) -->
+          <div id="site-check-results" style="display:none;"></div>
+
           <!-- Fleet Table (populated after rows are built) -->
           <div id="cc-fleet-placeholder"></div>
         </div>
@@ -679,11 +682,10 @@
               <span id="site-check-status" style="font-size:11px;color:var(--muted);">${siteCheck?.appliedCarrier ? '✓ ' + esc(siteCheck.appliedCarrier) : ''}</span>
             </div>
             <div class="cc-card-body" style="padding:10px 12px;">
-              <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">
+              <div style="display:flex;gap:6px;align-items:center;">
                 <input type="text" id="site-check-address" placeholder="Deployment address..." value="${esc(siteCheck?.inputAddress || window._orderShippingAddress || '')}" style="flex:1;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:11px;">
                 <button class="btn btn-primary" onclick="window.runSiteCheck()" id="site-check-btn" style="padding:6px 10px;font-size:11px;white-space:nowrap;">🔍 Check</button>
               </div>
-              <div id="site-check-results" style="display:none;"></div>
             </div>
           </div>
 
@@ -1019,9 +1021,13 @@
       'Verizon': { logo: 'https://logo.clearbit.com/verizon.com', color: '#CD040B', bg: 'rgba(205,4,11,0.08)' }
     };
 
-    let html = `<div style="margin-bottom:14px;font-size:13px;color:var(--text);"><i style="color:var(--muted);">Geocoded:</i> <strong>${esc(data.geocodedAddress || data.address || data.inputAddress || '')}</strong></div>`;
-    
-    html += `<div style="display:grid;grid-template-columns:repeat(3, 1fr);gap:16px;">`;
+    let html = `<div class="cc-coverage-card">
+      <div class="cc-coverage-header">
+        <span>📡 Coverage Results</span>
+        <span style="font-size:11px;color:var(--muted);">${esc(data.geocodedAddress || data.address || data.inputAddress || '')}</span>
+      </div>
+      <div class="cc-coverage-body">
+        <div style="display:flex;gap:12px;flex-wrap:wrap;">`;
     
     const carriers = data.carriers || [];
     carriers.forEach(c => {
@@ -1035,30 +1041,27 @@
       
       const isRec = c.recommended;
       const brand = carrierBranding[c.name] || { logo: '', color: '#888', bg: 'transparent' };
-      const btnStyle = isRec 
-        ? `background:${brand.color};color:#fff;border:none;` 
-        : `background:transparent;color:var(--text);border:1px solid var(--border);`;
-      const btnLabel = isRec ? '✅ Apply Recommended' : `Apply ${esc(c.name)}`;
       
       html += `
-        <div style="background:${isRec ? brand.bg : 'var(--bg)'};border:2px solid ${isRec ? brand.color : 'var(--border)'};border-radius:12px;padding:18px;position:relative;transition:border-color 0.2s;">
-          ${isRec ? `<div style="position:absolute;top:-10px;right:10px;background:${brand.color};color:#fff;font-size:11px;font-weight:bold;padding:2px 10px;border-radius:10px;">★ Recommended</div>` : ''}
-          <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
-            <img src="${brand.logo}" alt="${esc(c.name)}" style="width:32px;height:32px;border-radius:6px;object-fit:contain;background:#fff;padding:2px;" onerror="this.style.display='none'">
-            <h4 style="margin:0;font-size:16px;font-weight:700;">${esc(c.name)}</h4>
+        <div style="flex:1;min-width:140px;background:${isRec ? brand.bg : 'var(--bg)'};border:${isRec ? '2px' : '1px'} solid ${isRec ? brand.color : 'var(--border)'};border-radius:10px;padding:12px;position:relative;">
+          ${isRec ? `<div style="position:absolute;top:-8px;left:10px;background:${brand.color};color:#fff;font-size:9px;font-weight:bold;padding:1px 8px;border-radius:8px;">★ Best</div>` : ''}
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+            <img src="${brand.logo}" alt="${esc(c.name)}" style="width:20px;height:20px;border-radius:4px;object-fit:contain;background:#fff;padding:1px;" onerror="this.style.display='none'">
+            <span style="font-size:13px;font-weight:700;">${esc(c.name)}</span>
           </div>
-          <div style="display:flex;align-items:center;gap:12px;margin-bottom:6px;">
-            <div style="display:flex;gap:3px;align-items:flex-end;height:28px;">
-              <div style="width:7px;height:25%;background:${bars >= 1 ? barColor : '#555'};border-radius:2px;"></div>
-              <div style="width:7px;height:50%;background:${bars >= 2 ? barColor : '#555'};border-radius:2px;"></div>
-              <div style="width:7px;height:75%;background:${bars >= 3 ? barColor : '#555'};border-radius:2px;"></div>
-              <div style="width:7px;height:100%;background:${bars >= 4 ? barColor : '#555'};border-radius:2px;"></div>
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:4px;">
+            <div style="display:flex;gap:2px;align-items:flex-end;height:20px;">
+              <div style="width:5px;height:25%;background:${bars >= 1 ? barColor : '#ddd'};border-radius:1px;"></div>
+              <div style="width:5px;height:50%;background:${bars >= 2 ? barColor : '#ddd'};border-radius:1px;"></div>
+              <div style="width:5px;height:75%;background:${bars >= 3 ? barColor : '#ddd'};border-radius:1px;"></div>
+              <div style="width:5px;height:100%;background:${bars >= 4 ? barColor : '#ddd'};border-radius:1px;"></div>
             </div>
-            <div style="font-size:15px;font-weight:bold;">${dbm} dBm <span style="font-weight:normal;color:var(--muted);font-size:12px;">(${qual})</span></div>
+            <span style="font-size:13px;font-weight:700;">${dbm} dBm</span>
+            <span style="font-size:10px;color:var(--muted);">(${qual})</span>
           </div>
-          ${c.tech5G ? `<div style="font-size:11px;color:var(--muted);margin-bottom:2px;">5G: ${c.tech5G.signal || '—'} dBm · ${c.tech5G.coverage || '—'}</div>` : ''}
-          ${c.tech4G ? `<div style="font-size:11px;color:var(--muted);margin-bottom:8px;">4G: ${c.tech4G.signal || '—'} dBm · ${c.tech4G.coverage || '—'}</div>` : '<div style="margin-bottom:8px;"></div>'}
-          <button class="btn btn-sm" style="width:100%;padding:8px;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer;${btnStyle}" onclick="window.applySiteCheckCarrier('${esc(c.name)}', '${c.planId}')">${btnLabel}</button>
+          ${c.tech5G ? `<div style="font-size:10px;color:var(--muted);">5G: ${c.tech5G.signal || '—'} dBm</div>` : ''}
+          ${c.tech4G ? `<div style="font-size:10px;color:var(--muted);">4G: ${c.tech4G.signal || '—'} dBm</div>` : ''}
+          <button class="btn btn-sm" style="width:100%;margin-top:8px;padding:5px;border-radius:6px;font-weight:600;font-size:11px;cursor:pointer;${isRec ? `background:${brand.color};color:#fff;border:none;` : `background:transparent;color:var(--text);border:1px solid var(--border);`}" onclick="window.applySiteCheckCarrier('${esc(c.name)}', '${c.planId}')">${isRec ? '✅ Apply' : `Apply`}</button>
         </div>
       `;
       
@@ -1068,9 +1071,16 @@
       }
     });
     
-    html += `</div>`;
+    html += `</div></div></div>`;
     container.innerHTML = html;
     container.style.display = 'block';
+    
+    // Update sidebar status
+    const statusEl = document.getElementById('site-check-status');
+    if (statusEl && carriers.length > 0) {
+      const rec = carriers.find(c => c.recommended);
+      statusEl.innerHTML = rec ? '✓ ' + esc(rec.name) : '✓ Checked';
+    }
   };
 
   window.applySiteCheckCarrier = async function(carrierName, planId) {
