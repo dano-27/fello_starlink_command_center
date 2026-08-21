@@ -320,6 +320,7 @@
           '</div>' +
         '</div>' +
         '<div class="cc-order-actions">' +
+          '<button class="cc-pulse-btn" onclick="window.open(\'/pulse?order=' + esc(crm.flyOrderId) + '\', \'_blank\')" title="Open Fello Pulse dashboard">📡 Fello Pulse</button>' +
           '<button class="cc-order-expand" onclick="var d=document.getElementById(\'cc-order-details\');d.style.display=d.style.display===\'none\'?\'block\':\'none\';this.textContent=d.style.display===\'none\'?\'▼ Details\':\'▲ Hide\'" title="Show full order details">▼ Details</button>' +
         '</div>' +
       '</div>' +
@@ -700,70 +701,57 @@
               <span>📡 Coverage</span>
               <span id="site-check-status" style="font-size:11px;color:var(--muted);">${siteCheck?.appliedCarrier ? '✓ ' + esc(siteCheck.appliedCarrier) : ''}</span>
             </div>
-            <div class="cc-card-body">
-              <div style="display:flex;gap:8px;align-items:center;margin-bottom:10px;">
-                <input type="text" id="site-check-address" placeholder="Deployment address..." value="${esc(siteCheck?.inputAddress || window._orderShippingAddress || '')}" style="flex:1;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:12px;">
-                <button class="btn btn-primary" onclick="window.runSiteCheck()" id="site-check-btn" style="padding:8px 12px;font-size:12px;white-space:nowrap;">🔍 Check</button>
+            <div class="cc-card-body" style="padding:10px 12px;">
+              <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">
+                <input type="text" id="site-check-address" placeholder="Deployment address..." value="${esc(siteCheck?.inputAddress || window._orderShippingAddress || '')}" style="flex:1;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:11px;">
+                <button class="btn btn-primary" onclick="window.runSiteCheck()" id="site-check-btn" style="padding:6px 10px;font-size:11px;white-space:nowrap;">🔍 Check</button>
               </div>
               <div id="site-check-results" style="display:none;"></div>
             </div>
           </div>
 
-          <!-- Quick Actions Card -->
+          <!-- Quick Actions + Carrier in one card -->
           ${(mdm.length > 0 || web.length > 0) ? `
           <div class="cc-card">
-            <div class="cc-card-header"><span>⚡ Quick Actions</span></div>
-            <div class="cc-card-body">
-              <div class="cc-action-grid">
-                <button class="cc-action-btn cc-action-warn" onclick="window.bulkAction('${esc(branchId)}', 'suspend')">⏸ Suspend SIMs</button>
-                <button class="cc-action-btn cc-action-success" onclick="window.bulkAction('${esc(branchId)}', 'activate')">▶ Activate SIMs</button>
-                <button class="cc-action-btn cc-action-danger" onclick="window.bulkLostMode('enable')">🔴 Lost Mode On</button>
-                <button class="cc-action-btn cc-action-safe" onclick="window.bulkLostMode('disable')">🟢 Lost Mode Off</button>
+            <div class="cc-card-header"><span>⚡ Actions</span></div>
+            <div class="cc-card-body" style="padding:8px 10px;">
+              <div class="cc-action-grid" style="margin-bottom:${web.length > 0 ? '8px' : '0'};">
+                <button class="cc-action-btn cc-action-warn" onclick="window.bulkAction('${esc(branchId)}', 'suspend')">⏸ Suspend</button>
+                <button class="cc-action-btn cc-action-success" onclick="window.bulkAction('${esc(branchId)}', 'activate')">▶ Activate</button>
+                <button class="cc-action-btn cc-action-danger" onclick="window.bulkLostMode('enable')">🔴 Lost Mode</button>
+                <button class="cc-action-btn cc-action-safe" onclick="window.bulkLostMode('disable')">🟢 Unlock</button>
               </div>
-            </div>
-          </div>` : ''}
-
-          <!-- Carrier Assignment Card -->
-          ${web.length > 0 ? `
-          <div class="cc-card">
-            <div class="cc-card-header">
-              <span>🔄 Switch Carrier</span>
-              <span style="font-size:11px;color:var(--muted);">Now: <strong style="color:var(--text);">${esc(web.length > 0 ? (web[0].productName || web[0].ProductName || '—') : '—')}</strong></span>
-            </div>
-            <div class="cc-card-body">
-              <select id="bulk-carrier-select" style="width:100%;padding:8px 10px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:12px;margin-bottom:8px;">
-                <option value="" disabled selected>Select a carrier plan…</option>
-                <option value="11105">🌐 Multi-Carrier (US, CA, MX)</option>
-                <option value="11125">📶 AT&T (US/AT&T, CA/BELL)</option>
-                <option value="11126">📶 T-Mobile (US/TMO, CA/ROGERS)</option>
-                <option value="11127">📶 Verizon (US/VZ, CA/TELUS)</option>
-              </select>
-              <button class="btn btn-primary" onclick="window.bulkChangeCarrier()" style="width:100%;padding:8px;font-size:12px;">🔄 Apply to All SIMs</button>
-              <span id="current-plan-label" style="display:none;">${esc(web.length > 0 ? (web[0].productName || web[0].ProductName || '—') : '—')}</span>
+              ${web.length > 0 ? `
+              <div style="border-top:1px solid var(--border);padding-top:8px;">
+                <div style="display:flex;gap:6px;align-items:center;">
+                  <select id="bulk-carrier-select" style="flex:1;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:11px;">
+                    <option value="" disabled selected>Carrier plan…</option>
+                    <option value="11105">🌐 Multi-Carrier</option>
+                    <option value="11125">📶 AT&T</option>
+                    <option value="11126">📶 T-Mobile</option>
+                    <option value="11127">📶 Verizon</option>
+                  </select>
+                  <button class="btn btn-primary" onclick="window.bulkChangeCarrier()" style="padding:6px 10px;font-size:11px;white-space:nowrap;">Apply All</button>
+                </div>
+                <div style="font-size:10px;color:var(--muted);margin-top:4px;">Now: <strong style="color:var(--text);">${esc(web.length > 0 ? (web[0].productName || web[0].ProductName || '—') : '—')}</strong></div>
+                <span id="current-plan-label" style="display:none;">${esc(web.length > 0 ? (web[0].productName || web[0].ProductName || '—') : '—')}</span>
+              </div>` : ''}
             </div>
           </div>` : ''}
 
           <!-- Data Usage Card -->
           <div class="cc-card">
             <div class="cc-card-header"><span>📊 Data Usage</span></div>
-            <div class="cc-card-body">
-              <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">
-                <input type="date" id="usage-start-date" style="flex:1;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:11px;">
-                <span style="color:var(--muted);font-size:11px;">→</span>
-                <input type="date" id="usage-end-date" style="flex:1;padding:6px 8px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:11px;">
+            <div class="cc-card-body" style="padding:8px 10px;">
+              <div style="display:flex;gap:4px;align-items:center;margin-bottom:6px;">
+                <input type="date" id="usage-start-date" style="flex:1;padding:5px 6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:10px;">
+                <span style="color:var(--muted);font-size:10px;">→</span>
+                <input type="date" id="usage-end-date" style="flex:1;padding:5px 6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:10px;">
               </div>
-              <button class="btn btn-primary" id="usage-calc-btn" onclick="window.calculateUsage()" style="width:100%;padding:8px;font-size:12px;">📊 Calculate Usage</button>
-              <div id="usage-results" style="margin-top:8px;"></div>
+              <button class="btn btn-primary" id="usage-calc-btn" onclick="window.calculateUsage()" style="width:100%;padding:6px;font-size:11px;">📊 Calculate Usage</button>
+              <div id="usage-results" style="margin-top:6px;"></div>
             </div>
           </div>
-
-          <!-- Fello Pulse -->
-          ${data.crmOrder ? `
-          <div class="cc-card">
-            <div class="cc-card-body" style="text-align:center;padding:12px;">
-              <button class="btn btn-primary" onclick="window.open('/pulse?order=${esc(data.crmOrder?.flyOrderId || '')}', '_blank')" style="width:100%;padding:8px;font-size:12px;">📡 Fello Pulse</button>
-            </div>
-          </div>` : ''}
 
         </div>
       </div>
@@ -967,19 +955,19 @@
     // Render the table
     const visCols = ALL_COLUMNS.filter(c => visibleColumns.includes(c.key));
     const fleetTableHtml = `
-      <div class="section" id="sec-unified" style="margin-bottom:0;">
-        <div class="section-header" onclick="this.parentElement.classList.toggle('collapsed')">
-          <div class="section-title"><span class="section-icon">📋</span> Fleet Overview — Device + SIM Pairs</div>
-          <div class="chevron">▼</div>
-        </div>
-        <div class="section-content">
-          <div class="table-toolbar">
+      <div class="cc-fleet-card">
+        <div class="cc-fleet-header">
+          <div class="cc-fleet-title">
+            <span style="font-size:15px;">📋</span>
+            <span>Fleet Overview</span>
+            <span class="cc-fleet-count">${window._fleetRows.length} devices</span>
+          </div>
+          <div class="cc-fleet-tools">
             ${pickerHtml}
-            <span class="table-info">${window._fleetRows.length} rows · ${matched.length} matched</span>
           </div>
-          <div class="table-responsive" id="fleet-table-wrap">
-            ${buildFleetTable(window._fleetRows, visCols)}
-          </div>
+        </div>
+        <div class="table-responsive" id="fleet-table-wrap">
+          ${buildFleetTable(window._fleetRows, visCols)}
         </div>
       </div>
     `;

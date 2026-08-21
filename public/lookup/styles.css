@@ -1639,10 +1639,16 @@ td.mono {
 .cc-sidebar {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   position: sticky;
-  top: 16px;
+  top: 80px;
+  max-height: calc(100vh - 96px);
+  overflow-y: auto;
+  padding-right: 4px;
 }
+.cc-sidebar::-webkit-scrollbar { width: 4px; }
+.cc-sidebar::-webkit-scrollbar-track { background: transparent; }
+.cc-sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 
 /* Sidebar Cards */
 .cc-card {
@@ -1655,15 +1661,72 @@ td.mono {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 14px;
-  font-size: 13px;
+  padding: 8px 12px;
+  font-size: 12px;
   font-weight: 700;
   color: var(--text);
   border-bottom: 1px solid var(--border);
   background: var(--bg, #fafbfc);
 }
 .cc-card-body {
-  padding: 12px 14px;
+  padding: 10px 12px;
+}
+
+/* Fleet Card */
+.cc-fleet-card {
+  background: var(--surface, #fff);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.cc-fleet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg, #fafbfc);
+}
+.cc-fleet-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+}
+.cc-fleet-count {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+  background: var(--border);
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+.cc-fleet-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Fello Pulse Button */
+.cc-pulse-btn {
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  border: none;
+  background: linear-gradient(135deg, #e8802a, #c06820);
+  color: white;
+  cursor: pointer;
+  font-family: inherit;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+.cc-pulse-btn:hover {
+  background: linear-gradient(135deg, #c06820, #a05818);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(232, 128, 42, 0.3);
 }
 
 /* Quick Action Grid */
@@ -1755,6 +1818,9 @@ td.mono {
 }
 .cc-order-actions {
   flex-shrink: 0;
+  display: flex;
+  gap: 6px;
+  align-items: center;
 }
 .cc-order-expand {
   padding: 6px 12px;
