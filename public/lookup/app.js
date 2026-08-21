@@ -1481,18 +1481,40 @@
       
       // Merge usage into fleet rows
       const fleetRows = window._fleetRows || [];
-      console.log('[Usage] Fleet rows:', fleetRows.length, 'First row simSerial:', fleetRows[0]?.simSerial, 'imei:', fleetRows[0]?.imei);
-      fleetRows.forEach(row => {
+      console.log('[Usage] Fleet rows:', fleetRows.length);
+      console.log('[Usage] Row 0:', JSON.stringify({simSerial: fleetRows[0]?.simSerial, imei: fleetRows[0]?.imei, iccid: fleetRows[0]?.iccid, name: fleetRows[0]?.name}));
+      console.log('[Usage] Result 0:', results.length > 0 ? JSON.stringify({Serial: results[0]?.Serial, IMEI: results[0]?.IMEI, ICCID: results[0]?.ICCID}) : 'none');
+      
+      let matchCount = 0;
+      fleetRows.forEach((row, idx) => {
         row.usageGB = null;
         row.usageDays = null;
         const match = results.find(r => 
           (r.Serial && row.simSerial && (r.Serial === row.simSerial || r.SSID === row.simSerial)) ||
-          (r.IMEI && row.imei && r.IMEI === row.imei) ||
+          (r.IMEI && row.imei && String(r.IMEI) === String(row.imei)) ||
           (r.ICCID && row.iccid && r.ICCID.replace(/\s/g,'') === row.iccid.replace(/\s/g,''))
         );
         if (match) {
           row.usageGB = (match.TotalUsage / 1024).toFixed(3);
           row.usageDays = match.TotalUsageDays || 0;
+          matchCount++;
+        }
+      });
+      console.log('[Usage] Matched', matchCount, 'of', fleetRows.length, 'rows');
+      
+      // Second pass: for unmatched iPads with no SIM data, try to find usage
+      // by looking for a SIM row that shares the same IMEI (cross-reference)
+      fleetRows.forEach(row => {
+        if (row.usageGB !== null) return; // already matched
+        if (!row.imei) return;
+        // Find another fleet row (SIM row) with the same IMEI that HAS usage data
+        const siblingRow = fleetRows.find(other => 
+          other !== row && other.usageGB !== null && 
+          other.imei && String(other.imei) === String(row.imei)
+        );
+        if (siblingRow) {
+          row.usageGB = siblingRow.usageGB;
+          row.usageDays = siblingRow.usageDays;
         }
       });
       
