@@ -649,30 +649,6 @@
     const effectiveMatch = mdmMatched + nonMdmDevices >= (stats.webbingCount || web.length);
 
     let html = `
-      <!-- Overview Bar -->
-      <div class="stats-bar">
-        <div class="stat-card stat-purple">
-          <div class="stat-label">MDM Devices</div>
-          <div class="stat-value">${esc(stats.mdmCount || mdm.length)}</div>
-        </div>
-        <div class="stat-card stat-blue">
-          <div class="stat-label">SIM Lines</div>
-          <div class="stat-value">${esc(stats.webbingCount || web.length)}</div>
-        </div>
-        <div class="stat-card stat-green">
-          <div class="stat-label">🔗 Matched</div>
-          <div class="stat-value">${esc(mdmMatched)} / ${esc(Math.max(stats.mdmCount, stats.webbingCount) || 0)}</div>
-        </div>
-        ${slTerminals.length > 0 ? `<div class="stat-card" style="background:rgba(56,189,248,0.08);border-color:rgba(56,189,248,0.2);">
-          <div class="stat-label">🛰️ Starlinks</div>
-          <div class="stat-value" style="color:#38bdf8;">${slTerminals.length}</div>
-        </div>` : ''}
-        <div class="stat-card stat-amber">
-          <div class="stat-label">Non-MDM Devices</div>
-          <div class="stat-value">${nonMdmDevices > 0 ? '📶 ' + nonMdmDevices : '0'}</div>
-        </div>
-      </div>
-
       <!-- 2-Column Layout -->
       <div class="cc-layout">
 
@@ -959,9 +935,11 @@
       <div class="cc-fleet-card">
         <div class="cc-fleet-header">
           <div class="cc-fleet-title">
-            <span style="font-size:15px;">📋</span>
             <span>Fleet Overview</span>
             <span class="cc-fleet-count">${window._fleetRows.length} devices</span>
+            <span class="cc-fleet-count" style="background:rgba(129,140,248,0.12);color:#6366f1;">${esc(stats.mdmCount || mdm.length)} MDM</span>
+            <span class="cc-fleet-count" style="background:rgba(59,130,246,0.1);color:#3b82f6;">${esc(stats.webbingCount || web.length)} SIMs</span>
+            <span class="cc-fleet-count" style="background:rgba(34,197,94,0.1);color:#16a34a;">🔗 ${esc(mdmMatched)} matched</span>
           </div>
           <div class="cc-fleet-tools">
             ${pickerHtml}
