@@ -668,6 +668,9 @@
           <!-- Coverage Results (renders here from sidebar trigger) -->
           <div id="site-check-results" style="display:none;"></div>
 
+          <!-- Data Usage Results (renders here from sidebar trigger) -->
+          <div id="usage-results" style="display:none;"></div>
+
           <!-- Fleet Table (populated after rows are built) -->
           <div id="cc-fleet-placeholder"></div>
         </div>
@@ -727,8 +730,7 @@
                 <span style="color:var(--muted);font-size:10px;">→</span>
                 <input type="date" id="usage-end-date" value="${data.crmOrder?.endDate || ''}" style="flex:1;padding:5px 6px;border-radius:6px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:10px;">
               </div>
-              <button class="btn btn-primary" id="usage-calc-btn" onclick="window.calculateUsage()" style="width:100%;padding:6px;font-size:11px;">📊 Calculate Usage</button>
-              <div id="usage-results" style="margin-top:6px;"></div>
+              <button class="btn btn-primary" id="usage-calc-btn" onclick="window.calculateUsage()" style="width:100%;padding:6px;font-size:11px;">📊 Calculate</button>
             </div>
           </div>
 
@@ -1453,6 +1455,7 @@
     const btn = document.getElementById('usage-calc-btn');
     btn.disabled = true;
     btn.textContent = '⏳ Calculating...';
+    resultsDiv.style.display = 'block';
     resultsDiv.innerHTML = '<div class="usage-loading">Fetching usage data for all lines... This may take a moment.</div>';
     
     try {
@@ -1470,7 +1473,7 @@
       resultsDiv.innerHTML = `<div class="usage-loading" style="color:var(--red);">Error: ${err.message}</div>`;
     } finally {
       btn.disabled = false;
-      btn.textContent = '📊 Calculate Usage';
+      btn.textContent = '📊 Calculate';
     }
   };
 
