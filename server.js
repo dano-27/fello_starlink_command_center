@@ -8021,12 +8021,12 @@ app.get('/api/lookup', async (req, res) => {
             ipadName: ipad.name,
             ipadSerial: ipad.serial,
             ipadImei: ipad.imei || '',
-            simSerial: matchedSim.serial,
-            simImei: matchedSim.imei || '',
-            simIccid: matchedSim.iccid,
+            simSerial: matchedSim.serial || matchedSim.Serial || matchedSim.SSID || '',
+            simImei: matchedSim.imei || matchedSim.IMEI || '',
+            simIccid: matchedSim.iccid || matchedSim.ICCID || '',
             simCarrier: matchedSim.carrier || ipad.carrier || '',
-            simStatus: matchedSim.status,
-            simIp: matchedSim.ip || ''
+            simStatus: matchedSim.status || matchedSim.StatusName,
+            simIp: matchedSim.ip || matchedSim.IP || ''
           });
           ipad.matchedSimSerial = matchedSim.serial;
           matchedSim.matchedIpadName = ipad.name;
@@ -8464,14 +8464,14 @@ app.get('/api/lookup', async (req, res) => {
                 ipadName: ipad.name,
                 ipadSerial: ipad.serial,
                 ipadImei: abmData.imei,
-                simSerial: matchedSim.serial,
-                simImei: matchedSim.imei,
-                simIccid: matchedSim.iccid,
-                simCarrier: matchedSim.carrier,
-                simStatus: matchedSim.status,
-                simIp: matchedSim.ip
+                simSerial: matchedSim.serial || matchedSim.Serial || matchedSim.SSID || '',
+                simImei: matchedSim.imei || matchedSim.IMEI || '',
+                simIccid: matchedSim.iccid || matchedSim.ICCID || '',
+                simCarrier: matchedSim.carrier || '',
+                simStatus: matchedSim.status || matchedSim.StatusName,
+                simIp: matchedSim.ip || matchedSim.IP || ''
               });
-              ipad.matchedSimSerial = matchedSim.serial;
+              ipad.matchedSimSerial = matchedSim.serial || matchedSim.Serial || matchedSim.SSID || '';
               matchedSim.matchedIpadName = ipad.name;
               matchedSim.matchedIpadSerial = ipad.serial;
             } else {
@@ -8739,12 +8739,13 @@ app.get('/api/lookup', async (req, res) => {
             matches.push({
               ipadName: ipad.name, ipadSerial: ipad.serial,
               ipadImei: ipad.imei || '',
-              simSerial: matchedSim.serial, simImei: matchedSim.imei || '',
-              simIccid: matchedSim.iccid,
-              simCarrier: ipad.carrier || '', simStatus: matchedSim.status,
-              simIp: matchedSim.ip || ''
+              simSerial: matchedSim.serial || matchedSim.Serial || matchedSim.SSID || '',
+              simImei: matchedSim.imei || matchedSim.IMEI || '',
+              simIccid: matchedSim.iccid || matchedSim.ICCID || '',
+              simCarrier: ipad.carrier || '', simStatus: matchedSim.status || matchedSim.StatusName,
+              simIp: matchedSim.ip || matchedSim.IP || ''
             });
-            ipad.matchedSimSerial = matchedSim.serial;
+            ipad.matchedSimSerial = matchedSim.serial || matchedSim.Serial || matchedSim.SSID || '';
             matchedSim.matchedIpadName = ipad.name;
             matchedSim.matchedIpadSerial = ipad.serial;
           }
