@@ -1228,6 +1228,17 @@ body {
 }
 
 /* Action Buttons */
+.modal-actions-inline {
+    display: flex;
+    gap: 8px;
+    padding: 12px 20px;
+    flex-wrap: wrap;
+}
+.modal-actions-inline .btn-action {
+    flex: 1;
+    justify-content: center;
+    min-width: 100px;
+}
 .modal-actions-section {
     display: flex;
     align-items: center;

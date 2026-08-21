@@ -1117,6 +1117,16 @@
             </div>
         `;
 
+        // ── Action buttons ──
+        html += `
+            <div class="modal-actions-inline">
+                <button class="btn btn-action btn-screen" onclick="document.getElementById('action-view-screen').click()">📺 View Screen</button>
+                <button class="btn btn-action btn-lock" onclick="document.getElementById('action-lock').click()">🔒 Lock</button>
+                <button class="btn btn-action btn-restart" onclick="document.getElementById('action-restart').click()">🔄 Restart</button>
+                <button class="btn btn-action btn-shutdown" onclick="document.getElementById('action-shutdown').click()">⏻ Shutdown</button>
+            </div>
+        `;
+
         // ── Storage bar ──
         if (attrs.device_capacity && attrs.available_device_capacity) {
             const usedPct = Math.round(((attrs.device_capacity - attrs.available_device_capacity) / attrs.device_capacity) * 100);
