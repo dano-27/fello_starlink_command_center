@@ -186,11 +186,12 @@
               <li><strong>Left Column (Main)</strong> — Order Bar, Coverage Results, Usage Summary, Fleet Table</li>
               <li><strong>Right Sidebar</strong> — 📡 Coverage checker, ⚡ Bulk Actions, 📊 Data Usage calculator</li>
             </ul>
+            <div class="callout tip"><span class="callout-icon">⚡</span> <strong>Performance:</strong> Order lookups use background-cached device data from both SimpleMDM and Webbing IoT. Searches that previously took 20+ seconds now return in under 3 seconds. Live telemetry is still available on-demand from the device drawer.</div>
             <h3>How Devices Get Matched</h3>
-            <p>iPads report <strong>Serial Numbers</strong> to MDM. SIMs report <strong>ICCIDs</strong> and <strong>IMEIs</strong> to the carrier. The Command Center bridges them:</p>
+            <p>iPads report <strong>Serial Numbers</strong> to MDM. SIMs report <strong>ICCIDs</strong> and <strong>IMEIs</strong> to the carrier. The Command Center bridges them in two passes:</p>
             <div class="workflow">
-              <div class="step"><span class="step-num">1</span><span class="step-text"><strong>Pass 1: ICCID Match</strong><span class="sub">Matches MDM eSIM subscriptions directly against Webbing SIM inventory</span></span></div>
-              <div class="step"><span class="step-num">2</span><span class="step-text"><strong>Pass 2: ABM IMEI Bridge</strong><span class="sub">Queries Apple Business Manager for hardware IMEIs, matches against Webbing cellular modem IMEIs</span></span></div>
+              <div class="step"><span class="step-num">1</span><span class="step-text"><strong>Pass 1: ICCID Direct Match</strong><span class="sub">The iPad's eSIM subscription ICCID (from SimpleMDM) is matched directly against the Webbing SIM inventory ICCID. This is the primary match method — instant, no external API calls needed.</span></span></div>
+              <div class="step"><span class="step-num">2</span><span class="step-text"><strong>Pass 2: ABM IMEI Bridge</strong><span class="sub">For any remaining unmatched iPads, queries Apple Business Manager for hardware IMEIs and matches against Webbing cellular modem IMEIs. This is the fallback for devices without ICCID data.</span></span></div>
             </div>
             <table class="t-table">
               <thead><tr><th>Icon</th><th>Meaning</th></tr></thead>
@@ -364,10 +365,10 @@
               <thead><tr><th>Feature</th><th>Description</th><th>When</th></tr></thead>
               <tbody>
                 <tr><td><strong>Data Usage Gauge</strong></td><td>Big % + color-coded progress bar</td><td>Always</td></tr>
-                <tr><td><strong>Burn Rate Projection</strong></td><td>"At current pace, 4.8 GB of 6 GB by end"</td><td>Has usage data</td></tr>
+                <tr><td><strong>Burn Rate Projection</strong></td><td>"At current pace, 4.8 GB of 6 GB by end" — calculates from average daily usage × remaining days</td><td>Has usage data</td></tr>
                 <tr><td><strong>Daily Usage Chart</strong></td><td>Bar chart showing GB per day</td><td>Has usage data</td></tr>
                 <tr><td><strong>Rental Timeline</strong></td><td>"Day 3 of 5 · 2 days remaining"</td><td>Always</td></tr>
-                <tr><td><strong>Device Fleet Cards</strong></td><td>Model, carrier, online status, usage</td><td>Always</td></tr>
+                <tr><td><strong>Device Fleet Cards</strong></td><td>Specific model name (e.g., Apple iPad A1823), carrier badge, online status, usage per device</td><td>Always</td></tr>
                 <tr><td><strong>Per-Device Bars</strong></td><td>Color-coded % of allocation</td><td>Always</td></tr>
                 <tr><td><strong>🏆 Top Consumer</strong></td><td>Gold badge on highest-usage device</td><td>Usage > 0</td></tr>
                 <tr><td><strong>📶 WiFi + QR</strong></td><td>SSID, password, copy, scannable QR</td><td>Routers</td></tr>
@@ -470,14 +471,35 @@
               <li>Review all customer-submitted specs (apps, WiFi, lockdown settings, wallpaper)</li>
               <li>Update status: <strong>🔧 Mark In Progress</strong>, <strong>✅ Complete</strong>, or <strong>✕ Cancel</strong></li>
               <li>Add internal <strong>technician notes</strong> visible only to the team</li>
+              <li>View uploaded files with <strong>☁ Google Drive</strong> links — click <strong>👁 View</strong> to preview or <strong>⬇</strong> to download</li>
+              <li>Click <strong>Open in Drive</strong> to see all files for a submission in the shared Google Drive folder</li>
             </ul>
+
+            <h4>Files Column</h4>
+            <p>The Requests table includes a <strong>Files</strong> column showing the number of attachments:</p>
+            <ul>
+              <li><strong>☁ 3</strong> (green) — 3 files stored in Google Drive, click to open folder</li>
+              <li><strong>📎 2</strong> — 2 files stored locally (pre-Drive uploads)</li>
+              <li><strong>—</strong> — no files attached</li>
+            </ul>
+
+            <h4>Google Drive Integration</h4>
+            <div class="callout info"><span class="callout-icon">☁️</span> Files uploaded through the DCR form are automatically sent to a shared Google Drive. Folders are named <strong>[Order #] - [Company Name]</strong> and organized inside the <strong>Fello DCR Uploads</strong> Shared Drive.</div>
+            <p>When a customer submits a DCR with file attachments (wallpapers, credentials, branding):</p>
+            <div class="workflow">
+              <div class="step"><span class="step-num">1</span><span class="step-text">Files arrive via the DCR form upload</span></div>
+              <div class="step"><span class="step-num">2</span><span class="step-text">Server creates a Drive subfolder: <code>SQ14973 - Acme Corp</code></span></div>
+              <div class="step"><span class="step-num">3</span><span class="step-text">Each file is uploaded to Google Drive with "anyone with link" access</span></div>
+              <div class="step"><span class="step-num">4</span><span class="step-text">Drive URLs stored in the submission — visible in the detail modal</span></div>
+              <div class="step"><span class="step-num">5</span><span class="step-text">Local temp file is deleted after successful Drive upload</span></div>
+            </div>
 
             <h3>Auto-Provisioning Engine</h3>
             <p>Navigate to <strong>SimpleMDM → ⚙️ Provisioning</strong> tab to monitor automated runs.</p>
             <div class="callout info"><span class="callout-icon">⚙️</span> When a DCR is submitted, the provisioning engine automatically runs these steps in the background — no manual action required for standard configurations.</div>
             <h4>What Auto-Provisioning Does</h4>
             <div class="workflow">
-              <div class="step"><span class="step-num">1</span><span class="step-text"><strong>Creates SimpleMDM Group</strong><span class="sub">Named "[Order #] - [Event Name]" with auto-deployment enabled</span></span></div>
+              <div class="step"><span class="step-num">1</span><span class="step-text"><strong>Creates SimpleMDM Group</strong><span class="sub">Named "[Order #] - [Company Name]" with auto-deployment enabled</span></span></div>
               <div class="step"><span class="step-num">2</span><span class="step-text"><strong>Matches & Assigns Apps</strong><span class="sub">Fuzzy-matches requested app names against the SimpleMDM catalog. Auto-assigns Fello Connect as the baseline.</span></span></div>
               <div class="step"><span class="step-num">3</span><span class="step-text"><strong>Assigns Baseline Profiles</strong><span class="sub">Default Restrictions + Fello Wi-Fi always applied. Kiosk mode gets Safari Lock profile.</span></span></div>
               <div class="step"><span class="step-num">4</span><span class="step-text"><strong>Generates Custom Profiles</strong><span class="sub">Builds .mobileconfig XML for: custom WiFi credentials, passcode policies, web content filters, wallpaper payloads</span></span></div>
