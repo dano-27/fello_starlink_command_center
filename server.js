@@ -1792,7 +1792,7 @@ app.post('/api/share/generate', async (req, res) => {
   
   // Audit log
   if (typeof auditLog === 'function') {
-    auditLog(req, 'share_generate', { orderId, token: token.substring(0, 8) + '...' });
+    auditLog({ action: 'share_generate', user: req.user && req.user.username, orderId, token: token.substring(0, 8) + '...' });
   }
   
   console.log('[Share] Token generated for ' + orderId + ' by ' + req.user.username + ' (expires ' + expiresAt + ')');
