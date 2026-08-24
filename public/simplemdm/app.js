@@ -1930,154 +1930,160 @@
         if (!sub) return;
         state.currentDcr = sub;
 
-        dom.dcrModalTitle.textContent = `Request: ${sub.orderNumber || sub.id}`;
+        dom.dcrModalTitle.textContent = `DCR: ${sub.orderNumber || sub.id}`;
 
-        // Build detail HTML with sections
-        let html = '';
-
-        // Status badge
         const statusColors = { pending: '#f59e0b', in_progress: '#3b82f6', completed: '#22c55e', cancelled: '#ef4444' };
-        const statusLabels = { pending: '⏳ Pending', in_progress: '🔧 In Progress', completed: '✅ Completed', cancelled: '✕ Cancelled' };
-        html += `<div style="margin-bottom:16px;padding:10px 14px;background:#1a1f36;border-radius:8px;border-left:4px solid ${statusColors[sub.status] || '#8892b0'};">
-            <span style="font-size:0.85rem;color:#8892b0;">Status:</span> <strong style="color:${statusColors[sub.status] || '#ccd6f6'};font-size:1rem;">${statusLabels[sub.status] || sub.status}</strong>
-            <span style="float:right;color:#8892b0;font-size:0.8rem;">Submitted: ${sub.timestamp ? new Date(sub.timestamp).toLocaleString() : '—'}</span>
-        </div>`;
+        const statusLabels = { pending: 'PENDING', in_progress: 'IN PROGRESS', completed: 'COMPLETED', cancelled: 'CANCELLED' };
+        const statusIcons = { pending: '⏳', in_progress: '🔧', completed: '✅', cancelled: '✕' };
+        const stColor = statusColors[sub.status] || '#8892b0';
+        const stLabel = statusLabels[sub.status] || sub.status;
+        const stIcon = statusIcons[sub.status] || '';
+        
+        const formatSize = (bytes) => {
+            if (!bytes) return '0 B';
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+        };
 
-        // Order & Contact
-        html += `<div style="margin-bottom:16px;">
-            <h4 style="color:#64ffda;margin-bottom:8px;border-bottom:1px solid #2a3050;padding-bottom:4px;">📦 Order & Contact</h4>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;font-size:0.9rem;">
-                ${detailRow('Order #', sub.orderNumber)}
-                ${detailRow('Event', sub.eventName)}
-                ${detailRow('Event Dates', sub.eventDates)}
-                ${detailRow('Venue', sub.venue)}
-                ${detailRow('Contact', sub.contactName)}
-                ${detailRow('Company', sub.company)}
-                ${detailRow('Email', sub.email)}
-                ${detailRow('Phone', sub.phone)}
+        const catIcons = { wallpaper: '🖼️', vpn_profile: '🔒', config_profile: '⚙️', credentials: '📋', media: '🎬', general: '📎', 'form-backup': '📄', branding: '🎨' };
+        const catLabels = { wallpaper: 'Wallpaper', vpn_profile: 'VPN Profile', config_profile: 'Config Profile', credentials: 'Credentials', media: 'Media', general: 'General', 'form-backup': 'Form Backup', branding: 'Branding' };
+
+        const chip = (icon, text) => text ? `<span style="display:inline-flex;align-items:center;gap:4px;background:#0d1b2a;border:1px solid #233554;border-radius:20px;padding:4px 12px;font-size:0.75rem;color:#8892b0;white-space:nowrap;">${icon} ${escapeHtml(text)}</span>` : '';
+
+        const infoCard = (icon, title, content) => `<div style="background:#0d1b2a;border:1px solid #233554;border-radius:12px;padding:16px;"><div style="color:#e8802a;font-size:0.85rem;font-weight:700;margin-bottom:10px;">${icon} ${title}</div>${content}</div>`;
+
+        const kvLine = (label, value) => {
+            if (!value || value === 'undefined' || value === 'null') return '';
+            return `<div style="margin-bottom:6px;"><span style="color:#8892b0;font-size:0.75rem;">${label}</span><div style="color:#ccd6f6;font-size:0.85rem;font-weight:500;">${escapeHtml(String(value))}</div></div>`;
+        };
+
+        const fileCount = (sub.files && sub.files.length) || 0;
+        const noteCount = (sub.notes && sub.notes.length) || 0;
+
+        // ── HEADER CARD ──
+        let html = `<div style="background:#112240;border:1px solid #233554;border-radius:12px;padding:20px;margin-bottom:16px;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;">
+                <div>
+                    <div style="color:#8892b0;font-size:0.7rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:2px;">Order Number</div>
+                    <div style="font-size:1.6rem;font-weight:800;color:#e8802a;">${escapeHtml(sub.orderNumber || sub.id)}</div>
+                    <div style="font-size:1rem;font-weight:600;color:#ccd6f6;margin-top:2px;">${escapeHtml(sub.company || '')}</div>
+                    <div style="font-size:0.8rem;color:#8892b0;">${escapeHtml(sub.eventName || '')}</div>
+                </div>
+                <div style="text-align:right;">
+                    <span style="display:inline-block;padding:5px 14px;border-radius:20px;font-size:0.75rem;font-weight:700;background:${stColor}22;color:${stColor};border:1px solid ${stColor}44;">${stIcon} ${stLabel}</span>
+                    <div style="color:#8892b0;font-size:0.7rem;margin-top:6px;">${sub.timestamp ? new Date(sub.timestamp).toLocaleString() : ''}</div>
+                </div>
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;">
+                ${chip('📧', sub.email)}
+                ${chip('📱', sub.phone)}
+                ${chip('📅', sub.eventDates)}
+                ${chip('👤', sub.contactName)}
+                ${sub.configMode ? chip('⚙️', sub.configMode) : ''}
             </div>
         </div>`;
 
-        // Configuration
-        html += `<div style="margin-bottom:16px;">
-            <h4 style="color:#64ffda;margin-bottom:8px;border-bottom:1px solid #2a3050;padding-bottom:4px;">⚙️ Configuration</h4>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;font-size:0.9rem;">
-                ${detailRow('Mode', sub.configMode)}
-                ${detailRow('All Apps on All Devices', sub.allAppsAllDevices)}
-                ${detailRow('Home Screen Layout', sub.homeScreenLayout)}
-                ${detailRow('Custom Layout', sub.customLayoutDescription)}
-                ${detailRow('Naming Convention', sub.namingConvention)}
-                ${detailRow('Custom Naming Format', sub.customNamingFormat)}
-                ${detailRow('Location Services', sub.locationServices)}
-            </div>
+        // ── TAB BAR ──
+        html += `<div id="dcr-tab-bar" style="display:flex;gap:0;border-bottom:2px solid #233554;margin-bottom:16px;">
+            <button class="dcr-tab active" data-tab="config" style="flex:1;padding:10px 0;background:none;border:none;color:#e8802a;font-family:inherit;font-size:0.85rem;font-weight:700;cursor:pointer;border-bottom:2px solid #e8802a;margin-bottom:-2px;">⚙️ Configuration</button>
+            <button class="dcr-tab" data-tab="network" style="flex:1;padding:10px 0;background:none;border:none;color:#8892b0;font-family:inherit;font-size:0.85rem;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;">🔐 Network</button>
+            <button class="dcr-tab" data-tab="files" style="flex:1;padding:10px 0;background:none;border:none;color:#8892b0;font-family:inherit;font-size:0.85rem;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;">📁 Files${fileCount ? ` (${fileCount})` : ''}</button>
+            <button class="dcr-tab" data-tab="notes" style="flex:1;padding:10px 0;background:none;border:none;color:#8892b0;font-family:inherit;font-size:0.85rem;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;">📝 Notes${noteCount ? ` (${noteCount})` : ''}</button>
         </div>`;
 
-        // Apps — show name + App Store link
+        // ── TAB: CONFIGURATION ──
+        let appsHtml = '<div style="color:#8892b0;font-size:0.8rem;">No apps specified</div>';
         if (sub.apps && sub.apps.length) {
-            html += `<div style="margin-bottom:16px;">
-                <h4 style="color:#64ffda;margin-bottom:8px;border-bottom:1px solid #2a3050;padding-bottom:4px;">📱 Apps (${sub.apps.length})</h4>
-                <div style="font-size:0.9rem;">`;
             if (sub.appLinks && sub.appLinks.length) {
-                html += sub.appLinks.map(a => {
+                appsHtml = sub.appLinks.map(a => {
                     const name = escapeHtml(typeof a === 'string' ? a : a.name || '');
                     const url = typeof a === 'object' && a.url ? a.url : '';
-                    return url
-                        ? `<div style="display:flex;align-items:center;gap:6px;margin:4px 0;"><span style="background:#1a1f36;border:1px solid #2a3050;border-radius:6px;padding:3px 10px;">${name}</span> <a href="${escapeHtml(url)}" target="_blank" style="color:#3b82f6;font-size:0.8rem;">App Store ↗</a></div>`
-                        : `<span style="display:inline-block;background:#1a1f36;border:1px solid #2a3050;border-radius:6px;padding:3px 10px;margin:2px 4px 2px 0;">${name}</span>`;
+                    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:#112240;border-radius:8px;margin-bottom:4px;border:1px solid #233554;">
+                        <span style="color:#ccd6f6;font-size:0.85rem;font-weight:500;">${name}</span>
+                        ${url ? `<a href="${escapeHtml(url)}" target="_blank" style="color:#e8802a;font-size:0.75rem;text-decoration:none;">App Store ↗</a>` : ''}
+                    </div>`;
                 }).join('');
             } else {
-                html += sub.apps.map(a => `<span style="display:inline-block;background:#1a1f36;border:1px solid #2a3050;border-radius:6px;padding:3px 10px;margin:2px 4px 2px 0;">${escapeHtml(typeof a === 'string' ? a : a.name || a)}</span>`).join('');
+                appsHtml = sub.apps.map(a => `<span style="display:inline-block;background:#112240;border:1px solid #233554;border-radius:6px;padding:3px 10px;margin:2px 4px 2px 0;font-size:0.85rem;color:#ccd6f6;">${escapeHtml(typeof a === 'string' ? a : a.name || a)}</span>`).join('');
             }
-            html += `</div></div>`;
         }
 
-        // Network & Security
-        html += `<div style="margin-bottom:16px;">
-            <h4 style="color:#64ffda;margin-bottom:8px;border-bottom:1px solid #2a3050;padding-bottom:4px;">🔐 Network & Security</h4>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;font-size:0.9rem;">
-                ${detailRow('Wi-Fi Enabled', sub.wifiEnabled)}
-                ${detailRow('SSID', sub.wifiSsid)}
-                ${detailRow('Password', sub.wifiPassword)}
-                ${detailRow('Security Type', sub.wifiSecurity)}
-                ${detailRow('Hidden Network', sub.wifiHidden)}
-                ${detailRow('Restrictions Enabled', sub.restrictionsEnabled)}
-                ${detailRow('Restriction Type', sub.restrictionType)}
-                ${detailRow('Lockdown Mode', sub.lockdownMode)}
-                ${detailRow('Guided Access Passcode', sub.guidedAccessPasscode)}
-            </div>
-        </div>`;
-
-        // Restriction URLs
-        if (sub.restrictionUrls && sub.restrictionUrls.length) {
-            html += `<div style="margin-bottom:16px;">
-                <h4 style="color:#64ffda;margin-bottom:8px;border-bottom:1px solid #2a3050;padding-bottom:4px;">🚫 Restricted URLs (${sub.restrictionType || 'List'})</h4>
-                <div style="font-size:0.9rem;">
-                    ${sub.restrictionUrls.map(u => `<div style="margin:3px 0;"><a href="${escapeHtml(u)}" target="_blank" style="color:#3b82f6;">${escapeHtml(u)}</a></div>`).join('')}
-                </div>
-            </div>`;
-        }
-
-        // Web Clips
+        let webClipsHtml = '';
         if ((sub.webClips && sub.webClips.length) || (sub.webClipUrls && sub.webClipUrls.length)) {
-            html += `<div style="margin-bottom:16px;">
-                <h4 style="color:#64ffda;margin-bottom:8px;border-bottom:1px solid #2a3050;padding-bottom:4px;">🔗 Web Clips</h4>
-                <div style="font-size:0.9rem;">`;
             const names = sub.webClips || [];
             const urls = sub.webClipUrls || [];
             const max = Math.max(names.length, urls.length);
+            let clips = '';
             for (let i = 0; i < max; i++) {
                 const name = names[i] ? escapeHtml(names[i]) : `Clip ${i + 1}`;
                 const url = urls[i] ? escapeHtml(urls[i]) : '';
-                html += `<div style="margin:4px 0;background:#1a1f36;padding:6px 10px;border-radius:6px;border:1px solid #2a3050;">
-                    <strong style="color:#ccd6f6;">${name}</strong>
-                    ${url ? ` — <a href="${url}" target="_blank" style="color:#3b82f6;">${url}</a>` : ''}
+                clips += `<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:#112240;border-radius:8px;margin-bottom:4px;border:1px solid #233554;">
+                    <span style="color:#ccd6f6;font-size:0.85rem;">${name}</span>
+                    ${url ? `<a href="${url}" target="_blank" style="color:#e8802a;font-size:0.75rem;">Open ↗</a>` : ''}
                 </div>`;
             }
-            html += `</div></div>`;
+            webClipsHtml = infoCard('🔗', 'Web Clips', clips);
         }
 
-        // Branding & Media
-        html += `<div style="margin-bottom:16px;">
-            <h4 style="color:#64ffda;margin-bottom:8px;border-bottom:1px solid #2a3050;padding-bottom:4px;">🎨 Branding & Media</h4>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;font-size:0.9rem;">
-                ${detailRow('Custom Wallpaper', sub.customWallpaper)}
-                ${detailRow('Media Instructions', sub.mediaInstructions)}
+        html += `<div class="dcr-tab-panel" data-panel="config">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+                ${infoCard('📱', `Apps (${(sub.apps && sub.apps.length) || 0})`, appsHtml)}
+                ${infoCard('📐', 'Display & Layout', `
+                    ${kvLine('Home Screen', sub.homeScreenLayout)}
+                    ${kvLine('Naming', sub.namingConvention)}
+                    ${kvLine('Custom Format', sub.customNamingFormat)}
+                    ${kvLine('Location Services', sub.locationServices)}
+                    ${kvLine('All Apps All Devices', sub.allAppsAllDevices)}
+                `)}
             </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+                ${infoCard('🔒', 'Lockdown', `
+                    ${kvLine('Mode', sub.lockdownMode)}
+                    ${kvLine('Passcode', sub.guidedAccessPasscode)}
+                    ${kvLine('Config Mode', sub.configMode)}
+                `)}
+                ${infoCard('🎨', 'Branding', `
+                    ${kvLine('Custom Wallpaper', sub.customWallpaper)}
+                    ${kvLine('Media Instructions', sub.mediaInstructions)}
+                `)}
+            </div>
+            ${webClipsHtml ? `<div style="margin-bottom:12px;">${webClipsHtml}</div>` : ''}
+            ${sub.appLoginEnabled && sub.appLoginEnabled !== 'No' ? `<div style="margin-bottom:12px;">${infoCard('🔑', 'App Login', `
+                ${kvLine('Login Required', sub.appLoginEnabled)}
+                ${sub.appLoginApps && sub.appLoginApps.length ? `<div style="margin-top:6px;">${sub.appLoginApps.map(a => `<span style="display:inline-block;background:#112240;border:1px solid #233554;border-radius:6px;padding:2px 8px;margin:2px 4px 2px 0;font-size:0.8rem;color:#ccd6f6;">${escapeHtml(a)}</span>`).join('')}</div>` : ''}
+            `)}</div>` : ''}
+            ${sub.additionalComments ? `<div>${infoCard('💬', 'Additional Comments', `<div style="color:#ccd6f6;font-size:0.85rem;white-space:pre-wrap;line-height:1.6;">${escapeHtml(sub.additionalComments)}</div>`)}</div>` : ''}
         </div>`;
 
-        // App Login / Credentials
-        html += `<div style="margin-bottom:16px;">
-            <h4 style="color:#64ffda;margin-bottom:8px;border-bottom:1px solid #2a3050;padding-bottom:4px;">🔑 App Login & Credentials</h4>
-            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px 16px;font-size:0.9rem;">
-                ${detailRow('App Login Required', sub.appLoginEnabled)}
-            </div>`;
-        if (sub.appLoginApps && sub.appLoginApps.length) {
-            html += `<div style="margin-top:6px;font-size:0.9rem;">
-                <span style="color:#8892b0;">Apps needing login:</span>
-                ${sub.appLoginApps.map(a => `<span style="display:inline-block;background:#1a1f36;border:1px solid #2a3050;border-radius:6px;padding:2px 8px;margin:2px 4px 2px 0;font-size:0.85rem;">${escapeHtml(a)}</span>`).join('')}
-            </div>`;
-        }
-        html += `</div>`;
-
-        // Additional Comments
-        if (sub.additionalComments) {
-            html += `<div style="margin-bottom:16px;">
-                <h4 style="color:#64ffda;margin-bottom:8px;border-bottom:1px solid #2a3050;padding-bottom:4px;">💬 Additional Comments</h4>
-                <div style="font-size:0.9rem;white-space:pre-wrap;background:#1a1f36;padding:12px;border-radius:8px;">${escapeHtml(sub.additionalComments)}</div>
-            </div>`;
+        // ── TAB: NETWORK ──
+        let restrictionUrlsHtml = '';
+        if (sub.restrictionUrls && sub.restrictionUrls.length) {
+            restrictionUrlsHtml = sub.restrictionUrls.map(u => `<div style="padding:4px 10px;background:#112240;border-radius:6px;margin-bottom:3px;border:1px solid #233554;"><a href="${escapeHtml(u)}" target="_blank" style="color:#e8802a;font-size:0.8rem;">${escapeHtml(u)}</a></div>`).join('');
         }
 
-        // Uploaded Files
+        html += `<div class="dcr-tab-panel" data-panel="network" style="display:none;">
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
+                ${infoCard('📶', 'Wi-Fi Configuration', `
+                    ${kvLine('SSID', sub.wifiSsid)}
+                    <div style="margin-bottom:6px;"><span style="color:#8892b0;font-size:0.75rem;">Password</span><div style="display:flex;align-items:center;gap:8px;"><span style="color:#ccd6f6;font-size:0.95rem;font-weight:600;font-family:monospace;letter-spacing:1px;">${escapeHtml(sub.wifiPassword || '—')}</span>${sub.wifiPassword ? `<button onclick="navigator.clipboard.writeText('${escapeHtml(sub.wifiPassword)}');this.textContent='✓'" style="background:none;border:1px solid #233554;border-radius:4px;color:#8892b0;cursor:pointer;font-size:0.7rem;padding:2px 6px;">Copy</button>` : ''}</div></div>
+                    ${kvLine('Security', sub.wifiSecurity)}
+                    ${kvLine('Hidden', sub.wifiHidden)}
+                    ${kvLine('Wi-Fi Enabled', sub.wifiEnabled)}
+                `)}
+                ${infoCard('🛡️', 'Restrictions', `
+                    ${kvLine('Enabled', sub.restrictionsEnabled)}
+                    ${kvLine('Type', sub.restrictionType)}
+                    ${kvLine('Lockdown Mode', sub.lockdownMode)}
+                    ${kvLine('Passcode', sub.guidedAccessPasscode)}
+                `)}
+            </div>
+            ${restrictionUrlsHtml ? `<div>${infoCard('🔗', `Allowed/Blocked URLs (${sub.restrictionUrls.length})`, restrictionUrlsHtml)}</div>` : ''}
+        </div>`;
+
+        // ── TAB: FILES ──
+        let filesContent = '';
         if (sub.files && sub.files.length) {
-            const formatSize = (bytes) => {
-                if (bytes < 1024) return bytes + ' B';
-                if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-                return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-            };
-            const catIcons = { wallpaper: '🖼️', vpn_profile: '🔒', config_profile: '⚙️', credentials: '📋', media: '🎬', general: '📎' };
-            const catLabels = { wallpaper: 'Wallpaper', vpn_profile: 'VPN Profile', config_profile: 'Config Profile', credentials: 'Credentials', media: 'Media', general: 'Files' };
-
-            // Group by category
             const grouped = {};
             sub.files.forEach(f => {
                 const cat = f.category || 'general';
@@ -2085,72 +2091,89 @@
                 grouped[cat].push(f);
             });
 
-            const hasDriveFiles = sub.files.some(f => f.driveUrl);
-            
-            html += `<div style="margin-bottom:16px;">
-                <h4 style="color:#64ffda;margin-bottom:8px;border-bottom:1px solid #2a3050;padding-bottom:4px;display:flex;align-items:center;justify-content:space-between;">
-                    <span>📎 Uploaded Files (${sub.files.length})</span>
-                    ${sub.driveFolderUrl ? `<a href="${escapeHtml(sub.driveFolderUrl)}" target="_blank" style="font-size:0.8rem;color:#3b82f6;font-weight:500;text-decoration:none;display:flex;align-items:center;gap:4px;background:#1a1f36;padding:4px 10px;border-radius:6px;border:1px solid #2a3050;">
-                        <svg width="16" height="16" viewBox="0 0 87.3 78" style="flex-shrink:0;"><path d="M6.6 66.85l14.3-24.75h56.8l-14.3 24.75z" fill="#0066da"/><path d="M21.8 42.1L7.5 17.35 35.4 0l14.3 17.35z" fill="#00ac47"/><path d="M58.4 42.1h28.5L72.6 17.35H43.4z" fill="#ea4335"/><path d="M29.3 66.85l14.3-24.75L58.4 42.1 44.1 66.85z" fill="#00832d"/><path d="M44.1 66.85l14.3-24.75H77.6L63.4 66.85z" fill="#2684fc"/><path d="M35.4 0l14.3 17.35H58.4L44.1 0z" fill="#ffba00"/></svg>
-                        Open in Drive
-                    </a>` : ''}
-                </h4>`;
+            if (sub.driveFolderUrl) {
+                filesContent += `<div style="text-align:right;margin-bottom:12px;"><a href="${escapeHtml(sub.driveFolderUrl)}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;background:#e8802a22;border:1px solid #e8802a44;color:#e8802a;padding:6px 14px;border-radius:8px;font-size:0.8rem;font-weight:600;text-decoration:none;">📁 Open All in Drive ↗</a></div>`;
+            }
 
             for (const [cat, files] of Object.entries(grouped)) {
-                html += `<div style="margin-bottom:8px;">
-                    <div style="color:#8892b0;font-size:0.8rem;margin-bottom:4px;">${catIcons[cat] || '📎'} ${catLabels[cat] || cat}</div>`;
+                filesContent += `<div style="margin-bottom:16px;">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                        <span style="color:#8892b0;font-size:0.75rem;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">${catIcons[cat] || '📎'} ${catLabels[cat] || cat}</span>
+                        <div style="flex:1;height:1px;background:#233554;"></div>
+                    </div>`;
                 files.forEach(f => {
                     const isImage = f.type && f.type.startsWith('image/');
                     const isDrive = !!f.driveUrl;
                     const fileUrl = isDrive ? f.driveUrl : f.url;
                     const downloadUrl = isDrive ? f.driveDownloadUrl : f.url;
-                    
-                    html += `<div style="display:flex;align-items:center;gap:8px;margin:4px 0;background:#1a1f36;padding:8px 12px;border-radius:6px;border:1px solid #2a3050;">`;
-                    
-                    // Thumbnail — use Drive thumbnail or local image
-                    if (isImage && isDrive && f.driveFileId) {
-                        html += `<img src="https://drive.google.com/thumbnail?id=${f.driveFileId}&sz=w80" style="width:40px;height:40px;object-fit:cover;border-radius:4px;border:1px solid #2a3050;" onerror="this.style.display='none'">`;
-                    } else if (isImage && f.url) {
-                        html += `<img src="${f.url}" style="width:40px;height:40px;object-fit:cover;border-radius:4px;border:1px solid #2a3050;">`;
-                    }
-                    
-                    html += `<div style="flex:1;min-width:0;">
-                            <div style="color:#ccd6f6;font-size:0.85rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(f.name)}</div>
-                            <div style="color:#8892b0;font-size:0.75rem;">${formatSize(f.size || 0)}${isDrive ? ' · <span style="color:#22c55e;">☁ Google Drive</span>' : ' · <span style="color:#f59e0b;">💾 Local</span>'}</div>
-                        </div>
-                        <div style="display:flex;gap:6px;align-items:center;">`;
-                    
-                    if (isDrive) {
-                        html += `<a href="${escapeHtml(fileUrl)}" target="_blank" style="color:#3b82f6;font-size:0.8rem;white-space:nowrap;" title="Preview in Google Drive">👁 View</a>`;
-                        if (downloadUrl) {
-                            html += `<a href="${escapeHtml(downloadUrl)}" target="_blank" style="color:#3b82f6;font-size:0.8rem;white-space:nowrap;" title="Download file">⬇</a>`;
-                        }
-                    } else if (f.url) {
-                        html += `<a href="${f.url}" download="${escapeHtml(f.name)}" target="_blank" style="color:#3b82f6;font-size:0.8rem;white-space:nowrap;">⬇ Download</a>`;
-                    }
-                    
-                    html += `</div></div>`;
-                });
-                html += `</div>`;
-            }
-            html += `</div>`;
-        }
+                    const isPdf = f.type === 'application/pdf' || (f.name && f.name.endsWith('.pdf'));
 
-        // Notes
-        html += `<div style="margin-bottom:8px;">
-            <h4 style="color:#64ffda;margin-bottom:8px;border-bottom:1px solid #2a3050;padding-bottom:4px;">📝 Internal Notes</h4>
-            <div id="dcr-notes-list" style="font-size:0.85rem;">
+                    let iconHtml = '<div style="width:40px;height:40px;border-radius:8px;background:#112240;border:1px solid #233554;display:flex;align-items:center;justify-content:center;font-size:1.2rem;flex-shrink:0;">📄</div>';
+                    if (isImage && isDrive && f.driveFileId) {
+                        iconHtml = `<img src="https://drive.google.com/thumbnail?id=${f.driveFileId}&sz=w80" style="width:40px;height:40px;object-fit:cover;border-radius:8px;border:1px solid #233554;flex-shrink:0;" onerror="this.outerHTML='<div style=\\'width:40px;height:40px;border-radius:8px;background:#112240;border:1px solid #233554;display:flex;align-items:center;justify-content:center;font-size:1.2rem;flex-shrink:0;\\'>🖼️</div>'">`;
+                    } else if (isImage && f.url) {
+                        iconHtml = `<img src="${f.url}" style="width:40px;height:40px;object-fit:cover;border-radius:8px;border:1px solid #233554;flex-shrink:0;">`;
+                    } else if (isPdf) {
+                        iconHtml = '<div style="width:40px;height:40px;border-radius:8px;background:#dc262622;border:1px solid #dc262644;display:flex;align-items:center;justify-content:center;font-size:0.7rem;color:#ef4444;font-weight:700;flex-shrink:0;">PDF</div>';
+                    } else if (f.type === 'text/html') {
+                        iconHtml = '<div style="width:40px;height:40px;border-radius:8px;background:#3b82f622;border:1px solid #3b82f644;display:flex;align-items:center;justify-content:center;font-size:0.7rem;color:#3b82f6;font-weight:700;flex-shrink:0;">HTML</div>';
+                    }
+
+                    filesContent += `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#0d1b2a;border:1px solid #233554;border-radius:10px;margin-bottom:6px;">
+                        ${iconHtml}
+                        <div style="flex:1;min-width:0;">
+                            <div style="color:#ccd6f6;font-size:0.85rem;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(f.name)}</div>
+                            <div style="display:flex;align-items:center;gap:6px;margin-top:2px;">
+                                <span style="color:#8892b0;font-size:0.7rem;">${formatSize(f.size || 0)}</span>
+                                ${isDrive ? '<span style="font-size:0.65rem;color:#22c55e;background:#22c55e18;padding:1px 6px;border-radius:8px;">☁ Drive</span>' : '<span style="font-size:0.65rem;color:#f59e0b;background:#f59e0b18;padding:1px 6px;border-radius:8px;">💾 Local</span>'}
+                            </div>
+                        </div>
+                        <div style="display:flex;gap:8px;align-items:center;">
+                            ${isDrive && fileUrl ? `<a href="${escapeHtml(fileUrl)}" target="_blank" style="color:#e8802a;font-size:0.8rem;text-decoration:none;font-weight:500;" title="Preview">View ↗</a>` : ''}
+                            ${downloadUrl ? `<a href="${escapeHtml(downloadUrl)}" target="_blank" style="color:#8892b0;font-size:0.9rem;text-decoration:none;" title="Download"${!isDrive ? ` download="${escapeHtml(f.name)}"` : ''}>⬇</a>` : ''}
+                        </div>
+                    </div>`;
+                });
+                filesContent += `</div>`;
+            }
+        } else {
+            filesContent = '<div style="text-align:center;padding:32px 0;color:#8892b0;font-size:0.85rem;">No files uploaded with this submission.</div>';
+        }
+        html += `<div class="dcr-tab-panel" data-panel="files" style="display:none;">${filesContent}</div>`;
+
+        // ── TAB: NOTES ──
+        html += `<div class="dcr-tab-panel" data-panel="notes" style="display:none;">
+            <div id="dcr-notes-list">
                 ${(sub.notes && sub.notes.length) ? sub.notes.map(n => `
-                    <div style="background:#1a1f36;padding:8px 12px;border-radius:8px;margin-bottom:6px;border-left:3px solid #3b82f6;">
-                        <div style="color:#ccd6f6;">${escapeHtml(n.text)}</div>
-                        <div style="color:#8892b0;font-size:0.75rem;margin-top:4px;">${escapeHtml(n.author || 'Unknown')} — ${new Date(n.timestamp).toLocaleString()}</div>
+                    <div style="background:#0d1b2a;padding:12px 14px;border-radius:10px;margin-bottom:8px;border-left:3px solid #e8802a;">
+                        <div style="color:#ccd6f6;font-size:0.85rem;line-height:1.5;">${escapeHtml(n.text)}</div>
+                        <div style="color:#8892b0;font-size:0.7rem;margin-top:6px;">${escapeHtml(n.author || 'Unknown')} — ${new Date(n.timestamp).toLocaleString()}</div>
                     </div>
-                `).join('') : '<div style="color:#8892b0;">No notes yet.</div>'}
+                `).join('') : '<div style="text-align:center;padding:32px 0;color:#8892b0;font-size:0.85rem;">No notes yet. Add one below.</div>'}
             </div>
         </div>`;
 
         dom.dcrModalBody.innerHTML = html;
         dom.dcrModalOverlay.classList.remove('hidden');
+
+        // Wire up tab switching
+        dom.dcrModalBody.querySelectorAll('.dcr-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                dom.dcrModalBody.querySelectorAll('.dcr-tab').forEach(t => {
+                    t.style.color = '#8892b0';
+                    t.style.borderBottomColor = 'transparent';
+                    t.classList.remove('active');
+                });
+                tab.style.color = '#e8802a';
+                tab.style.borderBottomColor = '#e8802a';
+                tab.classList.add('active');
+                dom.dcrModalBody.querySelectorAll('.dcr-tab-panel').forEach(p => p.style.display = 'none');
+                const target = dom.dcrModalBody.querySelector(`.dcr-tab-panel[data-panel="${tab.dataset.tab}"]`);
+                if (target) target.style.display = 'block';
+            });
+            tab.addEventListener('mouseenter', () => { if (!tab.classList.contains('active')) tab.style.color = '#ccd6f6'; });
+            tab.addEventListener('mouseleave', () => { if (!tab.classList.contains('active')) tab.style.color = '#8892b0'; });
+        });
     }
 
     function detailRow(label, value) {
