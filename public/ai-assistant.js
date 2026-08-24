@@ -334,7 +334,7 @@
   let history = [];
 
   // Check status
-  fetch('/api/ai/status')
+  fetch('/api/ai/status', { credentials: 'same-origin' })
     .then(res => res.json())
     .then(data => {
       if (data.configured === false) {
@@ -406,17 +406,19 @@
       const response = await fetch('/api/ai/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
         body: JSON.stringify({ message: text, history: currentHistory })
       });
       
       const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Request failed');
       history.push({ role: 'assistant', content: data.response });
       
       typingIndicator.classList.remove('fello-ai-active');
       appendMessage(data.response, false);
     } catch (error) {
       typingIndicator.classList.remove('fello-ai-active');
-      appendMessage('**Error:** Failed to communicate with AI server.', false);
+      appendMessage('**Error:** ' + (error.message || 'Failed to communicate with AI server.'), false);
     } finally {
       input.disabled = false;
       sendBtn.disabled = false;
