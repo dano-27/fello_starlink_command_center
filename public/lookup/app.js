@@ -90,6 +90,10 @@
     // Clear previous instances
     if (currentChart) { currentChart.destroy(); currentChart = null; }
     if (currentMap) { currentMap.remove(); currentMap = null; }
+    // Cancel any pending auto-run timers from previous search
+    if (window._autoShareTimer) { clearTimeout(window._autoShareTimer); window._autoShareTimer = null; }
+    if (window._autoUsageTimer) { clearTimeout(window._autoUsageTimer); window._autoUsageTimer = null; }
+    if (window._autoSiteCheckTimer) { clearTimeout(window._autoSiteCheckTimer); window._autoSiteCheckTimer = null; }
 
     try {
       const response = await fetch(`/api/lookup?q=${encodeURIComponent(query)}`);
@@ -974,7 +978,7 @@
       setTimeout(() => window.renderSiteCheckResults(siteCheck), 0);
     } else if (window._orderShippingAddress && !siteCheck?.inputAddress) {
       // Auto-run site check with the order's shipping address
-      setTimeout(() => {
+      window._autoSiteCheckTimer = setTimeout(() => {
         console.log('[SiteCheck] Auto-running for order address:', window._orderShippingAddress);
         window.runSiteCheck();
       }, 500);
@@ -983,7 +987,7 @@
     // Auto-generate Fello Pulse share link for orders
     if (data.crmOrder && data.crmOrder.flyOrderId) {
       const crm = data.crmOrder;
-      setTimeout(() => {
+      window._autoShareTimer = setTimeout(() => {
         console.log('[Pulse] Auto-generating share link for order:', crm.flyOrderId);
         window.generateShareLink(crm.flyOrderId, crm.customerName || '', crm.eventName || '', crm.startDate || '', crm.endDate || '', crm.totalGbAmount || 0);
       }, 1000);
@@ -991,7 +995,7 @@
 
     // Auto-calculate data usage if order has dates
     if (data.crmOrder?.startDate && data.crmOrder?.endDate) {
-      setTimeout(() => {
+      window._autoUsageTimer = setTimeout(() => {
         console.log('[Usage] Auto-calculating for rental dates:', data.crmOrder.startDate, '→', data.crmOrder.endDate);
         window.calculateUsage();
       }, 1500);
