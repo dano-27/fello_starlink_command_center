@@ -3344,7 +3344,10 @@ app.post('/api/dcr/submit', async (req, res) => {
       
       const folder = await googleDrive.createSubmissionFolder(folderName);
       if (folder) {
-        const result = await googleDrive.uploadFile(tmpPath, `DCR-${submission.orderNumber || submission.id}-Form.html`, 'text/html', folder.folderId);
+        // Create a "Form Backup" subfolder
+        const backupFolder = await googleDrive.createSubmissionFolder('Form Backup', folder.folderId);
+        const targetFolderId = backupFolder ? backupFolder.folderId : folder.folderId;
+        const result = await googleDrive.uploadFile(tmpPath, `DCR-${submission.orderNumber || submission.id}-Form.html`, 'text/html', targetFolderId);
         if (result) {
           submission.driveFolderId = folder.folderId;
           submission.driveFolderUrl = folder.folderUrl;

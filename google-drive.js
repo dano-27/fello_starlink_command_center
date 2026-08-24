@@ -54,20 +54,21 @@ function getDriveClient() {
 }
 
 /**
- * Create a subfolder inside the root DCR folder
- * @param {string} folderName - e.g. "EB3542 - Acme Corp"
+ * Create a subfolder — either inside the root DCR folder or inside another folder
+ * @param {string} folderName - e.g. "EB3542 - Acme Corp" or "Wallpaper"
+ * @param {string} [parentId] - optional parent folder ID (defaults to root GOOGLE_DRIVE_FOLDER_ID)
  * @returns {{ folderId: string, folderUrl: string }} or null
  */
-async function createSubmissionFolder(folderName) {
+async function createSubmissionFolder(folderName, parentId) {
   const drive = getDriveClient();
   if (!drive) return null;
 
-  const parentId = process.env.GOOGLE_DRIVE_FOLDER_ID;
+  const targetParent = parentId || process.env.GOOGLE_DRIVE_FOLDER_ID;
   
   // Check if folder already exists (avoid duplicates)
   try {
     const existing = await drive.files.list({
-      q: `name='${folderName.replace(/'/g, "\\'")}' and '${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
+      q: `name='${folderName.replace(/'/g, "\\'")}' and '${targetParent}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
       fields: 'files(id, name, webViewLink)',
       supportsAllDrives: true,
       includeItemsFromAllDrives: true,
@@ -91,7 +92,7 @@ async function createSubmissionFolder(folderName) {
     const folderMeta = {
       name: folderName,
       mimeType: 'application/vnd.google-apps.folder',
-      parents: [parentId],
+      parents: [targetParent],
     };
 
     const folder = await drive.files.create({
@@ -178,7 +179,7 @@ async function uploadFile(localPath, fileName, mimeType, folderId) {
 }
 
 /**
- * Upload multiple files for a DCR submission
+ * Upload multiple files for a DCR submission, organized into category subfolders
  */
 async function uploadSubmissionFiles(submissionId, folderName, files, categories = []) {
   if (!files || files.length === 0) return null;
@@ -189,15 +190,29 @@ async function uploadSubmissionFiles(submissionId, folderName, files, categories
     return null;
   }
 
-  // Create a folder for this submission
+  // Category display names for subfolder naming
+  const categoryNames = {
+    wallpaper: 'Wallpaper',
+    vpn_profile: 'VPN Profile',
+    config_profile: 'Config Profile',
+    credentials: 'Credentials',
+    media: 'Media',
+    'form-backup': 'Form Backup',
+    general: 'General',
+    branding: 'Branding',
+  };
+
+  // Create the main submission folder
   const folder = await createSubmissionFolder(folderName);
   if (!folder) return null;
 
-  // Upload each file
+  // Group files by category to create subfolders
+  const categoryFolderCache = {}; // cache created subfolder IDs
+
   const uploadedFiles = [];
   for (let i = 0; i < files.length; i++) {
     const f = files[i];
-    // multer v2 may use f.path or construct from destination + filename
+    const category = categories[i] || 'general';
     const localPath = f.path || (f.destination && f.filename ? path.join(f.destination, f.filename) : null);
     
     if (!localPath) {
@@ -207,40 +222,49 @@ async function uploadSubmissionFiles(submissionId, folderName, files, categories
         storedName: f.filename,
         size: f.size,
         type: f.mimetype,
-        category: categories[i] || 'general',
+        category: category,
         localOnly: true,
         url: `/api/dcr/${submissionId}/files/${f.filename}`,
       });
       continue;
     }
 
-    const result = await uploadFile(localPath, f.originalname, f.mimetype, folder.folderId);
+    // Get or create the category subfolder
+    let targetFolderId = folder.folderId;
+    const subfolderName = categoryNames[category] || category.charAt(0).toUpperCase() + category.slice(1);
+    
+    if (!categoryFolderCache[category]) {
+      const subfolder = await createSubmissionFolder(subfolderName, folder.folderId);
+      if (subfolder) {
+        categoryFolderCache[category] = subfolder.folderId;
+        targetFolderId = subfolder.folderId;
+      }
+    } else {
+      targetFolderId = categoryFolderCache[category];
+    }
+
+    const result = await uploadFile(localPath, f.originalname, f.mimetype, targetFolderId);
 
     if (result) {
       uploadedFiles.push({
         name: f.originalname,
         size: f.size,
         type: f.mimetype,
-        category: categories[i] || 'general',
+        category: category,
         driveFileId: result.fileId,
         driveUrl: result.webViewLink,
         driveDownloadUrl: result.downloadUrl,
       });
 
       // Delete local temp file after successful upload
-      try {
-        fs.unlinkSync(localPath);
-      } catch (e) {
-        // Not critical
-      }
+      try { fs.unlinkSync(localPath); } catch (e) {}
     } else {
-      // Drive upload failed — keep local file as fallback
       uploadedFiles.push({
         name: f.originalname,
         storedName: f.filename,
         size: f.size,
         type: f.mimetype,
-        category: categories[i] || 'general',
+        category: category,
         localOnly: true,
         url: `/api/dcr/${submissionId}/files/${f.filename}`,
       });
