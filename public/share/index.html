@@ -336,11 +336,14 @@
         var statusClass = d.isOnline === false ? 'offline' : d.status === 'Active' ? 'active' : d.status === 'Suspended' ? 'suspended' : 'active';
         var statusLabel = d.isOnline === false ? 'Offline' : d.isOnline === true && d.type === 'router' ? 'Online' : d.status === 'Active' ? 'Active' : d.status || 'Active';
         var displayName = d.deviceName || d.name || (d.carrier || 'Cellular') + ' SIM';
-        var metaParts = [];
+        var typeLabels = { ipad: 'iPad', router: 'Router', hotspot: 'Mobile Hotspot', starlink: 'Starlink' };
+        var typeLabel = typeLabels[(d.type || '').toLowerCase()] || (d.model || 'Device');
+        var metaParts = [typeLabel];
+        if (d.carrier && d.carrier !== 'Cellular') metaParts.push(d.carrier);
+        if (d.model && d.type !== 'ipad') metaParts.push(d.model);
         if (d.routerSerial) metaParts.push('S/N: ' + d.routerSerial);
         else if (d.serialNumber) metaParts.push('S/N: ' + d.serialNumber);
-        if (d.carrier && d.carrier !== 'Cellular') metaParts.push(d.carrier);
-        var metaLine = metaParts.length > 0 ? ' · ' + metaParts.join(' · ') : '';
+        var metaLine = ' · ' + metaParts.join(' · ');
         var usageHtml = d.usageGB != null ? '<div class="device-usage"><div class="device-usage-value">' + d.usageGB.toFixed(1) + '</div><div class="device-usage-label">GB</div></div>' : '';
         var topBadge = d.isTopConsumer ? '<span class="top-badge">🏆 Top</span>' : '';
         var devicePct = totalGB > 0 ? Math.min(100, ((d.usageGB || 0) / totalGB) * 100) : 0;
