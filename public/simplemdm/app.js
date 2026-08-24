@@ -2073,9 +2073,11 @@
                 `)}
                 ${infoCard('🛡️', 'Restrictions', `
                     ${kvLine('Enabled', sub.restrictionsEnabled)}
-                    ${kvLine('Type', sub.restrictionType)}
-                    ${kvLine('Lockdown Mode', sub.lockdownMode)}
-                    ${kvLine('Passcode', sub.guidedAccessPasscode)}
+                    ${sub.restrictionsEnabled && sub.restrictionsEnabled !== 'No' && sub.restrictionsEnabled !== 'false' ? `
+                        ${kvLine('Type', sub.restrictionType)}
+                    ` : ''}
+                    ${sub.lockdownMode && sub.lockdownMode !== 'None' && sub.lockdownMode !== 'No' ? kvLine('Lockdown Mode', sub.lockdownMode) : ''}
+                    ${sub.guidedAccessPasscode ? kvLine('Passcode', sub.guidedAccessPasscode) : ''}
                 `)}
             </div>
             ${restrictionUrlsHtml ? `<div>${infoCard('🔗', `Allowed/Blocked URLs (${sub.restrictionUrls.length})`, restrictionUrlsHtml)}</div>` : ''}
