@@ -76,9 +76,24 @@
   });
 
   // ── Search Logic ─────────────────────────────────────────────
+  // Patterns that indicate an order/device lookup (not AI)
+  const ORDER_PATTERNS = /^(FE|SQ|SH|CB|EB|AR|MEAL|RN)\d+/i;
+  const ICCID_PATTERN = /^\d{18,20}$/;
+  const SERIAL_PATTERN = /^[A-Z0-9]{10,14}$/i;
+  
+  function isOrderQuery(text) {
+    const t = text.trim();
+    return ORDER_PATTERNS.test(t) || ICCID_PATTERN.test(t) || SERIAL_PATTERN.test(t);
+  }
+
   async function handleSearch() {
     const query = searchInput.value.trim();
     if (!query) return;
+
+    // If it looks like natural language (not an order number), route to AI
+    if (!isOrderQuery(query) && query.length > 5 && /\s/.test(query)) {
+      return handleAiQuery(query);
+    }
 
     setLoading(true);
     resultsContainer.classList.remove('visible');
@@ -161,6 +176,114 @@
       setLoading(false);
       resultsContainer.classList.add('visible');
     }
+  }
+
+  // ── AI Query Handler ─────────────────────────────────────────
+  async function handleAiQuery(query) {
+    setLoading(true);
+    resultsContainer.innerHTML = '';
+    resultsContainer.classList.add('visible');
+    
+    // Show loading state
+    resultsContainer.innerHTML = `
+      <div style="background:white;border:1.5px solid #cfccca;border-radius:16px;overflow:hidden;margin-bottom:24px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 24px;background:linear-gradient(135deg,#f4f6fa,#e1edfd);border-bottom:1.5px solid #cfccca;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span style="font-size:20px;">✦</span>
+            <span style="font-size:16px;font-weight:700;color:#3166ae;">Fello AI Report</span>
+          </div>
+          <span style="font-size:12px;color:#64748b;font-style:italic;">"${esc(query)}"</span>
+        </div>
+        <div id="ai-report-body" style="padding:24px 32px;min-height:120px;">
+          <div style="display:flex;align-items:center;justify-content:center;gap:12px;padding:48px 24px;color:#636363;font-size:14px;font-weight:500;">
+            <div style="width:24px;height:24px;border:3px solid #e1edfd;border-top:3px solid #3166ae;border-radius:50%;animation:aispin 0.8s linear infinite;"></div>
+            <span>Analyzing your data...</span>
+          </div>
+        </div>
+      </div>
+      <style>@keyframes aispin { to { transform: rotate(360deg); } }</style>
+    `;
+
+    try {
+      const response = await fetch('/api/ai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ 
+          message: query + '\n\nProvide a comprehensive, detailed report. Use headers, tables, and bullet points for clarity. This will be displayed on a full page, not a chat bubble, so you can be thorough.',
+          history: [] 
+        })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Request failed');
+      document.getElementById('ai-report-body').innerHTML = renderAiMarkdown(data.response);
+    } catch (err) {
+      document.getElementById('ai-report-body').innerHTML = '<div style="padding:24px;color:#ef4444;font-weight:600;">Error: ' + esc(err.message) + '</div>';
+    }
+    setLoading(false);
+  }
+
+  function renderAiMarkdown(text) {
+    if (!text) return '';
+    var lines = text.split('\n');
+    var html = '';
+    var inUl = false, inOl = false, inTable = false, inCode = false, codeBlock = '';
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+      if (line.trim().startsWith('```')) {
+        if (inCode) { html += '<pre style="background:#f1f5f9;padding:16px;border-radius:10px;overflow-x:auto;font-size:12px;margin:12px 0;"><code>' + codeBlock.replace(/</g,'&lt;') + '</code></pre>'; codeBlock = ''; inCode = false; }
+        else { inCode = true; } continue;
+      }
+      if (inCode) { codeBlock += line + '\n'; continue; }
+      if (/^-{3,}$/.test(line.trim()) || /^\*{3,}$/.test(line.trim())) {
+        if (inUl) { html += '</ul>'; inUl = false; } if (inOl) { html += '</ol>'; inOl = false; }
+        if (inTable) { html += '</tbody></table>'; inTable = false; }
+        html += '<hr style="border:none;border-top:1.5px solid #e2e8f0;margin:20px 0;">'; continue;
+      }
+      var hm = line.match(/^(#{1,4})\s+(.*)/);
+      if (hm) {
+        if (inUl) { html += '</ul>'; inUl = false; } if (inOl) { html += '</ol>'; inOl = false; }
+        if (inTable) { html += '</tbody></table>'; inTable = false; }
+        var lvl = hm[1].length;
+        var sz = { 1:'22px', 2:'18px', 3:'15px', 4:'13px' };
+        var mg = { 1:'28px 0 14px', 2:'24px 0 12px', 3:'20px 0 8px', 4:'16px 0 6px' };
+        html += '<div style="font-weight:700;font-size:'+sz[lvl]+';margin:'+mg[lvl]+';color:#1e293b;">'+aiFmt(hm[2])+'</div>'; continue;
+      }
+      if (line.trim().startsWith('|') && line.trim().endsWith('|')) {
+        if (/^\|[\s\-:]+\|/.test(line.trim()) && !line.includes('*')) continue;
+        var cells = line.split('|').slice(1, -1).map(function(c){return c.trim()});
+        if (!inTable) {
+          html += '<table style="width:100%;border-collapse:collapse;margin:12px 0;font-size:13px;border:1.5px solid #e2e8f0;border-radius:10px;overflow:hidden;"><thead><tr>';
+          html += cells.map(function(c){return '<th style="padding:10px 14px;background:#f4f6fa;color:#3e3e40;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1.5px solid #e2e8f0;text-align:left;">'+aiFmt(c)+'</th>'}).join('');
+          html += '</tr></thead><tbody>'; inTable = true; continue;
+        }
+        html += '<tr>' + cells.map(function(c){return '<td style="padding:8px 14px;border-bottom:1px solid #f1f5f9;color:#232428;">'+aiFmt(c)+'</td>'}).join('') + '</tr>'; continue;
+      } else if (inTable) { html += '</tbody></table>'; inTable = false; }
+      var olm = line.match(/^\s*(\d+)\.\s+(.*)/);
+      if (olm) {
+        if (inUl) { html += '</ul>'; inUl = false; }
+        if (!inOl) { html += '<ol style="padding-left:24px;margin:8px 0;color:#3e3e40;">'; inOl = true; }
+        html += '<li style="margin-bottom:6px;line-height:1.6;">'+aiFmt(olm[2])+'</li>'; continue;
+      } else if (inOl && !/^\s/.test(line)) { html += '</ol>'; inOl = false; }
+      if (/^\s*[-*]\s+/.test(line)) {
+        if (inOl) { html += '</ol>'; inOl = false; }
+        if (!inUl) { html += '<ul style="padding-left:24px;margin:8px 0;color:#3e3e40;">'; inUl = true; }
+        html += '<li style="margin-bottom:6px;line-height:1.6;">'+aiFmt(line.replace(/^\s*[-*]\s+/,''))+'</li>'; continue;
+      } else if (inUl) { html += '</ul>'; inUl = false; }
+      if (line.trim() === '') { html += '<div style="height:8px;"></div>'; continue; }
+      html += '<p style="margin:4px 0;line-height:1.7;color:#3e3e40;">'+aiFmt(line)+'</p>';
+    }
+    if (inUl) html += '</ul>'; if (inOl) html += '</ol>'; if (inTable) html += '</tbody></table>';
+    return html;
+  }
+
+  function aiFmt(t) {
+    if (!t) return '';
+    var s = t.replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    s = s.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    s = s.replace(/\*(.*?)\*/g, '<em>$1</em>');
+    s = s.replace(/`(.*?)`/g, '<code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;font-size:0.9em;font-family:monospace;color:#3166ae;">$1</code>');
+    return s;
   }
 
   function setLoading(isLoading) {
