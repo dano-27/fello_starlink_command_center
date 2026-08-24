@@ -259,7 +259,7 @@
                 <tr><td><strong>⚡ Quick Actions</strong></td><td>📺 Screen Share · 🔒 Lock · 🔄 Restart · ⏻ Shutdown</td></tr>
                 <tr><td><strong>📦 Managed Apps</strong></td><td>All installed enterprise apps and versions</td></tr>
                 <tr><td><strong>📱 Device Info</strong></td><td>Full specs — serial, MAC, IP, IMEI, EID, ICCID</td></tr>
-                <tr><td><strong>📺 CoBrowse</strong></td><td>Launch interactive remote screen viewing</td></tr>
+                <tr><td><strong>📺 CoBrowse</strong></td><td>Launch interactive remote screen viewing (requires <strong>Fello Connect</strong> app on the iPad)</td></tr>
                 <tr><td><strong>🔧 MDM Controls</strong></td><td>Lock, Restart, Shutdown, Push Apps, Refresh, Clear Passcode</td></tr>
                 <tr><td><strong>📍 Lost Mode</strong></td><td>Enable/Disable with custom message</td></tr>
                 <tr><td><strong>📶 SIM Controls</strong></td><td>Resume/Suspend SIM, change carrier, send SMS</td></tr>
@@ -270,6 +270,26 @@
               </tbody>
             </table>
             <div class="callout danger"><span class="callout-icon">⚠️</span> <strong>Factory Reset / Wipe</strong> permanently erases all data. Double confirmation required. Cannot be undone.</div>
+
+            <h3>📲 Fello Connect — Required Companion App</h3>
+            <p><strong>Fello Connect</strong> is Fello's custom iPad companion app that must be installed and running on every deployed iPad. It is the foundation for remote support capabilities.</p>
+            <h4>What Fello Connect Does</h4>
+            <ul>
+              <li><strong>Enables Screen Sharing</strong> — Powers the CoBrowse integration that lets you view and interact with an iPad's screen remotely from the Command Center</li>
+              <li><strong>Reports GPS Location</strong> — Sends high-precision GPS coordinates back to the Command Center for the location map in the device drawer</li>
+              <li><strong>Stays in Background</strong> — Designed to run silently in the background without interfering with the event app experience</li>
+              <li><strong>Auto-Deployed</strong> — Automatically pushed to all iPads during provisioning as the default baseline app</li>
+            </ul>
+            <div class="callout warn"><span class="callout-icon">⚠️</span> <strong>Screen Share will NOT work</strong> without Fello Connect installed and running on the iPad. If a screen share fails to connect, first verify the app is installed (check <strong>📦 Managed Apps</strong> in the drawer), then try <strong>Push Apps</strong> from MDM Controls to force-install it.</div>
+            <h4>Troubleshooting Screen Share</h4>
+            <div class="workflow">
+              <div class="step"><span class="step-num">1</span><span class="step-text">Open the <strong>Device Drawer</strong> for the target iPad</span></div>
+              <div class="step"><span class="step-num">2</span><span class="step-text">Check <strong>📦 Managed Apps</strong> — verify "Fello Connect" appears in the list</span></div>
+              <div class="step"><span class="step-num">3</span><span class="step-text">If missing, click <strong>Push Apps</strong> in 🔧 MDM Controls to install it</span></div>
+              <div class="step"><span class="step-num">4</span><span class="step-text">Ensure the iPad is <strong>online</strong> (check SIM status is Active and battery > 0%)</span></div>
+              <div class="step"><span class="step-num">5</span><span class="step-text">Click <strong>📺 Screen</strong> in Quick Actions to launch the session</span></div>
+              <div class="step"><span class="step-num">6</span><span class="step-text">If still failing, try <strong>🔄 Restart</strong> to reboot the iPad remotely</span></div>
+            </div>
           </div>
         </div>
 
@@ -422,7 +442,7 @@
                 <span class="sub">Wrong carrier → Change Carrier in SIM Controls</span>
                 <span class="sub">App issue → Push Apps in MDM Controls</span>
                 <span class="sub">Screen frozen → Remote Restart in Quick Actions</span>
-                <span class="sub">Need to see screen → Launch Screen Share via CoBrowse</span>
+                <span class="sub">Need to see screen → Verify Fello Connect is installed, then launch Screen Share via CoBrowse</span>
               </span></div>
             </div>
 
@@ -448,7 +468,7 @@
                 <tr><td><strong>"No existing order found"</strong></td><td>New order without MDM group</td><td>Use the <strong>Create Order</strong> form to provision.</td></tr>
                 <tr><td><strong>Usage shows "—"</strong></td><td>Not calculated yet</td><td>Set dates and click <strong>📊 Calculate</strong>.</td></tr>
                 <tr><td><strong>Carrier switch failed</strong></td><td>SIMs in transient state</td><td>Wait 30s, refresh, retry.</td></tr>
-                <tr><td><strong>Screen share won't connect</strong></td><td>iPad offline or app not running</td><td>Send MDM Push, verify connectivity.</td></tr>
+                <tr><td><strong>Screen share won't connect</strong></td><td>Fello Connect app not installed, iPad offline, or app not running</td><td>Check Managed Apps for Fello Connect. If missing, Push Apps. Verify connectivity.</td></tr>
                 <tr><td><strong>Lost Mode unresponsive</strong></td><td>Device unenrolled</td><td>Check enrollment in device drawer.</td></tr>
                 <tr><td><strong>Starlink "Offline"</strong></td><td>Dish powered down / obstructed</td><td>Check power, inspect placement, Reboot.</td></tr>
                 <tr><td><strong>Pulse link expired</strong></td><td>Past rental end + 7 days</td><td>Generate a new link from the order.</td></tr>
