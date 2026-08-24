@@ -3308,7 +3308,7 @@ app.post('/api/dcr/:id/upload', upload.array('files', 20), async (req, res) => {
     // Try Google Drive upload first
     if (googleDrive.isConfigured() && req.files && req.files.length > 0) {
       const folderName = sub 
-        ? `${sub.orderNumber || sub.eventName || req.params.id}${sub.eventName && sub.orderNumber ? ' - ' + sub.eventName : ''}`
+        ? `${sub.orderNumber || sub.eventName || req.params.id}${sub.company && sub.orderNumber ? ' - ' + sub.company : (sub.eventName && sub.orderNumber ? ' - ' + sub.eventName : '')}`
         : req.params.id;
       
       console.log(`[DCR] Uploading ${req.files.length} files to Google Drive folder: "${folderName}"`);
@@ -4418,8 +4418,8 @@ app.post('/api/automation/provision', async (req, res) => {
     try {
       // ── Step 1: Create Assignment Group ──
       const groupName = dcrData.orderNumber
-        ? `${dcrData.orderNumber} - ${dcrData.eventName}`
-        : dcrData.eventName;
+        ? `${dcrData.orderNumber} - ${dcrData.company || dcrData.eventName}`
+        : dcrData.company || dcrData.eventName;
       run.groupName = groupName;
 
       console.log(`[PROVISION] Creating group: "${groupName}"`);
