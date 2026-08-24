@@ -1923,6 +1923,9 @@ app.get('/api/public/share/:token/usage', async (req, res) => {
         }
         
         console.log('[Share] SimpleMDM search for "' + data.orderId + '": found ' + mdmDevices.length + ' devices, matched ' + Object.keys(mdmMatches).length + ' to SIMs');
+        // Log first few Webbing Model/Vendor for debugging device type detection
+        const sampleDevs = branchDevices.slice(0, 3).map(d => `Model="${d.Model||''}" Vendor="${d.Vendor||''}"`).join(', ');
+        console.log('[Share] Webbing device samples: ' + sampleDevs);
       } else {
         console.log('[Share] No SimpleMDM key configured');
       }
@@ -1976,9 +1979,27 @@ app.get('/api/public/share/:token/usage', async (req, res) => {
         if (pn.includes('VZ') || pn.includes('Verizon') || pn.toLowerCase().includes('verizon')) carrier = 'Verizon';
         else if (pn.includes('AT&T') || pn.includes('ATT') || pn.includes('AT&amp;T')) carrier = 'AT&T';
         else if (pn.includes('T-Mobile') || pn.includes('TMO') || pn.toLowerCase().includes('t-mobile')) carrier = 'T-Mobile';
-        // Determine device type for icon
-        // Matched to SimpleMDM iPad = 'ipad', unmatched SIM = 'hotspot' (standalone data device)
-        const deviceType = ipad ? 'ipad' : 'hotspot';
+        // Determine device type
+        // Check SimpleMDM match first, then fall back to Webbing Model/Vendor fields
+        const webbingModel = (dev.Model || '').toLowerCase();
+        const webbingVendor = (dev.Vendor || '').toLowerCase();
+        let deviceType = 'hotspot'; // default
+        let displayModel = '';
+        if (ipad) {
+          deviceType = 'ipad';
+          displayModel = ipad.model || 'iPad';
+        } else if (webbingModel.includes('ipad') || webbingModel.includes('apple') || webbingVendor.includes('apple')) {
+          deviceType = 'ipad';
+          displayModel = dev.Model || 'iPad';
+        } else if (webbingModel.includes('iphone') || webbingModel.includes('phone')) {
+          deviceType = 'ipad'; // show phone icon but treat as mobile device
+          displayModel = dev.Model || 'iPhone';
+        } else if (webbingModel.includes('cradlepoint') || webbingModel.includes('router') || webbingModel.includes('ibr')) {
+          deviceType = 'router';
+          displayModel = dev.Model || 'Router';
+        } else {
+          displayModel = dev.Model || 'Mobile Hotspot';
+        }
         
         results.devices.push({
           type: deviceType,
@@ -1987,7 +2008,7 @@ app.get('/api/public/share/:token/usage', async (req, res) => {
           deviceName: ipad ? ipad.name : null,
           serialNumber: ipad ? ipad.serial : (dev.Serial || ''),
           barcode: ipad ? ipad.barcode : '',
-          model: ipad ? ipad.model : '',
+          model: displayModel,
           simSerial: dev.SSID || dev.Serial || '',
           iccid: iccid,
           carrier: carrier,
