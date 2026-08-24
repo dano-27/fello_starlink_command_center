@@ -114,6 +114,7 @@
         <a class="toc-link" href="#actions">Quick Actions</a>
         <a class="toc-link" href="#pulse">Fello Pulse</a>
         <a class="toc-link" href="#modules">Tool Modules</a>
+        <a class="toc-link" href="#dcr">Device Config Requests</a>
         <a class="toc-link" href="#workflows">Workflows</a>
         <a class="toc-link" href="#troubleshooting">Troubleshooting</a>
         <a class="toc-link" href="#reference">Quick Reference</a>
@@ -405,6 +406,94 @@
                 <tr><td><strong>👥 User Management</strong></td><td><code>/admin/users</code></td><td>Account provisioning, role assignment</td><td>System admins</td></tr>
               </tbody>
             </table>
+          </div>
+        </div>
+
+        <!-- DEVICE CONFIGURATION REQUESTS -->
+        <div class="section" id="dcr">
+          <div class="section-card">
+            <div class="section-header"><span class="section-icon">📝</span><span class="section-title">Device Configuration Requests (DCR)</span></div>
+            <p>The DCR system bridges client requirements directly into automated device provisioning. Customers submit their iPad configuration needs through a form, and the Command Center auto-provisions the devices.</p>
+
+            <h3>How the DCR Pipeline Works</h3>
+            <div class="workflow">
+              <div class="step"><span class="step-num">1</span><span class="step-text"><strong>Customer submits DCR form</strong><span class="sub">Public form on the Fello website collects event details, app requirements, WiFi networks, and branding</span></span></div>
+              <div class="step"><span class="step-num">2</span><span class="step-text"><strong>Command Center receives submission</strong><span class="sub">Submission logged to the Requests queue, visible in SimpleMDM → 📋 Requests tab</span></span></div>
+              <div class="step"><span class="step-num">3</span><span class="step-text"><strong>Auto-Provisioning Engine triggers</strong><span class="sub">Automatically creates MDM group, assigns apps, generates configuration profiles, and builds custom payloads</span></span></div>
+              <div class="step"><span class="step-num">4</span><span class="step-text"><strong>Technician reviews in Provisioning tab</strong><span class="sub">Verify matched apps, check warnings, handle any items needing manual setup</span></span></div>
+              <div class="step"><span class="step-num">5</span><span class="step-text"><strong>Assign hardware serials</strong><span class="sub">Paste iPad serial numbers to enroll devices into the provisioned group via ABM/DEP</span></span></div>
+            </div>
+
+            <h3>What Customers Specify in the DCR Form</h3>
+            <table class="t-table">
+              <thead><tr><th>Field</th><th>Description</th><th>Example</th></tr></thead>
+              <tbody>
+                <tr><td><strong>Event Name</strong></td><td>Name of the event or activation</td><td>SXSW 2026 Main Stage</td></tr>
+                <tr><td><strong>Order Number</strong></td><td>Fello order/rental ID</td><td>FE13916</td></tr>
+                <tr><td><strong>Company</strong></td><td>Client organization name</td><td>Live Nation</td></tr>
+                <tr><td><strong>Contact Name</strong></td><td>Primary on-site contact</td><td>Jane Smith</td></tr>
+                <tr><td><strong>Config Mode</strong></td><td>How iPads should be configured</td><td>POS Mode, Check-in, Kiosk, Lead Capture</td></tr>
+                <tr><td><strong>Apps</strong></td><td>Required apps (App Store or enterprise)</td><td>Square POS, Eventbrite Organizer</td></tr>
+                <tr><td><strong>WiFi Networks</strong></td><td>On-site WiFi SSID + password to pre-configure</td><td>EventWiFi / Welcome2026</td></tr>
+                <tr><td><strong>Lockdown Mode</strong></td><td>Kiosk restriction type</td><td>Single App Mode, Guided Access</td></tr>
+                <tr><td><strong>Lockdown URL</strong></td><td>URL for Safari kiosk lockdown</td><td>https://checkin.myevent.com</td></tr>
+                <tr><td><strong>Wallpaper</strong></td><td>Custom branding image for lock/home screen</td><td>Uploaded PNG/JPG file</td></tr>
+              </tbody>
+            </table>
+
+            <h4>Configuration Modes</h4>
+            <table class="t-table">
+              <thead><tr><th>Mode</th><th>What It Does</th><th>Typical Apps</th></tr></thead>
+              <tbody>
+                <tr><td><strong>POS Mode</strong></td><td>Point-of-sale transactions — card readers, receipts</td><td>Square POS, Clover, Lightspeed</td></tr>
+                <tr><td><strong>Check-in Mode</strong></td><td>Event entry scanning — ticket validation, guest lists</td><td>Eventbrite Organizer, Bizzabo</td></tr>
+                <tr><td><strong>Kiosk Mode</strong></td><td>Locked to a single app or website — self-service displays</td><td>Safari (locked URL), custom apps</td></tr>
+                <tr><td><strong>Lead Capture</strong></td><td>Trade show lead collection — badge scanning</td><td>iCapture, Momencio, Lead Retrieval</td></tr>
+                <tr><td><strong>Custom</strong></td><td>Multi-app or special configuration</td><td>Varies per client request</td></tr>
+              </tbody>
+            </table>
+
+            <h3>Managing DCR Requests</h3>
+            <p>Navigate to <strong>SimpleMDM → 📋 Requests</strong> tab to manage incoming DCRs.</p>
+            <h4>Status Filters</h4>
+            <table class="t-table">
+              <thead><tr><th>Status</th><th>Meaning</th></tr></thead>
+              <tbody>
+                <tr><td><strong>⏳ Pending</strong></td><td>Submitted, awaiting review or auto-provisioning</td></tr>
+                <tr><td><strong>🔧 In Progress</strong></td><td>Technician is working on the configuration</td></tr>
+                <tr><td><strong>✅ Completed</strong></td><td>Configuration finished, devices ready for deployment</td></tr>
+              </tbody>
+            </table>
+            <h4>Request Detail Modal</h4>
+            <p>Click <strong>View</strong> on any request to open the detail modal where you can:</p>
+            <ul>
+              <li>Review all customer-submitted specs (apps, WiFi, lockdown settings, wallpaper)</li>
+              <li>Update status: <strong>🔧 Mark In Progress</strong>, <strong>✅ Complete</strong>, or <strong>✕ Cancel</strong></li>
+              <li>Add internal <strong>technician notes</strong> visible only to the team</li>
+            </ul>
+
+            <h3>Auto-Provisioning Engine</h3>
+            <p>Navigate to <strong>SimpleMDM → ⚙️ Provisioning</strong> tab to monitor automated runs.</p>
+            <div class="callout info"><span class="callout-icon">⚙️</span> When a DCR is submitted, the provisioning engine automatically runs these steps in the background — no manual action required for standard configurations.</div>
+            <h4>What Auto-Provisioning Does</h4>
+            <div class="workflow">
+              <div class="step"><span class="step-num">1</span><span class="step-text"><strong>Creates SimpleMDM Group</strong><span class="sub">Named "[Order #] - [Event Name]" with auto-deployment enabled</span></span></div>
+              <div class="step"><span class="step-num">2</span><span class="step-text"><strong>Matches & Assigns Apps</strong><span class="sub">Fuzzy-matches requested app names against the SimpleMDM catalog. Auto-assigns Fello Connect as the baseline.</span></span></div>
+              <div class="step"><span class="step-num">3</span><span class="step-text"><strong>Assigns Baseline Profiles</strong><span class="sub">Default Restrictions + Fello Wi-Fi always applied. Kiosk mode gets Safari Lock profile.</span></span></div>
+              <div class="step"><span class="step-num">4</span><span class="step-text"><strong>Generates Custom Profiles</strong><span class="sub">Builds .mobileconfig XML for: custom WiFi credentials, passcode policies, web content filters, wallpaper payloads</span></span></div>
+              <div class="step"><span class="step-num">5</span><span class="step-text"><strong>Matches Home Screen Layout</strong><span class="sub">Inspects assigned apps and selects the matching pre-configured home screen layout</span></span></div>
+              <div class="step"><span class="step-num">6</span><span class="step-text"><strong>Assigns Serials (if included)</strong><span class="sub">Claims device serials via DEP/ABM and moves them into the group</span></span></div>
+            </div>
+            <h4>Provisioning Run Statuses</h4>
+            <table class="t-table">
+              <thead><tr><th>Status</th><th>Meaning</th></tr></thead>
+              <tbody>
+                <tr><td style="color:var(--green);"><strong>✅ Success</strong></td><td>All steps completed — group created, apps matched, profiles assigned</td></tr>
+                <tr><td style="color:var(--orange);"><strong>⚠️ Partial</strong></td><td>Mostly done but some items need manual setup (e.g., app not found in catalog)</td></tr>
+                <tr><td style="color:var(--red);"><strong>❌ Failed</strong></td><td>Provisioning error — check logs and retry manually</td></tr>
+              </tbody>
+            </table>
+            <div class="callout warn"><span class="callout-icon">⚠️</span> If a provisioning run shows <strong>Partial</strong>, check the <strong>Manual Setup Needed</strong> list — these items (e.g., Guided Access passcode, custom enterprise apps) must be configured by a technician on each device.</div>
           </div>
         </div>
 
