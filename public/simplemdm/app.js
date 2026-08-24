@@ -1919,6 +1919,7 @@
                 <td>${escapeHtml(sub.configMode || '—')}</td>
                 <td>${sub.timestamp ? new Date(sub.timestamp).toLocaleDateString() : '—'}</td>
                 <td>${statusBadge(sub.status)}</td>
+                <td style="text-align:center;">${sub.files && sub.files.length ? `<span style="font-size:0.8rem;">${sub.driveFolderUrl ? '<a href="' + escapeHtml(sub.driveFolderUrl) + '" target="_blank" style="color:#22c55e;text-decoration:none;" title="Open in Google Drive">☁ ' + sub.files.length + '</a>' : '📎 ' + sub.files.length}</span>` : '<span style="color:#8892b0;">—</span>'}</td>
                 <td><button class="btn btn-outline btn-sm dcr-view-btn" data-id="${sub.id}">View</button></td>
             </tr>
         `).join('');
@@ -2084,24 +2085,51 @@
                 grouped[cat].push(f);
             });
 
+            const hasDriveFiles = sub.files.some(f => f.driveUrl);
+            
             html += `<div style="margin-bottom:16px;">
-                <h4 style="color:#64ffda;margin-bottom:8px;border-bottom:1px solid #2a3050;padding-bottom:4px;">📎 Uploaded Files (${sub.files.length})</h4>`;
+                <h4 style="color:#64ffda;margin-bottom:8px;border-bottom:1px solid #2a3050;padding-bottom:4px;display:flex;align-items:center;justify-content:space-between;">
+                    <span>📎 Uploaded Files (${sub.files.length})</span>
+                    ${sub.driveFolderUrl ? `<a href="${escapeHtml(sub.driveFolderUrl)}" target="_blank" style="font-size:0.8rem;color:#3b82f6;font-weight:500;text-decoration:none;display:flex;align-items:center;gap:4px;background:#1a1f36;padding:4px 10px;border-radius:6px;border:1px solid #2a3050;">
+                        <svg width="16" height="16" viewBox="0 0 87.3 78" style="flex-shrink:0;"><path d="M6.6 66.85l14.3-24.75h56.8l-14.3 24.75z" fill="#0066da"/><path d="M21.8 42.1L7.5 17.35 35.4 0l14.3 17.35z" fill="#00ac47"/><path d="M58.4 42.1h28.5L72.6 17.35H43.4z" fill="#ea4335"/><path d="M29.3 66.85l14.3-24.75L58.4 42.1 44.1 66.85z" fill="#00832d"/><path d="M44.1 66.85l14.3-24.75H77.6L63.4 66.85z" fill="#2684fc"/><path d="M35.4 0l14.3 17.35H58.4L44.1 0z" fill="#ffba00"/></svg>
+                        Open in Drive
+                    </a>` : ''}
+                </h4>`;
 
             for (const [cat, files] of Object.entries(grouped)) {
                 html += `<div style="margin-bottom:8px;">
                     <div style="color:#8892b0;font-size:0.8rem;margin-bottom:4px;">${catIcons[cat] || '📎'} ${catLabels[cat] || cat}</div>`;
                 files.forEach(f => {
                     const isImage = f.type && f.type.startsWith('image/');
+                    const isDrive = !!f.driveUrl;
+                    const fileUrl = isDrive ? f.driveUrl : f.url;
+                    const downloadUrl = isDrive ? f.driveDownloadUrl : f.url;
+                    
                     html += `<div style="display:flex;align-items:center;gap:8px;margin:4px 0;background:#1a1f36;padding:8px 12px;border-radius:6px;border:1px solid #2a3050;">`;
-                    if (isImage) {
+                    
+                    // Thumbnail — use Drive thumbnail or local image
+                    if (isImage && isDrive && f.driveFileId) {
+                        html += `<img src="https://drive.google.com/thumbnail?id=${f.driveFileId}&sz=w80" style="width:40px;height:40px;object-fit:cover;border-radius:4px;border:1px solid #2a3050;" onerror="this.style.display='none'">`;
+                    } else if (isImage && f.url) {
                         html += `<img src="${f.url}" style="width:40px;height:40px;object-fit:cover;border-radius:4px;border:1px solid #2a3050;">`;
                     }
+                    
                     html += `<div style="flex:1;min-width:0;">
                             <div style="color:#ccd6f6;font-size:0.85rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(f.name)}</div>
-                            <div style="color:#8892b0;font-size:0.75rem;">${formatSize(f.size || 0)}</div>
+                            <div style="color:#8892b0;font-size:0.75rem;">${formatSize(f.size || 0)}${isDrive ? ' · <span style="color:#22c55e;">☁ Google Drive</span>' : ' · <span style="color:#f59e0b;">💾 Local</span>'}</div>
                         </div>
-                        <a href="${f.url}" download="${escapeHtml(f.name)}" target="_blank" style="color:#3b82f6;font-size:0.8rem;white-space:nowrap;">⬇ Download</a>
-                    </div>`;
+                        <div style="display:flex;gap:6px;align-items:center;">`;
+                    
+                    if (isDrive) {
+                        html += `<a href="${escapeHtml(fileUrl)}" target="_blank" style="color:#3b82f6;font-size:0.8rem;white-space:nowrap;" title="Preview in Google Drive">👁 View</a>`;
+                        if (downloadUrl) {
+                            html += `<a href="${escapeHtml(downloadUrl)}" target="_blank" style="color:#3b82f6;font-size:0.8rem;white-space:nowrap;" title="Download file">⬇</a>`;
+                        }
+                    } else if (f.url) {
+                        html += `<a href="${f.url}" download="${escapeHtml(f.name)}" target="_blank" style="color:#3b82f6;font-size:0.8rem;white-space:nowrap;">⬇ Download</a>`;
+                    }
+                    
+                    html += `</div></div>`;
                 });
                 html += `</div>`;
             }
