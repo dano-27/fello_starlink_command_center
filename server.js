@@ -5,6 +5,7 @@ const fs = require('fs');
 const multer = require('multer');
 const { FelloCrmClient, CrmApiError } = require('./fello-crm-client');
 const { CustomerVerifyService } = require('./customer-verify');
+const googleDrive = require('./google-drive');
 
 // ── Auth & Audit ──────────────────────────────────────────────────────
 const DATA_DIR = fs.existsSync('/data') ? '/data' : path.join(__dirname, 'data');
@@ -3291,8 +3292,8 @@ app.post('/api/dcr/:id/notes', (req, res) => {
   return res.json(sub);
 });
 
-// DCR — upload files for a submission
-app.post('/api/dcr/:id/upload', upload.array('files', 20), (req, res) => {
+// DCR — upload files for a submission (→ Google Drive if configured, local fallback)
+app.post('/api/dcr/:id/upload', upload.array('files', 20), async (req, res) => {
   // CORS headers
   const origin = req.headers.origin || '';
   const allowed = serverConfig.allowedOrigins || [];
@@ -3300,9 +3301,48 @@ app.post('/api/dcr/:id/upload', upload.array('files', 20), (req, res) => {
     res.set('Access-Control-Allow-Origin', origin || '*');
   }
   try {
-    // categories is a parallel array matching files — one category per file
+    const sub = dcrSubmissions.find(s => s.id === req.params.id);
     const cats = req.body.categories || [];
     const catArray = Array.isArray(cats) ? cats : [cats];
+    
+    // Try Google Drive upload first
+    if (googleDrive.isConfigured() && req.files && req.files.length > 0) {
+      const folderName = sub 
+        ? `${sub.orderNumber || sub.eventName || req.params.id}${sub.eventName && sub.orderNumber ? ' - ' + sub.eventName : ''}`
+        : req.params.id;
+      
+      console.log(`[DCR] Uploading ${req.files.length} files to Google Drive folder: "${folderName}"`);
+      
+      const result = await googleDrive.uploadSubmissionFiles(
+        req.params.id,
+        folderName,
+        req.files,
+        catArray
+      );
+      
+      if (result) {
+        // Update submission with Drive file references
+        if (sub) {
+          if (!sub.files) sub.files = [];
+          sub.files.push(...result.files);
+          sub.driveFolderId = result.folder.folderId;
+          sub.driveFolderUrl = result.folder.folderUrl;
+          saveDcrLog(dcrSubmissions);
+        }
+        
+        console.log(`[DCR] ${result.files.length} files uploaded to Google Drive`);
+        return res.json({ 
+          status: 'success', 
+          storage: 'google-drive',
+          folder: result.folder,
+          files: result.files 
+        });
+      }
+      // If Drive upload returned null, fall through to local storage
+      console.log('[DCR] Google Drive upload returned null — falling back to local storage');
+    }
+    
+    // Local fallback (same as before)
     const files = (req.files || []).map((f, i) => ({
       name: f.originalname,
       storedName: f.filename,
@@ -3310,20 +3350,40 @@ app.post('/api/dcr/:id/upload', upload.array('files', 20), (req, res) => {
       type: f.mimetype,
       url: `/api/dcr/${req.params.id}/files/${f.filename}`,
       category: catArray[i] || 'general',
+      localOnly: true,
     }));
 
-    // Update submission with file references
-    const sub = dcrSubmissions.find(s => s.id === req.params.id);
     if (sub) {
       if (!sub.files) sub.files = [];
       sub.files.push(...files);
       saveDcrLog(dcrSubmissions);
     }
 
-    res.json({ status: 'success', files });
+    res.json({ status: 'success', storage: 'local', files });
   } catch (err) {
+    console.error('[DCR] Upload error:', err.message);
     res.status(500).json({ error: 'Upload failed: ' + err.message });
   }
+});
+
+// DCR — get Google Drive folder for a submission
+app.get('/api/dcr/:id/drive-folder', (req, res) => {
+  const sub = dcrSubmissions.find(s => s.id === req.params.id);
+  if (!sub) return res.status(404).json({ error: 'Submission not found' });
+  if (!sub.driveFolderUrl) return res.status(404).json({ error: 'No Google Drive folder for this submission' });
+  res.json({ 
+    folderId: sub.driveFolderId, 
+    folderUrl: sub.driveFolderUrl,
+    files: (sub.files || []).filter(f => f.driveUrl)
+  });
+});
+
+// DCR — Google Drive integration status
+app.get('/api/dcr/drive-status', (req, res) => {
+  res.json({
+    configured: googleDrive.isConfigured(),
+    folderId: process.env.GOOGLE_DRIVE_FOLDER_ID || null,
+  });
 });
 
 // DCR — serve uploaded files
