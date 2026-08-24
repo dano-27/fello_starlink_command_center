@@ -261,3 +261,176 @@ body {
   background: var(--blue);
   color: white;
 }
+
+/* ── Smart Search Bar ──────────────────────────────────────────── */
+.hub-search-container {
+  margin-bottom: 32px;
+}
+
+.hub-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--white);
+  border: 2px solid var(--border);
+  border-radius: 40px;
+  padding: 6px 6px 6px 20px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.hub-search-bar:focus-within {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 4px rgba(49, 102, 174, 0.1);
+}
+
+.hub-search-icon {
+  font-size: 20px;
+  color: var(--blue);
+  flex-shrink: 0;
+}
+
+.hub-search-input {
+  flex: 1;
+  border: none;
+  outline: none;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--black);
+  background: transparent;
+}
+
+.hub-search-input::placeholder {
+  color: #94a3b8;
+  font-weight: 400;
+}
+
+.hub-search-btn {
+  padding: 12px 28px;
+  border: none;
+  border-radius: 40px;
+  background: var(--yellow);
+  color: var(--black);
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.hub-search-btn:hover {
+  opacity: 0.9;
+  transform: scale(1.02);
+}
+
+/* ── Quick Chips ───────────────────────────────────────────────── */
+.hub-search-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+  justify-content: center;
+}
+
+.hub-chip {
+  padding: 6px 14px;
+  border: 1.5px solid var(--border);
+  border-radius: 40px;
+  background: var(--white);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--charcol);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.hub-chip:hover {
+  border-color: var(--blue);
+  color: var(--blue);
+  background: var(--sky);
+}
+
+/* ── AI Report Panel ───────────────────────────────────────────── */
+.hub-ai-report {
+  background: var(--white);
+  border: 1.5px solid var(--border);
+  border-radius: 16px;
+  margin-bottom: 32px;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.06);
+  overflow: hidden;
+}
+
+.hub-ai-report-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 24px;
+  background: linear-gradient(135deg, #f4f6fa, #e1edfd);
+  border-bottom: 1.5px solid var(--border);
+}
+
+.hub-ai-report-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--blue);
+}
+
+.hub-ai-close {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border);
+  background: var(--white);
+  color: var(--charcol);
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+.hub-ai-close:hover {
+  background: var(--light-red);
+  color: white;
+  border-color: var(--light-red);
+}
+
+.hub-ai-report-body {
+  padding: 24px 32px;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--charcol);
+  min-height: 120px;
+}
+
+.hub-ai-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 48px 24px;
+  color: var(--dark-gray-shade);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.hub-ai-spinner {
+  width: 24px;
+  height: 24px;
+  border: 3px solid var(--sky);
+  border-top: 3px solid var(--blue);
+  border-radius: 50%;
+  animation: hub-spin 0.8s linear infinite;
+}
+
+@keyframes hub-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 560px) {
+  .hub-search-chips { justify-content: flex-start; }
+  .hub-ai-report-body { padding: 16px; }
+}

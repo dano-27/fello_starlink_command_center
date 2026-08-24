@@ -27,8 +27,46 @@
       </div>
     </header>
 
-    <!-- Tool Grid -->
+    <!-- Smart Search Bar -->
     <main class="hub-main">
+      <div class="hub-search-container">
+        <div class="hub-search-bar">
+          <span class="hub-search-icon">✦</span>
+          <input type="text" id="hub-search-input" class="hub-search-input" placeholder="Search an order or ask AI anything..." autocomplete="off" />
+          <button id="hub-search-btn" class="hub-search-btn">
+            <span id="hub-search-btn-text">Search</span>
+          </button>
+        </div>
+        <div class="hub-search-chips" id="hub-search-chips">
+          <button class="hub-chip" data-query="Summarize all active orders">📊 Active orders</button>
+          <button class="hub-chip" data-query="Data usage warnings for all events">⚠️ Data warnings</button>
+          <button class="hub-chip" data-query="Show pending DCR requests with details">📋 Pending DCRs</button>
+          <button class="hub-chip" data-query="Fleet status overview - devices active, suspended, total">📱 Fleet status</button>
+          <button class="hub-chip" data-query="Which events are starting in the next 7 days?">📅 Upcoming events</button>
+        </div>
+      </div>
+
+      <!-- AI Report Panel (hidden by default) -->
+      <div id="hub-ai-report" class="hub-ai-report" style="display:none;">
+        <div class="hub-ai-report-header">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <span style="font-size:20px;">✦</span>
+            <span class="hub-ai-report-title">Fello AI Report</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span id="hub-ai-query-label" style="font-size:12px;color:#64748b;font-style:italic;"></span>
+            <button id="hub-ai-close" class="hub-ai-close">✕</button>
+          </div>
+        </div>
+        <div id="hub-ai-report-body" class="hub-ai-report-body">
+          <div class="hub-ai-loading" id="hub-ai-loading">
+            <div class="hub-ai-spinner"></div>
+            <span>Analyzing your data...</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tool Grid -->
       <div class="hub-grid">
 
         <!-- Lookup Hub (Primary) -->
@@ -171,5 +209,190 @@ fetch("/api/auth/me").then(function(r){return r.json()}).then(function(u){
   }
 }).catch(function(){});
 </script>
+<script>
+// Smart Search — detects order numbers vs AI queries
+(function() {
+  const input = document.getElementById('hub-search-input');
+  const btn = document.getElementById('hub-search-btn');
+  const btnText = document.getElementById('hub-search-btn-text');
+  const chips = document.querySelectorAll('.hub-chip');
+  const reportPanel = document.getElementById('hub-ai-report');
+  const reportBody = document.getElementById('hub-ai-report-body');
+  const queryLabel = document.getElementById('hub-ai-query-label');
+  const closeBtn = document.getElementById('hub-ai-close');
+  const loading = document.getElementById('hub-ai-loading');
+
+  // Order number patterns
+  const ORDER_PATTERNS = /^(FE|SQ|SH|CB|EB|AR|MEAL|RN)\d+/i;
+  const ICCID_PATTERN = /^\d{18,20}$/;
+  const SERIAL_PATTERN = /^[A-Z0-9]{10,14}$/i;
+
+  function isOrderQuery(text) {
+    const t = text.trim();
+    return ORDER_PATTERNS.test(t) || ICCID_PATTERN.test(t) || SERIAL_PATTERN.test(t);
+  }
+
+  // Update button label based on input
+  input.addEventListener('input', function() {
+    if (isOrderQuery(input.value.trim())) {
+      btnText.textContent = 'Lookup';
+      btn.style.background = 'var(--blue)';
+      btn.style.color = 'white';
+    } else if (input.value.trim().length > 0) {
+      btnText.textContent = 'Ask AI';
+      btn.style.background = 'var(--yellow)';
+      btn.style.color = 'var(--black)';
+    } else {
+      btnText.textContent = 'Search';
+      btn.style.background = 'var(--yellow)';
+      btn.style.color = 'var(--black)';
+    }
+  });
+
+  function handleSearch() {
+    const query = input.value.trim();
+    if (!query) return;
+
+    if (isOrderQuery(query)) {
+      // Redirect to Lookup Hub
+      window.location.href = '/lookup/?q=' + encodeURIComponent(query);
+    } else {
+      // AI query
+      runAiQuery(query);
+    }
+  }
+
+  btn.onclick = handleSearch;
+  input.onkeypress = function(e) { if (e.key === 'Enter') handleSearch(); };
+
+  // Quick chips
+  chips.forEach(function(chip) {
+    chip.onclick = function() {
+      const query = chip.getAttribute('data-query');
+      input.value = query;
+      input.dispatchEvent(new Event('input'));
+      runAiQuery(query);
+    };
+  });
+
+  // Close report
+  closeBtn.onclick = function() {
+    reportPanel.style.display = 'none';
+  };
+
+  async function runAiQuery(query) {
+    reportPanel.style.display = 'block';
+    queryLabel.textContent = '"' + query + '"';
+    reportBody.innerHTML = '<div class="hub-ai-loading"><div class="hub-ai-spinner"></div><span>Analyzing your data...</span></div>';
+    reportPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+    try {
+      const response = await fetch('/api/ai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify({ message: query + '\n\nProvide a comprehensive, detailed report. Use headers, tables, and bullet points for clarity. This will be displayed on a full page, not a chat bubble, so you can be thorough.', history: [] })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Request failed');
+      reportBody.innerHTML = renderFullMarkdown(data.response);
+    } catch (err) {
+      reportBody.innerHTML = '<div style="padding:24px;color:#ef4444;font-weight:600;">Error: ' + err.message + '</div>';
+    }
+  }
+
+  function renderFullMarkdown(text) {
+    if (!text) return '';
+    var lines = text.split('\n');
+    var html = '';
+    var inUl = false, inOl = false, inTable = false, inCode = false, codeBlock = '';
+
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+
+      // Code block
+      if (line.trim().startsWith('```')) {
+        if (inCode) { html += '<pre style="background:#f1f5f9;padding:16px;border-radius:10px;overflow-x:auto;font-size:12px;margin:12px 0;"><code>' + codeBlock.replace(/</g,'&lt;') + '</code></pre>'; codeBlock = ''; inCode = false; }
+        else { inCode = true; }
+        continue;
+      }
+      if (inCode) { codeBlock += line + '\n'; continue; }
+
+      // HR
+      if (/^-{3,}$/.test(line.trim()) || /^\*{3,}$/.test(line.trim())) {
+        if (inUl) { html += '</ul>'; inUl = false; }
+        if (inOl) { html += '</ol>'; inOl = false; }
+        if (inTable) { html += '</tbody></table>'; inTable = false; }
+        html += '<hr style="border:none;border-top:1.5px solid #e2e8f0;margin:20px 0;">';
+        continue;
+      }
+
+      // Headers
+      var hm = line.match(/^(#{1,4})\s+(.*)/);
+      if (hm) {
+        if (inUl) { html += '</ul>'; inUl = false; }
+        if (inOl) { html += '</ol>'; inOl = false; }
+        if (inTable) { html += '</tbody></table>'; inTable = false; }
+        var lvl = hm[1].length;
+        var sizes = { 1:'22px', 2:'18px', 3:'15px', 4:'13px' };
+        var margins = { 1:'28px 0 14px', 2:'24px 0 12px', 3:'20px 0 8px', 4:'16px 0 6px' };
+        html += '<div style="font-weight:700;font-size:'+sizes[lvl]+';margin:'+margins[lvl]+';color:#1e293b;">'+inlineFmt(hm[2])+'</div>';
+        continue;
+      }
+
+      // Table
+      if (line.trim().startsWith('|') && line.trim().endsWith('|')) {
+        if (/^\|[\s\-:]+\|/.test(line.trim()) && !line.includes('*')) continue;
+        var cells = line.split('|').slice(1, -1).map(function(c){return c.trim()});
+        if (!inTable) {
+          html += '<table style="width:100%;border-collapse:collapse;margin:12px 0;font-size:13px;border:1.5px solid #e2e8f0;border-radius:10px;overflow:hidden;"><thead><tr>';
+          html += cells.map(function(c){return '<th style="padding:10px 14px;background:#f4f6fa;color:#3e3e40;font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:0.5px;border-bottom:1.5px solid #e2e8f0;text-align:left;">'+inlineFmt(c)+'</th>'}).join('');
+          html += '</tr></thead><tbody>';
+          inTable = true; continue;
+        }
+        html += '<tr>' + cells.map(function(c){return '<td style="padding:8px 14px;border-bottom:1px solid #f1f5f9;color:#232428;">'+inlineFmt(c)+'</td>'}).join('') + '</tr>';
+        continue;
+      } else if (inTable) { html += '</tbody></table>'; inTable = false; }
+
+      // Numbered list
+      var olm = line.match(/^\s*(\d+)\.\s+(.*)/);
+      if (olm) {
+        if (inUl) { html += '</ul>'; inUl = false; }
+        if (!inOl) { html += '<ol style="padding-left:24px;margin:8px 0;color:#3e3e40;">'; inOl = true; }
+        html += '<li style="margin-bottom:6px;line-height:1.6;">'+inlineFmt(olm[2])+'</li>';
+        continue;
+      } else if (inOl && !/^\s/.test(line)) { html += '</ol>'; inOl = false; }
+
+      // Bullet list
+      if (/^\s*[-*]\s+/.test(line)) {
+        if (inOl) { html += '</ol>'; inOl = false; }
+        if (!inUl) { html += '<ul style="padding-left:24px;margin:8px 0;color:#3e3e40;">'; inUl = true; }
+        html += '<li style="margin-bottom:6px;line-height:1.6;">'+inlineFmt(line.replace(/^\s*[-*]\s+/,''))+'</li>';
+        continue;
+      } else if (inUl) { html += '</ul>'; inUl = false; }
+
+      // Empty line
+      if (line.trim() === '') { html += '<div style="height:8px;"></div>'; continue; }
+
+      // Paragraph
+      html += '<p style="margin:4px 0;line-height:1.7;color:#3e3e40;">'+inlineFmt(line)+'</p>';
+    }
+    if (inUl) html += '</ul>';
+    if (inOl) html += '</ol>';
+    if (inTable) html += '</tbody></table>';
+    return html;
+  }
+
+  function inlineFmt(t) {
+    if (!t) return '';
+    var s = t.replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    s = s.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    s = s.replace(/\*(.*?)\*/g, '<em>$1</em>');
+    s = s.replace(/`(.*?)`/g, '<code style="background:#f1f5f9;padding:2px 6px;border-radius:4px;font-size:0.9em;font-family:monospace;color:#3166ae;">$1</code>');
+    return s;
+  }
+})();
+</script>
+<script src="/ai-assistant.js"></script>
 </body>
 </html>
