@@ -6,7 +6,7 @@ const multer = require('multer');
 const { FelloCrmClient, CrmApiError } = require('./fello-crm-client');
 const { CustomerVerifyService } = require('./customer-verify');
 const googleDrive = require('./google-drive');
-
+const geminiAssistant = require('./gemini-assistant');
 // ── Auth & Audit ──────────────────────────────────────────────────────
 const DATA_DIR = fs.existsSync('/data') ? '/data' : path.join(__dirname, 'data');
 const USERS_CSV = path.join(DATA_DIR, 'users.csv');
@@ -9502,6 +9502,28 @@ app.delete('/api/verify-customer/:email', (req, res) => {
   deleted ? res.json({ success: true }) : res.status(404).json({ error: 'Not found' });
 });
 
+// ── AI Operations Assistant ──────────────────────────────────────────
+app.get('/api/ai/status', (req, res) => {
+  res.json({ configured: geminiAssistant.isConfigured() });
+});
+
+app.post('/api/ai/chat', async (req, res) => {
+  if (!geminiAssistant.isConfigured()) {
+    return res.status(503).json({ error: 'AI assistant not configured. Set GEMINI_API_KEY environment variable.' });
+  }
+  const { message, history } = req.body;
+  if (!message || typeof message !== 'string') {
+    return res.status(400).json({ error: 'Message is required.' });
+  }
+  try {
+    const response = await geminiAssistant.chat(message, history || []);
+    res.json({ response });
+  } catch (e) {
+    console.error('[AI] Chat error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Hub landing page
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
@@ -9512,4 +9534,14 @@ app.listen(PORT, () => {
   console.log(`  ─────────────────────────────────`);
   console.log(`  Running at http://localhost:${PORT}`);
   console.log(`  Press Ctrl+C to stop\n`);
+
+  // Initialize Gemini AI assistant with data source references
+  geminiAssistant.init(process.env.GEMINI_API_KEY, {
+    getWebbingCache: () => webbingDeviceCache,
+    getSimpleMdmCache: () => simpleMdmDeviceCache,
+    getShareTokens: () => shareTokens,
+    getDcrSubmissions: () => dcrSubmissions,
+    getWebbingCacheTime: () => webbingCacheTime,
+    getSimpleMdmCacheTime: () => simpleMdmCacheTime
+  });
 });
