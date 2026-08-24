@@ -3156,6 +3156,136 @@ function saveDcrLog(log) {
 
 let dcrSubmissions = loadDcrLog();
 
+// ── Generate styled HTML backup of a DCR submission ─────────────────
+function generateDcrHtml(sub) {
+  const esc = (s) => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  const row = (label, value) => {
+    if (value === undefined || value === null || value === '') return '';
+    return `<tr><td style="padding:8px 12px;color:#8892b0;font-weight:600;white-space:nowrap;border-bottom:1px solid #2a3050;">${esc(label)}</td><td style="padding:8px 12px;color:#ccd6f6;border-bottom:1px solid #2a3050;">${esc(String(value))}</td></tr>`;
+  };
+  const section = (icon, title, rows) => {
+    const filtered = rows.filter(r => r);
+    if (!filtered.length) return '';
+    return `<div style="margin-bottom:24px;"><h3 style="color:#64ffda;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #2a3050;">${icon} ${esc(title)}</h3><table style="width:100%;border-collapse:collapse;">${filtered.join('')}</table></div>`;
+  };
+
+  let apps = '';
+  if (sub.apps && sub.apps.length) {
+    const appList = sub.apps.map(a => typeof a === 'string' ? a : (a.name || a)).join(', ');
+    apps = row('Apps', appList);
+  }
+  let appLinks = '';
+  if (sub.appLinks && sub.appLinks.length) {
+    const links = sub.appLinks.map(a => typeof a === 'object' ? `${a.name} (${a.url})` : a).join(', ');
+    appLinks = row('App Store Links', links);
+  }
+  let restrictionUrls = '';
+  if (sub.restrictionUrls && sub.restrictionUrls.length) {
+    restrictionUrls = row('Restriction URLs', sub.restrictionUrls.join(', '));
+  }
+  let webClips = '';
+  if (sub.webClips && sub.webClips.length) {
+    const clips = sub.webClips.map((name, i) => {
+      const url = sub.webClipUrls && sub.webClipUrls[i] ? ` → ${sub.webClipUrls[i]}` : '';
+      return `${name}${url}`;
+    }).join(', ');
+    webClips = row('Web Clips', clips);
+  }
+  let appLoginApps = '';
+  if (sub.appLoginApps && sub.appLoginApps.length) {
+    appLoginApps = row('Apps Needing Login', sub.appLoginApps.join(', '));
+  }
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DCR Form — ${esc(sub.orderNumber || sub.eventName || sub.id)}</title>
+  <style>
+    body { font-family: -apple-system, 'Segoe UI', Roboto, sans-serif; background: #0a192f; color: #ccd6f6; margin: 0; padding: 32px; }
+    .container { max-width: 800px; margin: 0 auto; background: #112240; border-radius: 16px; padding: 32px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
+    .header { text-align: center; margin-bottom: 32px; padding-bottom: 20px; border-bottom: 2px solid #64ffda; }
+    .header h1 { color: #64ffda; font-size: 28px; margin: 0 0 8px; }
+    .header .meta { color: #8892b0; font-size: 13px; }
+    .badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; }
+    .pending { background: rgba(245,158,11,0.2); color: #f59e0b; }
+    .footer { text-align: center; margin-top: 32px; padding-top: 16px; border-top: 1px solid #2a3050; color: #8892b0; font-size: 11px; }
+    @media print { body { background: #fff; color: #333; } .container { box-shadow: none; background: #fff; } h3 { color: #0066cc !important; } td { color: #333 !important; } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>📝 Device Configuration Request</h1>
+      <div class="meta">
+        <strong>${esc(sub.orderNumber || '')}</strong>${sub.company ? ' · ' + esc(sub.company) : ''}${sub.eventName ? ' · ' + esc(sub.eventName) : ''}<br>
+        Submitted: ${sub.timestamp ? new Date(sub.timestamp).toLocaleString() : '—'} · 
+        Status: <span class="badge pending">${esc(sub.status || 'pending')}</span> · 
+        ID: ${esc(sub.id)}
+      </div>
+    </div>
+
+    ${section('📦', 'Order & Contact', [
+      row('Order Number', sub.orderNumber),
+      row('Event Name', sub.eventName),
+      row('Event Dates', sub.eventDates),
+      row('Venue', sub.venue),
+      row('Contact Name', sub.contactName),
+      row('Company', sub.company),
+      row('Email', sub.email),
+      row('Phone', sub.phone),
+    ])}
+
+    ${section('⚙️', 'Configuration', [
+      row('Config Mode', sub.configMode),
+      row('All Apps on All Devices', sub.allAppsAllDevices),
+      row('Home Screen Layout', sub.homeScreenLayout),
+      row('Custom Layout', sub.customLayoutDescription),
+      row('Naming Convention', sub.namingConvention),
+      row('Custom Naming Format', sub.customNamingFormat),
+      row('Location Services', sub.locationServices),
+      apps,
+      appLinks,
+    ])}
+
+    ${section('🔐', 'Network & Security', [
+      row('Wi-Fi Enabled', sub.wifiEnabled),
+      row('SSID', sub.wifiSsid),
+      row('Password', sub.wifiPassword),
+      row('Security Type', sub.wifiSecurity),
+      row('Hidden Network', sub.wifiHidden),
+      row('Restrictions Enabled', sub.restrictionsEnabled),
+      row('Restriction Type', sub.restrictionType),
+      restrictionUrls,
+      row('Lockdown Mode', sub.lockdownMode),
+      row('Guided Access Passcode', sub.guidedAccessPasscode),
+    ])}
+
+    ${section('🔗', 'Web Clips', [webClips])}
+
+    ${section('🎨', 'Branding & Media', [
+      row('Custom Wallpaper', sub.customWallpaper),
+      row('Media Instructions', sub.mediaInstructions),
+    ])}
+
+    ${section('🔑', 'App Login & Credentials', [
+      row('App Login Required', sub.appLoginEnabled),
+      appLoginApps,
+    ])}
+
+    ${sub.additionalComments ? `<div style="margin-bottom:24px;"><h3 style="color:#64ffda;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #2a3050;">💬 Additional Comments</h3><div style="background:#1a1f36;padding:16px;border-radius:8px;white-space:pre-wrap;font-size:14px;line-height:1.6;">${esc(sub.additionalComments)}</div></div>` : ''}
+
+    <div class="footer">
+      Generated by Fello Command Center · ${new Date().toISOString()}<br>
+      This is an automated backup of the submitted Device Configuration Request form.
+    </div>
+  </div>
+</body>
+</html>`;
+  return html;
+}
+
 // ── DCR Submit endpoint (public, CORS enabled) ─────────────────────
 // This is what the DCR form POSTs to directly — no API key needed from the client
 app.options('/api/dcr/submit', (req, res) => {
@@ -3200,6 +3330,45 @@ app.post('/api/dcr/submit', async (req, res) => {
   saveDcrLog(dcrSubmissions);
   console.log(`[DCR] Submission received: "${dcrData.eventName}" (${dcrData.configMode || 'Custom'})`);
 
+  // Generate and upload HTML backup of the filled-out form to Google Drive
+  if (googleDrive.isConfigured()) {
+    try {
+      const folderName = submission.orderNumber
+        ? `${submission.orderNumber}${submission.company ? ' - ' + submission.company : (submission.eventName ? ' - ' + submission.eventName : '')}`
+        : submission.company || submission.eventName || submission.id;
+      
+      const htmlContent = generateDcrHtml(submission);
+      const tmpPath = path.join(UPLOAD_DIR, `${submission.id}-form-backup.html`);
+      fs.mkdirSync(path.dirname(tmpPath), { recursive: true });
+      fs.writeFileSync(tmpPath, htmlContent, 'utf8');
+      
+      const folder = await googleDrive.createSubmissionFolder(folderName);
+      if (folder) {
+        const result = await googleDrive.uploadFile(tmpPath, `DCR-${submission.orderNumber || submission.id}-Form.html`, 'text/html', folder.folderId);
+        if (result) {
+          submission.driveFolderId = folder.folderId;
+          submission.driveFolderUrl = folder.folderUrl;
+          submission.formBackupUrl = result.webViewLink;
+          if (!submission.files) submission.files = [];
+          submission.files.push({
+            name: `DCR-${submission.orderNumber || submission.id}-Form.html`,
+            size: Buffer.byteLength(htmlContent, 'utf8'),
+            type: 'text/html',
+            category: 'form-backup',
+            driveFileId: result.fileId,
+            driveUrl: result.webViewLink,
+            driveDownloadUrl: result.downloadUrl,
+          });
+          saveDcrLog(dcrSubmissions);
+          console.log(`[DCR] ✅ Form backup uploaded to Drive: ${result.webViewLink}`);
+        }
+        // Clean up temp file
+        try { fs.unlinkSync(tmpPath); } catch (e) {}
+      }
+    } catch (e) {
+      console.error('[DCR] Form backup upload error:', e.message);
+    }
+  }
   // Auto-provision if SimpleMDM key is configured
   const apiKey = getSimpleMdmKey();
   if (apiKey) {
