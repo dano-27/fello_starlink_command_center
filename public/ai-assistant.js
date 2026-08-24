@@ -220,52 +220,109 @@
 
   // Parse basic markdown
   function parseMarkdown(text) {
-    let escaped = text.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    escaped = escaped.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-    escaped = escaped.replace(/`(.*?)`/g, '<code>$1</code>');
-    
-    const lines = escaped.split('\\n');
+    if (!text) return '';
+    const lines = text.split('\n');
     let html = '';
-    let inList = false;
-    let inTable = false;
-    
+    let inUl = false, inOl = false, inTable = false, isFirstTableRow = true;
+
     for (let i = 0; i < lines.length; i++) {
-      let line = lines[i].trim();
-      
-      // List
-      if (line.startsWith('- ') || line.startsWith('* ')) {
-        if (!inList) { html += '<ul>'; inList = true; }
-        html += '<li>' + line.substring(2) + '</li>';
+      let line = lines[i];
+
+      // Horizontal rule
+      if (/^-{3,}$/.test(line.trim()) || /^\*{3,}$/.test(line.trim())) {
+        if (inUl) { html += '</ul>'; inUl = false; }
+        if (inOl) { html += '</ol>'; inOl = false; }
+        if (inTable) { html += '</tbody></table>'; inTable = false; }
+        html += '<hr style="border:none;border-top:1px solid #e2e8f0;margin:10px 0;">';
         continue;
-      } else if (inList) {
-        html += '</ul>';
-        inList = false;
       }
-      
-      // Table
-      if (line.startsWith('|') && line.endsWith('|')) {
-        if (!inTable) { html += '<table>'; inTable = true; }
-        if (line.includes('---')) continue;
-        
-        const cells = line.split('|').slice(1, -1);
-        html += '<tr>' + cells.map(c => `<td>${c.trim()}</td>`).join('') + '</tr>';
+
+      // Headers
+      const headerMatch = line.match(/^(#{1,4})\s+(.*)/);
+      if (headerMatch) {
+        if (inUl) { html += '</ul>'; inUl = false; }
+        if (inOl) { html += '</ol>'; inOl = false; }
+        if (inTable) { html += '</tbody></table>'; inTable = false; }
+        const level = headerMatch[1].length;
+        const sizes = { 1: '16px', 2: '15px', 3: '14px', 4: '13px' };
+        const content = inlineFormat(headerMatch[2]);
+        html += `<div style="font-weight:700;font-size:${sizes[level]};margin:12px 0 6px;color:#1e293b;">${content}</div>`;
+        continue;
+      }
+
+      // Table row
+      if (line.trim().startsWith('|') && line.trim().endsWith('|')) {
+        // Skip separator rows (| :--- | :---: | etc.)
+        if (/^\|[\s\-:]+\|/.test(line.trim()) && !line.includes('*') && !line.includes('#')) {
+          continue;
+        }
+        const cells = line.split('|').slice(1, -1).map(c => c.trim());
+        if (!inTable) {
+          html += '<table><thead><tr>';
+          html += cells.map(c => `<th>${inlineFormat(c)}</th>`).join('');
+          html += '</tr></thead><tbody>';
+          inTable = true;
+          isFirstTableRow = true;
+          continue;
+        }
+        html += '<tr>' + cells.map(c => `<td>${inlineFormat(c)}</td>`).join('') + '</tr>';
         continue;
       } else if (inTable) {
-        html += '</table>';
+        html += '</tbody></table>';
         inTable = false;
       }
-      
-      if (line === '') {
-        html += '<br>';
-      } else {
-        html += line + (i < lines.length - 1 ? '<br>' : '');
+
+      // Numbered list
+      const olMatch = line.match(/^\s*(\d+)\.\s+(.*)/);
+      if (olMatch) {
+        if (inUl) { html += '</ul>'; inUl = false; }
+        if (!inOl) { html += '<ol style="padding-left:20px;margin:6px 0;">'; inOl = true; }
+        html += `<li>${inlineFormat(olMatch[2])}</li>`;
+        continue;
+      } else if (inOl && !/^\s/.test(line)) {
+        html += '</ol>';
+        inOl = false;
       }
+
+      // Bullet list
+      if (/^\s*[-*]\s+/.test(line)) {
+        if (inOl) { html += '</ol>'; inOl = false; }
+        if (!inUl) { html += '<ul>'; inUl = true; }
+        html += `<li>${inlineFormat(line.replace(/^\s*[-*]\s+/, ''))}</li>`;
+        continue;
+      } else if (inUl) {
+        html += '</ul>';
+        inUl = false;
+      }
+
+      // Empty line
+      if (line.trim() === '') {
+        html += '<div style="height:6px;"></div>';
+        continue;
+      }
+
+      // Regular paragraph
+      html += `<div style="margin:2px 0;">${inlineFormat(line)}</div>`;
     }
-    
-    if (inList) html += '</ul>';
-    if (inTable) html += '</table>';
-    
+
+    if (inUl) html += '</ul>';
+    if (inOl) html += '</ol>';
+    if (inTable) html += '</tbody></table>';
+
     return html;
+  }
+
+  function inlineFormat(text) {
+    if (!text) return '';
+    // Escape HTML but preserve emoji
+    let s = text.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    // Bold
+    s = s.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    // Italic
+    s = s.replace(/\*(.*?)\*/g, '<em>$1</em>');
+    // Inline code
+    s = s.replace(/`(.*?)`/g, '<code>$1</code>');
+    return s;
   }
 
   // Create UI elements
