@@ -8649,22 +8649,54 @@ app.get('/api/lookup', async (req, res) => {
       // NOTE: Branch usage is skipped in lookup (requires per-device API calls, too slow)
       // Users can access the full usage report from the Webbing IoT dashboard
       
-      // Step 4: ABM IMEI Bridge — match iPads to SIM lines via IMEI
+      // Step 4: Match iPads to SIM lines — ICCID direct match first, then ABM IMEI bridge
       const matches = [];
       let abmStatus = 'unavailable';
+      
+      // Pass 1: Direct ICCID matching (SimpleMDM devices have ICCID from service_subscriptions)
+      for (const ipad of simpleMdmDevices) {
+        if (!ipad.iccid) continue;
+        const mdmIccid = ipad.iccid.replace(/\s/g, '');
+        
+        const matchedSim = webbingDevices.find(sim => {
+          const simIccid = (sim.iccid || '').replace(/\s/g, '');
+          return simIccid && simIccid === mdmIccid;
+        });
+        
+        if (matchedSim) {
+          ipad.abmLookupStatus = 'matched';
+          matches.push({
+            ipadName: ipad.name,
+            ipadSerial: ipad.serial,
+            ipadImei: ipad.imei || '',
+            simSerial: matchedSim.serial || matchedSim.ssid || '',
+            simImei: matchedSim.imei || '',
+            simIccid: matchedSim.iccid || '',
+            simCarrier: matchedSim.carrier || ipad.carrier || '',
+            simStatus: matchedSim.status || '',
+            simIp: matchedSim.ip || ''
+          });
+          ipad.matchedSimSerial = matchedSim.serial || matchedSim.ssid || '';
+          matchedSim.matchedIpadName = ipad.name;
+          matchedSim.matchedIpadSerial = ipad.serial;
+        }
+      }
+      console.log(`[Lookup] ICCID direct matching: ${matches.length} pairs out of ${simpleMdmDevices.length} iPads`);
+      
+      // Pass 2: ABM IMEI bridge for remaining unmatched iPads
       try {
-        if (abmPrivateKey && simpleMdmDevices.length > 0) {
-          // Fetch ALL ABM devices in one batch (cached for 5 min), then match in memory
+        const unmatchedIpads = simpleMdmDevices.filter(d => d.abmLookupStatus !== 'matched');
+        if (abmPrivateKey && unmatchedIpads.length > 0) {
           const { serialToImei } = await buildAbmImeiMap();
           abmStatus = 'connected';
           
-          for (const ipad of simpleMdmDevices) {
+          for (const ipad of unmatchedIpads) {
             const serial = (ipad.serial || '').toUpperCase();
-            if (!serial) { ipad.abmLookupStatus = 'no-serial'; continue; }
+            if (!serial) { ipad.abmLookupStatus = ipad.abmLookupStatus || 'no-serial'; continue; }
             
             const abmData = serialToImei.get(serial);
             if (!abmData) {
-              ipad.abmLookupStatus = 'not-in-abm';
+              ipad.abmLookupStatus = ipad.abmLookupStatus || 'not-in-abm';
               continue;
             }
             
@@ -8672,12 +8704,15 @@ app.get('/api/lookup', async (req, res) => {
             ipad.allImeis = abmData.allImeis;
             ipad.abmEid = abmData.eid || null;
             
-            // Find matching Webbing SIM by IMEI
-            const matchedSim = webbingDevices.find(sim => 
-              sim.imei && abmData.allImeis.some(abmImei => 
+            // Find matching Webbing SIM by IMEI (from ABM) or by direct IMEI comparison
+            const matchedSim = webbingDevices.find(sim => {
+              if (sim.matchedIpadName) return false; // already matched
+              // Try matching SIM IMEI to ABM IMEI (if sim has imei from cache)
+              if (sim.imei && abmData.allImeis.some(abmImei => 
                 sim.imei === abmImei || sim.imei.includes(abmImei) || abmImei.includes(sim.imei)
-              )
-            );
+              )) return true;
+              return false;
+            });
             
             if (matchedSim) {
               ipad.abmLookupStatus = 'matched';
@@ -8685,21 +8720,21 @@ app.get('/api/lookup', async (req, res) => {
                 ipadName: ipad.name,
                 ipadSerial: ipad.serial,
                 ipadImei: abmData.imei,
-                simSerial: matchedSim.serial || matchedSim.Serial || matchedSim.SSID || '',
-                simImei: matchedSim.imei || matchedSim.IMEI || '',
-                simIccid: matchedSim.iccid || matchedSim.ICCID || '',
+                simSerial: matchedSim.serial || matchedSim.ssid || '',
+                simImei: matchedSim.imei || '',
+                simIccid: matchedSim.iccid || '',
                 simCarrier: matchedSim.carrier || '',
-                simStatus: matchedSim.status || matchedSim.StatusName,
-                simIp: matchedSim.ip || matchedSim.IP || ''
+                simStatus: matchedSim.status || '',
+                simIp: matchedSim.ip || ''
               });
-              ipad.matchedSimSerial = matchedSim.serial || matchedSim.Serial || matchedSim.SSID || '';
+              ipad.matchedSimSerial = matchedSim.serial || matchedSim.ssid || '';
               matchedSim.matchedIpadName = ipad.name;
               matchedSim.matchedIpadSerial = ipad.serial;
             } else {
-              ipad.abmLookupStatus = `imei-no-sim-match:${abmData.imei}`;
+              ipad.abmLookupStatus = ipad.abmLookupStatus || `imei-no-sim-match:${abmData.imei}`;
             }
           }
-          console.log(`[Lookup] ABM IMEI matching: ${matches.length} pairs out of ${simpleMdmDevices.length} iPads`);
+          console.log(`[Lookup] ABM IMEI matching: ${matches.length} total pairs (after ICCID + IMEI passes)`);
         }
       } catch (e) {
         console.error('[Lookup] ABM IMEI matching error:', e.message);
