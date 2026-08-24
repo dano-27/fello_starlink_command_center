@@ -309,6 +309,29 @@
         } else {
           document.getElementById('topup-section').style.display = 'none';
         }
+        // Compute burn rate projection from main usage data as fallback
+        if (orderInfo && orderInfo.startDate && orderInfo.endDate && usedGB > 0) {
+          var now = new Date();
+          var start = new Date(orderInfo.startDate + 'T00:00:00');
+          var end = new Date(orderInfo.endDate + 'T23:59:59');
+          var elapsedDays = Math.max(1, Math.ceil((now - start) / 86400000));
+          var daysLeft = Math.max(0, Math.ceil((end - now) / 86400000));
+          var avgDaily = usedGB / elapsedDays;
+          var projected = usedGB + (avgDaily * daysLeft);
+          var burnEl = document.getElementById('burn-rate');
+          var projEl = document.getElementById('burn-projection');
+          if (burnEl.style.display !== 'block') {
+            burnEl.style.display = 'block';
+            if (totalGB > 0) {
+              var projPct = Math.round((projected / totalGB) * 100);
+              projEl.textContent = projected.toFixed(1) + ' GB of ' + totalGB + ' GB (' + projPct + '%)';
+              projEl.className = 'projection ' + (projected > totalGB ? 'over' : 'ok');
+            } else {
+              projEl.textContent = projected.toFixed(1) + ' GB estimated total';
+              projEl.className = 'projection';
+            }
+          }
+        }
         renderDevices(data.devices || [], totalGB);
       } catch (err) {
         console.error('Usage load error:', err);

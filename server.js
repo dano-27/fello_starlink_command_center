@@ -2086,9 +2086,10 @@ app.get('/api/public/share/:token/usage/daily', async (req, res) => {
   try {
     const branchName = data.branchName;
     const branchDevices = webbingDeviceCache.filter(d =>
-      d.BranchName && d.BranchName.toUpperCase() === branchName
+      d.BranchName && d.BranchName.toUpperCase() === branchName.toUpperCase()
     );
     
+    console.log('[Share Daily] branchName:', branchName, 'cacheSize:', webbingDeviceCache.length, 'matched:', branchDevices.length);
     if (branchDevices.length === 0) return res.json({ days: [], avgDailyGB: 0, projectedTotalGB: 0 });
     
     const client = getWebbingClient();
