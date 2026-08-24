@@ -13,7 +13,7 @@ const { google } = require('googleapis');
 const fs = require('fs');
 const path = require('path');
 
-let driveClient = null;
+let driveClient = null; // Reset on deploy to pick up scope changes
 
 /**
  * Initialize the Google Drive client from environment variables
@@ -41,7 +41,7 @@ function getDriveClient() {
 
     const auth = new google.auth.GoogleAuth({
       credentials: keyData,
-      scopes: ['https://www.googleapis.com/auth/drive.file'],
+      scopes: ['https://www.googleapis.com/auth/drive'],
     });
 
     driveClient = google.drive({ version: 'v3', auth });
@@ -120,6 +120,14 @@ async function uploadFile(localPath, fileName, mimeType, folderId) {
   const drive = getDriveClient();
   if (!drive) return null;
 
+  // Verify local file exists before attempting upload
+  if (!fs.existsSync(localPath)) {
+    console.error(`[GDrive] Local file not found: ${localPath}`);
+    return null;
+  }
+  const fileStats = fs.statSync(localPath);
+  console.log(`[GDrive] Uploading "${fileName}" (${fileStats.size} bytes, ${mimeType}) from ${localPath} to folder ${folderId}`);
+
   try {
     const fileMetadata = {
       name: fileName,
@@ -148,7 +156,7 @@ async function uploadFile(localPath, fileName, mimeType, folderId) {
       },
     });
 
-    console.log(`[GDrive] Uploaded: "${fileName}" (${fileId}, ${file.data.size} bytes)`);
+    console.log(`[GDrive] ✅ Uploaded: "${fileName}" (${fileId}, ${file.data.size} bytes)`);
 
     return {
       fileId: fileId,
@@ -157,7 +165,8 @@ async function uploadFile(localPath, fileName, mimeType, folderId) {
       size: parseInt(file.data.size || 0),
     };
   } catch (err) {
-    console.error(`[GDrive] Upload failed for "${fileName}":`, err.message);
+    console.error(`[GDrive] ❌ Upload failed for "${fileName}":`, err.message);
+    if (err.errors) console.error(`[GDrive] API errors:`, JSON.stringify(err.errors));
     return null;
   }
 }
