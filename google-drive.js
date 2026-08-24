@@ -1,19 +1,19 @@
 /**
  * Google Drive Service for DCR File Uploads
  * 
- * Uploads files to a shared Google Drive folder, organized by submission.
+ * Uploads files to a Shared Drive folder, organized by submission.
  * Uses a service account for authentication (no OAuth flow needed).
  * 
  * Required env vars:
  *   GOOGLE_SERVICE_ACCOUNT_KEY — JSON key file contents (raw or base64)
- *   GOOGLE_DRIVE_FOLDER_ID — ID of the shared root folder
+ *   GOOGLE_DRIVE_FOLDER_ID — ID of the shared folder (must be in a Shared Drive)
  */
 
 const { google } = require('googleapis');
 const fs = require('fs');
 const path = require('path');
 
-let driveClient = null; // Reset on deploy to pick up scope changes
+let driveClient = null;
 
 /**
  * Initialize the Google Drive client from environment variables
@@ -55,7 +55,7 @@ function getDriveClient() {
 
 /**
  * Create a subfolder inside the root DCR folder
- * @param {string} folderName - e.g. "EB3542 - Outdoor Event"
+ * @param {string} folderName - e.g. "EB3542 - Acme Corp"
  * @returns {{ folderId: string, folderUrl: string }} or null
  */
 async function createSubmissionFolder(folderName) {
@@ -69,7 +69,9 @@ async function createSubmissionFolder(folderName) {
     const existing = await drive.files.list({
       q: `name='${folderName.replace(/'/g, "\\'")}' and '${parentId}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false`,
       fields: 'files(id, name, webViewLink)',
-      spaces: 'drive',
+      supportsAllDrives: true,
+      includeItemsFromAllDrives: true,
+      corpora: 'allDrives',
     });
 
     if (existing.data.files && existing.data.files.length > 0) {
@@ -95,6 +97,7 @@ async function createSubmissionFolder(folderName) {
     const folder = await drive.files.create({
       requestBody: folderMeta,
       fields: 'id, webViewLink',
+      supportsAllDrives: true,
     });
 
     console.log(`[GDrive] Created folder: "${folderName}" (${folder.data.id})`);
@@ -104,17 +107,13 @@ async function createSubmissionFolder(folderName) {
     };
   } catch (err) {
     console.error(`[GDrive] Failed to create folder "${folderName}":`, err.message);
+    if (err.errors) console.error(`[GDrive] API errors:`, JSON.stringify(err.errors));
     return null;
   }
 }
 
 /**
- * Upload a file to a Google Drive folder
- * @param {string} localPath - Path to the local file
- * @param {string} fileName - Original filename
- * @param {string} mimeType - MIME type
- * @param {string} folderId - Google Drive folder ID
- * @returns {{ fileId, webViewLink, downloadUrl }} or null
+ * Upload a file to a Google Drive folder (Shared Drive compatible)
  */
 async function uploadFile(localPath, fileName, mimeType, folderId) {
   const drive = getDriveClient();
@@ -126,7 +125,7 @@ async function uploadFile(localPath, fileName, mimeType, folderId) {
     return null;
   }
   const fileStats = fs.statSync(localPath);
-  console.log(`[GDrive] Uploading "${fileName}" (${fileStats.size} bytes, ${mimeType}) from ${localPath} to folder ${folderId}`);
+  console.log(`[GDrive] Uploading "${fileName}" (${fileStats.size} bytes, ${mimeType}) to folder ${folderId}`);
 
   try {
     const fileMetadata = {
@@ -143,18 +142,25 @@ async function uploadFile(localPath, fileName, mimeType, folderId) {
       requestBody: fileMetadata,
       media: media,
       fields: 'id, name, webViewLink, webContentLink, size',
+      supportsAllDrives: true,
     });
 
     const fileId = file.data.id;
 
     // Make the file accessible to anyone with the link
-    await drive.permissions.create({
-      fileId: fileId,
-      requestBody: {
-        role: 'reader',
-        type: 'anyone',
-      },
-    });
+    try {
+      await drive.permissions.create({
+        fileId: fileId,
+        requestBody: {
+          role: 'reader',
+          type: 'anyone',
+        },
+        supportsAllDrives: true,
+      });
+    } catch (permErr) {
+      // Shared Drives may restrict this — not fatal
+      console.log(`[GDrive] Permission warning (file still uploaded): ${permErr.message}`);
+    }
 
     console.log(`[GDrive] ✅ Uploaded: "${fileName}" (${fileId}, ${file.data.size} bytes)`);
 
@@ -173,13 +179,6 @@ async function uploadFile(localPath, fileName, mimeType, folderId) {
 
 /**
  * Upload multiple files for a DCR submission
- * Creates a folder and uploads all files into it
- * 
- * @param {string} submissionId - DCR submission ID
- * @param {string} folderName - Human-readable folder name (e.g. "EB3542 - Wedding")
- * @param {Array} files - multer file objects ({ originalname, path, mimetype, size })
- * @param {Array} categories - parallel array of category strings
- * @returns {{ folder, files }} or null
  */
 async function uploadSubmissionFiles(submissionId, folderName, files, categories = []) {
   if (!files || files.length === 0) return null;
@@ -198,7 +197,23 @@ async function uploadSubmissionFiles(submissionId, folderName, files, categories
   const uploadedFiles = [];
   for (let i = 0; i < files.length; i++) {
     const f = files[i];
-    const localPath = f.path;
+    // multer v2 may use f.path or construct from destination + filename
+    const localPath = f.path || (f.destination && f.filename ? path.join(f.destination, f.filename) : null);
+    
+    if (!localPath) {
+      console.error(`[GDrive] No file path for "${f.originalname}" — multer properties: ${Object.keys(f).join(', ')}`);
+      uploadedFiles.push({
+        name: f.originalname,
+        storedName: f.filename,
+        size: f.size,
+        type: f.mimetype,
+        category: categories[i] || 'general',
+        localOnly: true,
+        url: `/api/dcr/${submissionId}/files/${f.filename}`,
+      });
+      continue;
+    }
+
     const result = await uploadFile(localPath, f.originalname, f.mimetype, folder.folderId);
 
     if (result) {
