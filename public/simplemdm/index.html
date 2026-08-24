@@ -634,22 +634,22 @@ GG7YJ21SJF88"></textarea>
 
     <!-- DCR Detail Modal -->
     <div class="modal-overlay hidden" id="dcr-modal-overlay">
-        <div class="modal-panel" style="max-width:750px;max-height:85vh;overflow-y:auto;background:#112240;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,0.5);">
-            <div class="modal-header" style="padding:16px 24px;border-bottom:1px solid #2a3050;display:flex;justify-content:space-between;align-items:center;">
-                <h3 id="dcr-modal-title" style="margin:0;color:#ccd6f6;">Request Details</h3>
-                <button class="modal-close" id="dcr-modal-close" style="background:none;border:none;color:#8892b0;font-size:1.5rem;cursor:pointer;">&times;</button>
+        <div class="modal-container" style="max-width:780px;max-height:85vh;overflow-y:auto;">
+            <div class="modal-header" style="padding:20px 28px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+                <h3 id="dcr-modal-title" style="margin:0;color:var(--black);font-size:1.1rem;font-weight:700;">Request Details</h3>
+                <button class="modal-close" id="dcr-modal-close" aria-label="Close modal">&times;</button>
             </div>
-            <div class="modal-body" id="dcr-modal-body" style="padding:24px;color:#ccd6f6;">
+            <div class="modal-body" id="dcr-modal-body" style="padding:24px 28px;color:var(--black);">
                 <!-- Populated by JS -->
             </div>
-            <div class="modal-footer" style="display:flex;gap:8px;justify-content:space-between;align-items:center;padding:16px 24px;border-top:1px solid #2a3050;">
+            <div style="display:flex;gap:8px;justify-content:space-between;align-items:center;padding:16px 28px;border-top:1px solid var(--border);">
                 <div style="display:flex;gap:8px;">
-                    <button class="btn btn-primary btn-sm" id="dcr-status-progress">🔧 Mark In Progress</button>
-                    <button class="btn btn-sm" id="dcr-status-complete" style="background:#22c55e;color:#fff;">✅ Complete</button>
-                    <button class="btn btn-sm" id="dcr-status-cancel" style="background:#ef4444;color:#fff;">✕ Cancel</button>
+                    <button class="btn btn-primary btn-sm" id="dcr-status-progress">🔧 In Progress</button>
+                    <button class="btn btn-sm" id="dcr-status-complete" style="background:var(--success-color);color:#fff;border-radius:var(--pill);">✅ Complete</button>
+                    <button class="btn btn-sm" id="dcr-status-cancel" style="background:var(--light-red);color:#fff;border-radius:var(--pill);">✕ Cancel</button>
                 </div>
                 <div style="display:flex;gap:8px;align-items:center;">
-                    <input type="text" id="dcr-note-input" placeholder="Add a note..." style="background:#1a1f36;color:#ccd6f6;border:1px solid #2a3050;border-radius:6px;padding:6px 10px;font-size:0.85rem;width:200px;">
+                    <input type="text" id="dcr-note-input" placeholder="Add a note..." style="background:var(--light-blue);color:var(--black);border:1.5px solid var(--border);border-radius:var(--pill);padding:8px 14px;font-family:var(--font);font-size:0.8rem;width:200px;">
                     <button class="btn btn-outline btn-sm" id="dcr-add-note">Add Note</button>
                 </div>
             </div>

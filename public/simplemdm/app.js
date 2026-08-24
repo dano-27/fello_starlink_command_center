@@ -1932,10 +1932,12 @@
 
         dom.dcrModalTitle.textContent = `DCR: ${sub.orderNumber || sub.id}`;
 
-        const statusColors = { pending: '#f59e0b', in_progress: '#3b82f6', completed: '#22c55e', cancelled: '#ef4444' };
+        const statusColors = { pending: '#f59e0b', in_progress: '#3166ae', completed: '#05ac3f', cancelled: '#ff4d41' };
+        const statusBgs = { pending: '#fef3c7', in_progress: '#e1edfd', completed: '#d1fae5', cancelled: '#fee2e2' };
         const statusLabels = { pending: 'PENDING', in_progress: 'IN PROGRESS', completed: 'COMPLETED', cancelled: 'CANCELLED' };
         const statusIcons = { pending: '⏳', in_progress: '🔧', completed: '✅', cancelled: '✕' };
-        const stColor = statusColors[sub.status] || '#8892b0';
+        const stColor = statusColors[sub.status] || '#6b7280';
+        const stBg = statusBgs[sub.status] || '#f3f4f6';
         const stLabel = statusLabels[sub.status] || sub.status;
         const stIcon = statusIcons[sub.status] || '';
         
@@ -1949,30 +1951,30 @@
         const catIcons = { wallpaper: '🖼️', vpn_profile: '🔒', config_profile: '⚙️', credentials: '📋', media: '🎬', general: '📎', 'form-backup': '📄', branding: '🎨' };
         const catLabels = { wallpaper: 'Wallpaper', vpn_profile: 'VPN Profile', config_profile: 'Config Profile', credentials: 'Credentials', media: 'Media', general: 'General', 'form-backup': 'Form Backup', branding: 'Branding' };
 
-        const chip = (icon, text) => text ? `<span style="display:inline-flex;align-items:center;gap:4px;background:#0d1b2a;border:1px solid #233554;border-radius:20px;padding:4px 12px;font-size:0.75rem;color:#8892b0;white-space:nowrap;">${icon} ${escapeHtml(text)}</span>` : '';
+        const chip = (icon, text) => text ? `<span style="display:inline-flex;align-items:center;gap:4px;background:#f4f6fa;border:1.5px solid #cfccca;border-radius:40px;padding:4px 12px;font-size:0.72rem;color:#3e3e40;white-space:nowrap;font-weight:500;">${icon} ${escapeHtml(text)}</span>` : '';
 
-        const infoCard = (icon, title, content) => `<div style="background:#0d1b2a;border:1px solid #233554;border-radius:12px;padding:16px;"><div style="color:#e8802a;font-size:0.85rem;font-weight:700;margin-bottom:10px;">${icon} ${title}</div>${content}</div>`;
+        const infoCard = (icon, title, content) => `<div style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:12px;padding:16px;"><div style="color:#3166ae;font-size:0.8rem;font-weight:700;margin-bottom:10px;text-transform:uppercase;letter-spacing:0.3px;">${icon} ${title}</div>${content}</div>`;
 
         const kvLine = (label, value) => {
             if (!value || value === 'undefined' || value === 'null') return '';
-            return `<div style="margin-bottom:6px;"><span style="color:#8892b0;font-size:0.75rem;">${label}</span><div style="color:#ccd6f6;font-size:0.85rem;font-weight:500;">${escapeHtml(String(value))}</div></div>`;
+            return `<div style="margin-bottom:8px;"><span style="color:#6b7280;font-size:0.7rem;font-weight:500;">${label}</span><div style="color:#232428;font-size:0.85rem;font-weight:600;">${escapeHtml(String(value))}</div></div>`;
         };
 
         const fileCount = (sub.files && sub.files.length) || 0;
         const noteCount = (sub.notes && sub.notes.length) || 0;
 
         // ── HEADER CARD ──
-        let html = `<div style="background:#112240;border:1px solid #233554;border-radius:12px;padding:20px;margin-bottom:16px;">
-            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:12px;">
+        let html = `<div style="background:linear-gradient(135deg, #e1edfd 0%, #f4f6fa 50%, #fef9e7 100%);border:1.5px solid #cfccca;border-radius:16px;padding:22px;margin-bottom:18px;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:14px;">
                 <div>
-                    <div style="color:#8892b0;font-size:0.7rem;text-transform:uppercase;letter-spacing:1px;margin-bottom:2px;">Order Number</div>
-                    <div style="font-size:1.6rem;font-weight:800;color:#e8802a;">${escapeHtml(sub.orderNumber || sub.id)}</div>
-                    <div style="font-size:1rem;font-weight:600;color:#ccd6f6;margin-top:2px;">${escapeHtml(sub.company || '')}</div>
-                    <div style="font-size:0.8rem;color:#8892b0;">${escapeHtml(sub.eventName || '')}</div>
+                    <div style="color:#6b7280;font-size:0.65rem;text-transform:uppercase;letter-spacing:1.5px;font-weight:600;margin-bottom:2px;">Order Number</div>
+                    <div style="font-size:1.5rem;font-weight:800;color:#3166ae;">${escapeHtml(sub.orderNumber || sub.id)}</div>
+                    <div style="font-size:0.95rem;font-weight:700;color:#232428;margin-top:2px;">${escapeHtml(sub.company || '')}</div>
+                    <div style="font-size:0.8rem;color:#6b7280;font-weight:500;">${escapeHtml(sub.eventName || '')}</div>
                 </div>
                 <div style="text-align:right;">
-                    <span style="display:inline-block;padding:5px 14px;border-radius:20px;font-size:0.75rem;font-weight:700;background:${stColor}22;color:${stColor};border:1px solid ${stColor}44;">${stIcon} ${stLabel}</span>
-                    <div style="color:#8892b0;font-size:0.7rem;margin-top:6px;">${sub.timestamp ? new Date(sub.timestamp).toLocaleString() : ''}</div>
+                    <span style="display:inline-block;padding:5px 14px;border-radius:40px;font-size:0.7rem;font-weight:700;background:${stBg};color:${stColor};letter-spacing:0.5px;">${stIcon} ${stLabel}</span>
+                    <div style="color:#6b7280;font-size:0.7rem;margin-top:6px;">${sub.timestamp ? new Date(sub.timestamp).toLocaleString() : ''}</div>
                 </div>
             </div>
             <div style="display:flex;flex-wrap:wrap;gap:6px;">
@@ -1980,32 +1982,32 @@
                 ${chip('📱', sub.phone)}
                 ${chip('📅', sub.eventDates)}
                 ${chip('👤', sub.contactName)}
-                ${sub.configMode ? chip('⚙️', sub.configMode) : ''}
+                ${sub.venue ? chip('📍', sub.venue) : ''}
             </div>
         </div>`;
 
         // ── TAB BAR ──
-        html += `<div id="dcr-tab-bar" style="display:flex;gap:0;border-bottom:2px solid #233554;margin-bottom:16px;">
-            <button class="dcr-tab active" data-tab="config" style="flex:1;padding:10px 0;background:none;border:none;color:#e8802a;font-family:inherit;font-size:0.85rem;font-weight:700;cursor:pointer;border-bottom:2px solid #e8802a;margin-bottom:-2px;">⚙️ Configuration</button>
-            <button class="dcr-tab" data-tab="network" style="flex:1;padding:10px 0;background:none;border:none;color:#8892b0;font-family:inherit;font-size:0.85rem;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;">🔐 Network</button>
-            <button class="dcr-tab" data-tab="files" style="flex:1;padding:10px 0;background:none;border:none;color:#8892b0;font-family:inherit;font-size:0.85rem;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;">📁 Files${fileCount ? ` (${fileCount})` : ''}</button>
-            <button class="dcr-tab" data-tab="notes" style="flex:1;padding:10px 0;background:none;border:none;color:#8892b0;font-family:inherit;font-size:0.85rem;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;">📝 Notes${noteCount ? ` (${noteCount})` : ''}</button>
+        html += `<div id="dcr-tab-bar" style="display:flex;gap:0;border-bottom:2px solid #e2e8f0;margin-bottom:18px;">
+            <button class="dcr-tab active" data-tab="config" style="flex:1;padding:10px 0;background:none;border:none;color:#3166ae;font-family:'Montserrat',sans-serif;font-size:0.8rem;font-weight:700;cursor:pointer;border-bottom:2.5px solid #3166ae;margin-bottom:-2px;">⚙️ Configuration</button>
+            <button class="dcr-tab" data-tab="network" style="flex:1;padding:10px 0;background:none;border:none;color:#9ca3af;font-family:'Montserrat',sans-serif;font-size:0.8rem;font-weight:600;cursor:pointer;border-bottom:2.5px solid transparent;margin-bottom:-2px;">🔐 Network</button>
+            <button class="dcr-tab" data-tab="files" style="flex:1;padding:10px 0;background:none;border:none;color:#9ca3af;font-family:'Montserrat',sans-serif;font-size:0.8rem;font-weight:600;cursor:pointer;border-bottom:2.5px solid transparent;margin-bottom:-2px;">📁 Files${fileCount ? ` (${fileCount})` : ''}</button>
+            <button class="dcr-tab" data-tab="notes" style="flex:1;padding:10px 0;background:none;border:none;color:#9ca3af;font-family:'Montserrat',sans-serif;font-size:0.8rem;font-weight:600;cursor:pointer;border-bottom:2.5px solid transparent;margin-bottom:-2px;">📝 Notes${noteCount ? ` (${noteCount})` : ''}</button>
         </div>`;
 
         // ── TAB: CONFIGURATION ──
-        let appsHtml = '<div style="color:#8892b0;font-size:0.8rem;">No apps specified</div>';
+        let appsHtml = '<div style="color:#9ca3af;font-size:0.8rem;">No apps specified</div>';
         if (sub.apps && sub.apps.length) {
             if (sub.appLinks && sub.appLinks.length) {
                 appsHtml = sub.appLinks.map(a => {
                     const name = escapeHtml(typeof a === 'string' ? a : a.name || '');
                     const url = typeof a === 'object' && a.url ? a.url : '';
-                    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:#112240;border-radius:8px;margin-bottom:4px;border:1px solid #233554;">
-                        <span style="color:#ccd6f6;font-size:0.85rem;font-weight:500;">${name}</span>
-                        ${url ? `<a href="${escapeHtml(url)}" target="_blank" style="color:#e8802a;font-size:0.75rem;text-decoration:none;">App Store ↗</a>` : ''}
+                    return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#fff;border-radius:10px;margin-bottom:4px;border:1.5px solid #e2e8f0;">
+                        <span style="color:#232428;font-size:0.85rem;font-weight:600;">${name}</span>
+                        ${url ? `<a href="${escapeHtml(url)}" target="_blank" style="color:#3166ae;font-size:0.75rem;text-decoration:none;font-weight:600;">App Store ↗</a>` : ''}
                     </div>`;
                 }).join('');
             } else {
-                appsHtml = sub.apps.map(a => `<span style="display:inline-block;background:#112240;border:1px solid #233554;border-radius:6px;padding:3px 10px;margin:2px 4px 2px 0;font-size:0.85rem;color:#ccd6f6;">${escapeHtml(typeof a === 'string' ? a : a.name || a)}</span>`).join('');
+                appsHtml = sub.apps.map(a => `<span style="display:inline-block;background:#fff;border:1.5px solid #e2e8f0;border-radius:40px;padding:4px 12px;margin:2px 4px 2px 0;font-size:0.8rem;color:#232428;font-weight:500;">${escapeHtml(typeof a === 'string' ? a : a.name || a)}</span>`).join('');
             }
         }
 
@@ -2018,9 +2020,9 @@
             for (let i = 0; i < max; i++) {
                 const name = names[i] ? escapeHtml(names[i]) : `Clip ${i + 1}`;
                 const url = urls[i] ? escapeHtml(urls[i]) : '';
-                clips += `<div style="display:flex;align-items:center;justify-content:space-between;padding:6px 10px;background:#112240;border-radius:8px;margin-bottom:4px;border:1px solid #233554;">
-                    <span style="color:#ccd6f6;font-size:0.85rem;">${name}</span>
-                    ${url ? `<a href="${url}" target="_blank" style="color:#e8802a;font-size:0.75rem;">Open ↗</a>` : ''}
+                clips += `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:#fff;border-radius:10px;margin-bottom:4px;border:1.5px solid #e2e8f0;">
+                    <span style="color:#232428;font-size:0.85rem;font-weight:500;">${name}</span>
+                    ${url ? `<a href="${url}" target="_blank" style="color:#3166ae;font-size:0.75rem;font-weight:600;">Open ↗</a>` : ''}
                 </div>`;
             }
             webClipsHtml = infoCard('🔗', 'Web Clips', clips);
@@ -2051,31 +2053,29 @@
             ${webClipsHtml ? `<div style="margin-bottom:12px;">${webClipsHtml}</div>` : ''}
             ${sub.appLoginEnabled && sub.appLoginEnabled !== 'No' ? `<div style="margin-bottom:12px;">${infoCard('🔑', 'App Login', `
                 ${kvLine('Login Required', sub.appLoginEnabled)}
-                ${sub.appLoginApps && sub.appLoginApps.length ? `<div style="margin-top:6px;">${sub.appLoginApps.map(a => `<span style="display:inline-block;background:#112240;border:1px solid #233554;border-radius:6px;padding:2px 8px;margin:2px 4px 2px 0;font-size:0.8rem;color:#ccd6f6;">${escapeHtml(a)}</span>`).join('')}</div>` : ''}
+                ${sub.appLoginApps && sub.appLoginApps.length ? `<div style="margin-top:6px;">${sub.appLoginApps.map(a => `<span style="display:inline-block;background:#fff;border:1.5px solid #e2e8f0;border-radius:40px;padding:3px 10px;margin:2px 4px 2px 0;font-size:0.8rem;color:#232428;font-weight:500;">${escapeHtml(a)}</span>`).join('')}</div>` : ''}
             `)}</div>` : ''}
-            ${sub.additionalComments ? `<div>${infoCard('💬', 'Additional Comments', `<div style="color:#ccd6f6;font-size:0.85rem;white-space:pre-wrap;line-height:1.6;">${escapeHtml(sub.additionalComments)}</div>`)}</div>` : ''}
+            ${sub.additionalComments ? `<div>${infoCard('💬', 'Comments', `<div style="color:#3e3e40;font-size:0.85rem;white-space:pre-wrap;line-height:1.6;">${escapeHtml(sub.additionalComments)}</div>`)}</div>` : ''}
         </div>`;
 
         // ── TAB: NETWORK ──
         let restrictionUrlsHtml = '';
         if (sub.restrictionUrls && sub.restrictionUrls.length) {
-            restrictionUrlsHtml = sub.restrictionUrls.map(u => `<div style="padding:4px 10px;background:#112240;border-radius:6px;margin-bottom:3px;border:1px solid #233554;"><a href="${escapeHtml(u)}" target="_blank" style="color:#e8802a;font-size:0.8rem;">${escapeHtml(u)}</a></div>`).join('');
+            restrictionUrlsHtml = sub.restrictionUrls.map(u => `<div style="padding:6px 12px;background:#fff;border-radius:8px;margin-bottom:3px;border:1.5px solid #e2e8f0;"><a href="${escapeHtml(u)}" target="_blank" style="color:#3166ae;font-size:0.8rem;font-weight:500;">${escapeHtml(u)}</a></div>`).join('');
         }
 
         html += `<div class="dcr-tab-panel" data-panel="network" style="display:none;">
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;">
                 ${infoCard('📶', 'Wi-Fi Configuration', `
                     ${kvLine('SSID', sub.wifiSsid)}
-                    <div style="margin-bottom:6px;"><span style="color:#8892b0;font-size:0.75rem;">Password</span><div style="display:flex;align-items:center;gap:8px;"><span style="color:#ccd6f6;font-size:0.95rem;font-weight:600;font-family:monospace;letter-spacing:1px;">${escapeHtml(sub.wifiPassword || '—')}</span>${sub.wifiPassword ? `<button onclick="navigator.clipboard.writeText('${escapeHtml(sub.wifiPassword)}');this.textContent='✓'" style="background:none;border:1px solid #233554;border-radius:4px;color:#8892b0;cursor:pointer;font-size:0.7rem;padding:2px 6px;">Copy</button>` : ''}</div></div>
+                    <div style="margin-bottom:8px;"><span style="color:#6b7280;font-size:0.7rem;font-weight:500;">Password</span><div style="display:flex;align-items:center;gap:8px;"><span style="color:#232428;font-size:0.95rem;font-weight:700;font-family:monospace;letter-spacing:1px;">${escapeHtml(sub.wifiPassword || '—')}</span>${sub.wifiPassword ? `<button onclick="navigator.clipboard.writeText('${escapeHtml(sub.wifiPassword)}');this.textContent='✓ Copied'" style="background:#e1edfd;border:1.5px solid #cfccca;border-radius:40px;color:#3166ae;cursor:pointer;font-size:0.65rem;font-weight:600;padding:3px 10px;font-family:'Montserrat',sans-serif;">Copy</button>` : ''}</div></div>
                     ${kvLine('Security', sub.wifiSecurity)}
                     ${kvLine('Hidden', sub.wifiHidden)}
                     ${kvLine('Wi-Fi Enabled', sub.wifiEnabled)}
                 `)}
                 ${infoCard('🛡️', 'Restrictions', `
                     ${kvLine('Enabled', sub.restrictionsEnabled)}
-                    ${sub.restrictionsEnabled && sub.restrictionsEnabled !== 'No' && sub.restrictionsEnabled !== 'false' ? `
-                        ${kvLine('Type', sub.restrictionType)}
-                    ` : ''}
+                    ${sub.restrictionsEnabled && sub.restrictionsEnabled !== 'No' && sub.restrictionsEnabled !== 'false' ? kvLine('Type', sub.restrictionType) : ''}
                     ${sub.lockdownMode && sub.lockdownMode !== 'None' && sub.lockdownMode !== 'No' ? kvLine('Lockdown Mode', sub.lockdownMode) : ''}
                     ${sub.guidedAccessPasscode ? kvLine('Passcode', sub.guidedAccessPasscode) : ''}
                 `)}
@@ -2094,14 +2094,14 @@
             });
 
             if (sub.driveFolderUrl) {
-                filesContent += `<div style="text-align:right;margin-bottom:12px;"><a href="${escapeHtml(sub.driveFolderUrl)}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;background:#e8802a22;border:1px solid #e8802a44;color:#e8802a;padding:6px 14px;border-radius:8px;font-size:0.8rem;font-weight:600;text-decoration:none;">📁 Open All in Drive ↗</a></div>`;
+                filesContent += `<div style="text-align:right;margin-bottom:14px;"><a href="${escapeHtml(sub.driveFolderUrl)}" target="_blank" style="display:inline-flex;align-items:center;gap:6px;background:#e1edfd;border:1.5px solid #cfccca;color:#3166ae;padding:7px 16px;border-radius:40px;font-size:0.78rem;font-weight:700;text-decoration:none;font-family:'Montserrat',sans-serif;">📁 Open All in Drive ↗</a></div>`;
             }
 
             for (const [cat, files] of Object.entries(grouped)) {
                 filesContent += `<div style="margin-bottom:16px;">
                     <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-                        <span style="color:#8892b0;font-size:0.75rem;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">${catIcons[cat] || '📎'} ${catLabels[cat] || cat}</span>
-                        <div style="flex:1;height:1px;background:#233554;"></div>
+                        <span style="color:#6b7280;font-size:0.7rem;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;">${catIcons[cat] || '📎'} ${catLabels[cat] || cat}</span>
+                        <div style="flex:1;height:1px;background:#e2e8f0;"></div>
                     </div>`;
                 files.forEach(f => {
                     const isImage = f.type && f.type.startsWith('image/');
@@ -2110,36 +2110,34 @@
                     const downloadUrl = isDrive ? f.driveDownloadUrl : f.url;
                     const isPdf = f.type === 'application/pdf' || (f.name && f.name.endsWith('.pdf'));
 
-                    let iconHtml = '<div style="width:40px;height:40px;border-radius:8px;background:#112240;border:1px solid #233554;display:flex;align-items:center;justify-content:center;font-size:1.2rem;flex-shrink:0;">📄</div>';
+                    let iconHtml = '<div style="width:42px;height:42px;border-radius:10px;background:#f4f6fa;border:1.5px solid #e2e8f0;display:flex;align-items:center;justify-content:center;font-size:1.2rem;flex-shrink:0;">📄</div>';
                     if (isImage && isDrive && f.driveFileId) {
-                        iconHtml = `<img src="https://drive.google.com/thumbnail?id=${f.driveFileId}&sz=w80" style="width:40px;height:40px;object-fit:cover;border-radius:8px;border:1px solid #233554;flex-shrink:0;" onerror="this.outerHTML='<div style=\\'width:40px;height:40px;border-radius:8px;background:#112240;border:1px solid #233554;display:flex;align-items:center;justify-content:center;font-size:1.2rem;flex-shrink:0;\\'>🖼️</div>'">`;
+                        iconHtml = `<img src="https://drive.google.com/thumbnail?id=${f.driveFileId}&sz=w80" style="width:42px;height:42px;object-fit:cover;border-radius:10px;border:1.5px solid #e2e8f0;flex-shrink:0;" onerror="this.outerHTML='<div style=\\'width:42px;height:42px;border-radius:10px;background:#f4f6fa;border:1.5px solid #e2e8f0;display:flex;align-items:center;justify-content:center;font-size:1.2rem;flex-shrink:0;\\'>🖼️</div>'">`;
                     } else if (isImage && f.url) {
-                        iconHtml = `<img src="${f.url}" style="width:40px;height:40px;object-fit:cover;border-radius:8px;border:1px solid #233554;flex-shrink:0;">`;
+                        iconHtml = `<img src="${f.url}" style="width:42px;height:42px;object-fit:cover;border-radius:10px;border:1.5px solid #e2e8f0;flex-shrink:0;">`;
                     } else if (isPdf) {
-                        iconHtml = '<div style="width:40px;height:40px;border-radius:8px;background:#dc262622;border:1px solid #dc262644;display:flex;align-items:center;justify-content:center;font-size:0.7rem;color:#ef4444;font-weight:700;flex-shrink:0;">PDF</div>';
-                    } else if (f.type === 'text/html') {
-                        iconHtml = '<div style="width:40px;height:40px;border-radius:8px;background:#3b82f622;border:1px solid #3b82f644;display:flex;align-items:center;justify-content:center;font-size:0.7rem;color:#3b82f6;font-weight:700;flex-shrink:0;">HTML</div>';
+                        iconHtml = '<div style="width:42px;height:42px;border-radius:10px;background:#fee2e2;border:1.5px solid #fecaca;display:flex;align-items:center;justify-content:center;font-size:0.65rem;color:#dc2626;font-weight:800;flex-shrink:0;">PDF</div>';
                     }
 
-                    filesContent += `<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#0d1b2a;border:1px solid #233554;border-radius:10px;margin-bottom:6px;">
+                    filesContent += `<div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:#fff;border:1.5px solid #e2e8f0;border-radius:12px;margin-bottom:6px;">
                         ${iconHtml}
                         <div style="flex:1;min-width:0;">
-                            <div style="color:#ccd6f6;font-size:0.85rem;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(f.name)}</div>
+                            <div style="color:#232428;font-size:0.82rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(f.name)}</div>
                             <div style="display:flex;align-items:center;gap:6px;margin-top:2px;">
-                                <span style="color:#8892b0;font-size:0.7rem;">${formatSize(f.size || 0)}</span>
-                                ${isDrive ? '<span style="font-size:0.65rem;color:#22c55e;background:#22c55e18;padding:1px 6px;border-radius:8px;">☁ Drive</span>' : '<span style="font-size:0.65rem;color:#f59e0b;background:#f59e0b18;padding:1px 6px;border-radius:8px;">💾 Local</span>'}
+                                <span style="color:#9ca3af;font-size:0.7rem;">${formatSize(f.size || 0)}</span>
+                                ${isDrive ? '<span style="font-size:0.6rem;font-weight:600;color:#05ac3f;background:#d1fae5;padding:2px 8px;border-radius:40px;">☁ Drive</span>' : '<span style="font-size:0.6rem;font-weight:600;color:#f59e0b;background:#fef3c7;padding:2px 8px;border-radius:40px;">💾 Local</span>'}
                             </div>
                         </div>
                         <div style="display:flex;gap:8px;align-items:center;">
-                            ${isDrive && fileUrl ? `<a href="${escapeHtml(fileUrl)}" target="_blank" style="color:#e8802a;font-size:0.8rem;text-decoration:none;font-weight:500;" title="Preview">View ↗</a>` : ''}
-                            ${downloadUrl ? `<a href="${escapeHtml(downloadUrl)}" target="_blank" style="color:#8892b0;font-size:0.9rem;text-decoration:none;" title="Download"${!isDrive ? ` download="${escapeHtml(f.name)}"` : ''}>⬇</a>` : ''}
+                            ${isDrive && fileUrl ? `<a href="${escapeHtml(fileUrl)}" target="_blank" style="color:#3166ae;font-size:0.78rem;text-decoration:none;font-weight:600;">View ↗</a>` : ''}
+                            ${downloadUrl ? `<a href="${escapeHtml(downloadUrl)}" target="_blank" style="color:#9ca3af;font-size:0.9rem;text-decoration:none;" title="Download"${!isDrive ? ` download="${escapeHtml(f.name)}"` : ''}>⬇</a>` : ''}
                         </div>
                     </div>`;
                 });
                 filesContent += `</div>`;
             }
         } else {
-            filesContent = '<div style="text-align:center;padding:32px 0;color:#8892b0;font-size:0.85rem;">No files uploaded with this submission.</div>';
+            filesContent = '<div style="text-align:center;padding:40px 0;color:#9ca3af;font-size:0.85rem;">No files uploaded with this submission.</div>';
         }
         html += `<div class="dcr-tab-panel" data-panel="files" style="display:none;">${filesContent}</div>`;
 
@@ -2147,11 +2145,11 @@
         html += `<div class="dcr-tab-panel" data-panel="notes" style="display:none;">
             <div id="dcr-notes-list">
                 ${(sub.notes && sub.notes.length) ? sub.notes.map(n => `
-                    <div style="background:#0d1b2a;padding:12px 14px;border-radius:10px;margin-bottom:8px;border-left:3px solid #e8802a;">
-                        <div style="color:#ccd6f6;font-size:0.85rem;line-height:1.5;">${escapeHtml(n.text)}</div>
-                        <div style="color:#8892b0;font-size:0.7rem;margin-top:6px;">${escapeHtml(n.author || 'Unknown')} — ${new Date(n.timestamp).toLocaleString()}</div>
+                    <div style="background:#f8fafc;padding:14px 16px;border-radius:12px;margin-bottom:8px;border-left:3px solid #3166ae;border:1.5px solid #e2e8f0;border-left:3px solid #3166ae;">
+                        <div style="color:#232428;font-size:0.85rem;line-height:1.6;">${escapeHtml(n.text)}</div>
+                        <div style="color:#9ca3af;font-size:0.7rem;margin-top:6px;font-weight:500;">${escapeHtml(n.author || 'Unknown')} — ${new Date(n.timestamp).toLocaleString()}</div>
                     </div>
-                `).join('') : '<div style="text-align:center;padding:32px 0;color:#8892b0;font-size:0.85rem;">No notes yet. Add one below.</div>'}
+                `).join('') : '<div style="text-align:center;padding:40px 0;color:#9ca3af;font-size:0.85rem;">No notes yet. Add one below.</div>'}
             </div>
         </div>`;
 
@@ -2162,19 +2160,19 @@
         dom.dcrModalBody.querySelectorAll('.dcr-tab').forEach(tab => {
             tab.addEventListener('click', () => {
                 dom.dcrModalBody.querySelectorAll('.dcr-tab').forEach(t => {
-                    t.style.color = '#8892b0';
+                    t.style.color = '#9ca3af';
                     t.style.borderBottomColor = 'transparent';
                     t.classList.remove('active');
                 });
-                tab.style.color = '#e8802a';
-                tab.style.borderBottomColor = '#e8802a';
+                tab.style.color = '#3166ae';
+                tab.style.borderBottomColor = '#3166ae';
                 tab.classList.add('active');
                 dom.dcrModalBody.querySelectorAll('.dcr-tab-panel').forEach(p => p.style.display = 'none');
                 const target = dom.dcrModalBody.querySelector(`.dcr-tab-panel[data-panel="${tab.dataset.tab}"]`);
                 if (target) target.style.display = 'block';
             });
-            tab.addEventListener('mouseenter', () => { if (!tab.classList.contains('active')) tab.style.color = '#ccd6f6'; });
-            tab.addEventListener('mouseleave', () => { if (!tab.classList.contains('active')) tab.style.color = '#8892b0'; });
+            tab.addEventListener('mouseenter', () => { if (!tab.classList.contains('active')) tab.style.color = '#3e3e40'; });
+            tab.addEventListener('mouseleave', () => { if (!tab.classList.contains('active')) tab.style.color = '#9ca3af'; });
         });
     }
 
