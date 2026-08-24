@@ -2028,6 +2028,11 @@ app.get('/api/public/share/:token/usage', async (req, res) => {
               matchedDevice.routerSerial = router.serial_number || '';
               matchedDevice.model = router.full_product_name || '';
               matchedDevice.routerStatus = router.state || 'unknown';
+              matchedDevice.wifi = {
+                ssid: router.name || '',
+                password: router.serial_number || '',
+                ssid5g: (router.name || '') + ' 5G',
+              };
               // Keep the SIM's usage data — it's the router's data usage
               console.log('[Share] Matched Cradlepoint ' + (router.name || rid) + ' to SIM ' + matchedDevice.simSerial);
             }
@@ -2036,6 +2041,26 @@ app.get('/api/public/share/:token/usage', async (req, res) => {
       } catch (e) {
         console.error('[Share] Cradlepoint lookup error:', e.message);
       }
+    }
+    
+    // Add isOnline and topConsumer flags
+    let maxUsage = 0;
+    let topIdx = -1;
+    results.devices.forEach((d, i) => {
+      // Online status: routers use routerStatus, SIMs check Webbing status
+      if (d.routerStatus) {
+        d.isOnline = d.routerStatus === 'online';
+      } else {
+        d.isOnline = d.status === 'Active';
+      }
+      // Track top consumer
+      if (d.usageMB > maxUsage) {
+        maxUsage = d.usageMB;
+        topIdx = i;
+      }
+    });
+    if (topIdx >= 0 && maxUsage > 0) {
+      results.devices[topIdx].isTopConsumer = true;
     }
     
     results.totalUsageGB = Math.round((results.totalUsageMB / 1024) * 1000) / 1000;
@@ -2049,6 +2074,99 @@ app.get('/api/public/share/:token/usage', async (req, res) => {
   } catch (err) {
     console.error('[Share] Usage aggregation error:', err.message);
     res.status(500).json({ error: 'Failed to fetch usage data' });
+  }
+});
+
+// Daily usage breakdown for Pulse chart
+app.get('/api/public/share/:token/usage/daily', async (req, res) => {
+  const data = shareTokens[req.params.token];
+  if (!data) return res.status(404).json({ error: 'Share link not found' });
+  if (new Date(data.expiresAt) < new Date()) return res.status(410).json({ error: 'Expired' });
+  
+  try {
+    const branchName = data.branchName;
+    const branchDevices = webbingDeviceCache.filter(d =>
+      d.BranchName && d.BranchName.toUpperCase() === branchName
+    );
+    
+    if (branchDevices.length === 0) return res.json({ days: [], avgDailyGB: 0, projectedTotalGB: 0 });
+    
+    const client = getWebbingClient();
+    const rawStart = data.startDate || new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0];
+    const today = new Date().toISOString().split('T')[0];
+    const rawEnd = data.endDate && data.endDate < today ? data.endDate : today;
+    
+    function toWebbingDate(isoDate) {
+      const [y, m, d] = isoDate.split('-');
+      return m + '/' + d + '/' + y;
+    }
+    
+    // Split into 31-day chunks
+    const [sy, sm, sd] = rawStart.split('-').map(Number);
+    const [ey, em, ed] = rawEnd.split('-').map(Number);
+    const startDt = new Date(sy, sm - 1, sd);
+    const endDt = new Date(ey, em - 1, ed);
+    const MAX_DAYS = 31;
+    const dateChunks = [];
+    let chunkStart = new Date(startDt);
+    while (chunkStart < endDt) {
+      let chunkEnd = new Date(chunkStart);
+      chunkEnd.setDate(chunkEnd.getDate() + MAX_DAYS - 1);
+      if (chunkEnd > endDt) chunkEnd = new Date(endDt);
+      dateChunks.push({ start: toWebbingDate(chunkStart.toISOString().split('T')[0]), end: toWebbingDate(chunkEnd.toISOString().split('T')[0]) });
+      chunkStart = new Date(chunkEnd);
+      chunkStart.setDate(chunkStart.getDate() + 1);
+    }
+    if (dateChunks.length === 0) dateChunks.push({ start: toWebbingDate(rawStart), end: toWebbingDate(rawEnd) });
+    
+    // Aggregate daily usage across all devices
+    const dailyMap = {}; // date -> totalMB
+    
+    for (const dev of branchDevices) {
+      try {
+        for (const chunk of dateChunks) {
+          const usageData = await client.getDeviceUsage(dev.ServiceDeviceID, chunk.start, chunk.end, 'Daily');
+          const usage = usageData?.Usage;
+          if (usage && usage.DeviceUsageRecord) {
+            const records = Array.isArray(usage.DeviceUsageRecord) ? usage.DeviceUsageRecord : [usage.DeviceUsageRecord];
+            for (const r of records) {
+              const date = r.UsageDate || r.Date || '';
+              const mb = parseFloat(r.TotalUsage || 0);
+              if (date && mb > 0) {
+                // Normalize date to YYYY-MM-DD
+                let normDate = date;
+                if (date.includes('/')) {
+                  const [m, d, y] = date.split('/');
+                  normDate = y + '-' + m.padStart(2, '0') + '-' + d.padStart(2, '0');
+                }
+                dailyMap[normDate] = (dailyMap[normDate] || 0) + mb;
+              }
+            }
+          }
+        }
+      } catch (e) {
+        // Skip device errors
+      }
+    }
+    
+    // Sort days and calculate stats
+    const days = Object.entries(dailyMap)
+      .map(([date, mb]) => ({ date, usageMB: Math.round(mb * 100) / 100, usageGB: Math.round((mb / 1024) * 1000) / 1000 }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+    
+    const totalDaysWithUsage = days.filter(d => d.usageMB > 0).length;
+    const totalMB = days.reduce((sum, d) => sum + d.usageMB, 0);
+    const avgDailyGB = totalDaysWithUsage > 0 ? Math.round((totalMB / totalDaysWithUsage / 1024) * 1000) / 1000 : 0;
+    
+    // Project total usage for rental period
+    const rentalDays = data.endDate && data.startDate ? 
+      Math.max(1, Math.ceil((new Date(data.endDate) - new Date(data.startDate)) / 86400000)) : 0;
+    const projectedTotalGB = rentalDays > 0 ? Math.round(avgDailyGB * rentalDays * 1000) / 1000 : 0;
+    
+    res.json({ days, avgDailyGB, projectedTotalGB, rentalDays });
+  } catch (err) {
+    console.error('[Share] Daily usage error:', err.message);
+    res.status(500).json({ error: 'Failed to fetch daily usage' });
   }
 });
 
