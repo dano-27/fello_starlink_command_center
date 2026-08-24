@@ -1,0 +1,511 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Training — Fello Command Center</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/shared-header.css">
+  <style>
+    :root {
+      --primary: #e8802a; --primary-dark: #c06820;
+      --bg: #0f1117; --card: #1a1b23; --card-hover: #22232d;
+      --text: #e4e4e7; --muted: #9ca3af; --border: #2d2e3a;
+      --green: #10b981; --red: #ef4444; --orange: #f59e0b; --blue: #3b82f6; --purple: #8b5cf6;
+      --font: 'Montserrat', sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: var(--font); background: var(--bg); color: var(--text); min-height: 100vh; }
+    .page-container { max-width: 960px; margin: 0 auto; padding: 32px 24px 64px; }
+
+    /* Page header */
+    .page-title { font-size: 32px; font-weight: 800; margin-bottom: 4px; }
+    .page-subtitle { font-size: 14px; color: var(--muted); margin-bottom: 32px; }
+
+    /* Sidebar TOC */
+    .layout { display: flex; gap: 32px; }
+    .toc-sidebar { width: 220px; flex-shrink: 0; position: sticky; top: 80px; align-self: flex-start; max-height: calc(100vh - 100px); overflow-y: auto; }
+    .toc-sidebar::-webkit-scrollbar { width: 3px; }
+    .toc-sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+    .toc-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 12px; }
+    .toc-link { display: block; padding: 6px 12px; font-size: 12px; color: var(--muted); text-decoration: none; border-left: 2px solid transparent; margin-bottom: 2px; font-weight: 500; border-radius: 0 6px 6px 0; transition: all 0.15s; }
+    .toc-link:hover { color: var(--text); background: rgba(255,255,255,0.04); }
+    .toc-link.active { color: var(--primary); border-left-color: var(--primary); background: rgba(232,128,42,0.08); }
+    .main-content { flex: 1; min-width: 0; }
+
+    /* Section cards */
+    .section { margin-bottom: 32px; scroll-margin-top: 80px; }
+    .section-card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 28px 32px; }
+    .section-header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; cursor: pointer; }
+    .section-icon { font-size: 24px; }
+    .section-title { font-size: 20px; font-weight: 800; }
+    .section-badge { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 8px; background: rgba(232,128,42,0.15); color: var(--primary); }
+
+    /* Content styles */
+    h3 { font-size: 16px; font-weight: 700; margin: 20px 0 10px; color: var(--text); }
+    h4 { font-size: 13px; font-weight: 700; margin: 16px 0 8px; color: var(--primary); text-transform: uppercase; letter-spacing: 0.5px; }
+    p, li { font-size: 13px; line-height: 1.7; color: var(--muted); }
+    p { margin-bottom: 12px; }
+    ul, ol { padding-left: 20px; margin-bottom: 12px; }
+    li { margin-bottom: 4px; }
+    strong { color: var(--text); }
+    code { background: rgba(255,255,255,0.08); padding: 2px 6px; border-radius: 4px; font-size: 12px; font-family: 'SF Mono', 'Fira Code', monospace; color: var(--primary); }
+
+    /* Tables */
+    .t-table { width: 100%; border-collapse: collapse; margin: 12px 0 16px; font-size: 12px; }
+    .t-table th { text-align: left; padding: 8px 12px; background: rgba(255,255,255,0.04); color: var(--muted); font-weight: 700; font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--border); }
+    .t-table td { padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,0.04); color: var(--text); }
+    .t-table tr:hover td { background: rgba(255,255,255,0.02); }
+
+    /* Callout boxes */
+    .callout { padding: 14px 18px; border-radius: 10px; margin: 12px 0; font-size: 12px; font-weight: 500; }
+    .callout.tip { background: rgba(16,185,129,0.1); border-left: 3px solid var(--green); color: #6ee7b7; }
+    .callout.warn { background: rgba(245,158,11,0.1); border-left: 3px solid var(--orange); color: #fcd34d; }
+    .callout.danger { background: rgba(239,68,68,0.1); border-left: 3px solid var(--red); color: #fca5a5; }
+    .callout.info { background: rgba(59,130,246,0.1); border-left: 3px solid var(--blue); color: #93c5fd; }
+    .callout-icon { margin-right: 8px; }
+
+    /* Workflow steps */
+    .workflow { display: flex; flex-direction: column; gap: 8px; margin: 12px 0; }
+    .step { display: flex; gap: 12px; align-items: flex-start; padding: 10px 14px; background: rgba(255,255,255,0.03); border-radius: 10px; border: 1px solid rgba(255,255,255,0.05); }
+    .step-num { width: 28px; height: 28px; border-radius: 50%; background: var(--primary); color: white; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 800; flex-shrink: 0; }
+    .step-text { font-size: 13px; color: var(--text); font-weight: 500; }
+    .step-text .sub { display: block; font-size: 11px; color: var(--muted); font-weight: 400; margin-top: 2px; }
+
+    /* Signal bars */
+    .signal-bars { display: inline-flex; gap: 2px; align-items: flex-end; height: 16px; vertical-align: middle; }
+    .signal-bars .bar { width: 4px; border-radius: 1px; }
+
+    /* Search chips */
+    .chip { display: inline-block; padding: 3px 10px; background: rgba(255,255,255,0.06); border: 1px solid var(--border); border-radius: 6px; font-size: 11px; font-family: monospace; color: var(--primary); margin: 2px; }
+
+    /* Keyboard shortcuts */
+    kbd { display: inline-block; padding: 2px 8px; background: rgba(255,255,255,0.08); border: 1px solid var(--border); border-radius: 4px; font-size: 11px; font-family: 'SF Mono', monospace; color: var(--text); }
+
+    /* Accordion */
+    .accordion-content { display: none; }
+    .accordion-content.open { display: block; }
+
+    @media (max-width: 768px) {
+      .layout { flex-direction: column; }
+      .toc-sidebar { display: none; }
+      .page-title { font-size: 24px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="fello-header"></div>
+
+  <div class="page-container">
+    <div class="page-title">📖 Training Center</div>
+    <div class="page-subtitle">Fello Command Center — Operations Manual & Quick Reference</div>
+
+    <div class="layout">
+      <!-- TOC Sidebar -->
+      <div class="toc-sidebar">
+        <div class="toc-title">Contents</div>
+        <a class="toc-link" href="#overview">Overview</a>
+        <a class="toc-link" href="#getting-started">Getting Started</a>
+        <a class="toc-link" href="#search">Unified Search</a>
+        <a class="toc-link" href="#fleet">Fleet Table</a>
+        <a class="toc-link" href="#drawer">Device Drawer</a>
+        <a class="toc-link" href="#actions">Quick Actions</a>
+        <a class="toc-link" href="#pulse">Fello Pulse</a>
+        <a class="toc-link" href="#modules">Tool Modules</a>
+        <a class="toc-link" href="#workflows">Workflows</a>
+        <a class="toc-link" href="#troubleshooting">Troubleshooting</a>
+        <a class="toc-link" href="#reference">Quick Reference</a>
+      </div>
+
+      <!-- Main Content -->
+      <div class="main-content">
+
+        <!-- OVERVIEW -->
+        <div class="section" id="overview">
+          <div class="section-card">
+            <div class="section-header"><span class="section-icon">🏠</span><span class="section-title">What is the Command Center?</span></div>
+            <p>The Fello Command Center is a unified operations platform that brings together <strong>six core systems</strong> into one dashboard. One search pulls everything together.</p>
+            <table class="t-table">
+              <thead><tr><th>System</th><th>What It Controls</th><th>Integration</th></tr></thead>
+              <tbody>
+                <tr><td><strong>IMS NextGen CRM</strong></td><td>Rental orders, customers, events, line items, shipping</td><td>Fly API</td></tr>
+                <tr><td><strong>SimpleMDM</strong></td><td>iPad enrollment, apps, profiles, Lost Mode, wallpapers</td><td>REST API (multi-tenant)</td></tr>
+                <tr><td><strong>Webbing IoT</strong></td><td>Cellular SIMs — activate, suspend, carrier switch, data usage</td><td>SOAP + REST API</td></tr>
+                <tr><td><strong>Apple Business Manager</strong></td><td>Hardware IMEI/EID registry, DEP enrollment</td><td>RSA-authenticated API</td></tr>
+                <tr><td><strong>Cradlepoint NetCloud</strong></td><td>Cellular routers — WiFi config, GPS, bandwidth</td><td>ECM REST API</td></tr>
+                <tr><td><strong>SpaceX Starlink</strong></td><td>Satellite terminals — telemetry, stow/unstow, data usage</td><td>Public API</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- GETTING STARTED -->
+        <div class="section" id="getting-started">
+          <div class="section-card">
+            <div class="section-header"><span class="section-icon">🚀</span><span class="section-title">Getting Started</span></div>
+            <h3>Logging In</h3>
+            <div class="workflow">
+              <div class="step"><span class="step-num">1</span><span class="step-text">Navigate to the Command Center URL</span></div>
+              <div class="step"><span class="step-num">2</span><span class="step-text">Enter your credentials (username + password)</span></div>
+              <div class="step"><span class="step-num">3</span><span class="step-text">You'll land on the <strong>Hub</strong> — the visual grid of all tools</span></div>
+            </div>
+            <h3>Navigation</h3>
+            <p>Every page includes the <strong>Shared Header</strong>:</p>
+            <ul>
+              <li><strong>Fello Logo</strong> → Click to return to Lookup (home base)</li>
+              <li><strong>🧰 Tools ▼</strong> → Dropdown menu to jump to any module</li>
+              <li><strong>User Badge</strong> → Your name, role, and Sign Out</li>
+              <li><strong>Admin links</strong> (admins only): 📋 Audit and 👥 Users</li>
+            </ul>
+            <div class="callout info"><span class="callout-icon">💡</span> The <strong>Unified Lookup</strong> (<code>/lookup/</code>) is where you'll spend 90% of your time. Everything starts with a search.</div>
+          </div>
+        </div>
+
+        <!-- UNIFIED SEARCH -->
+        <div class="section" id="search">
+          <div class="section-card">
+            <div class="section-header"><span class="section-icon">🔍</span><span class="section-title">Unified Search</span></div>
+            <p>Type any identifier into the search bar and the Command Center resolves it across all systems:</p>
+            <table class="t-table">
+              <thead><tr><th>Query Type</th><th>Example</th><th>What You Get</th></tr></thead>
+              <tbody>
+                <tr><td><strong>Order Number</strong></td><td><span class="chip">FE13916</span> <span class="chip">SQ15055</span></td><td>Full order + all iPads + SIMs + Starlink + Cradlepoint</td></tr>
+                <tr><td><strong>SIM Serial</strong></td><td><span class="chip">WW13725786</span></td><td>Individual SIM details, live telemetry, usage</td></tr>
+                <tr><td><strong>ICCID</strong></td><td><span class="chip">89012608...</span> (19-20 digits)</td><td>SIM lookup with live network data</td></tr>
+                <tr><td><strong>IMEI</strong></td><td><span class="chip">356781113226780</span> (15 digits)</td><td>Device + matched SIM</td></tr>
+                <tr><td><strong>Company</strong></td><td><span class="chip">Alamo Fireworks</span></td><td>Full MDM account fleet view</td></tr>
+                <tr><td><strong>iPad Serial</strong></td><td><span class="chip">GG7YH47YJF88</span></td><td>Individual device + matched SIM</td></tr>
+              </tbody>
+            </table>
+            <h3>Results Layout</h3>
+            <p>When you search an order, the screen splits into two columns:</p>
+            <ul>
+              <li><strong>Left Column (Main)</strong> — Order Bar, Coverage Results, Usage Summary, Fleet Table</li>
+              <li><strong>Right Sidebar</strong> — 📡 Coverage checker, ⚡ Bulk Actions, 📊 Data Usage calculator</li>
+            </ul>
+            <h3>How Devices Get Matched</h3>
+            <p>iPads report <strong>Serial Numbers</strong> to MDM. SIMs report <strong>ICCIDs</strong> and <strong>IMEIs</strong> to the carrier. The Command Center bridges them:</p>
+            <div class="workflow">
+              <div class="step"><span class="step-num">1</span><span class="step-text"><strong>Pass 1: ICCID Match</strong><span class="sub">Matches MDM eSIM subscriptions directly against Webbing SIM inventory</span></span></div>
+              <div class="step"><span class="step-num">2</span><span class="step-text"><strong>Pass 2: ABM IMEI Bridge</strong><span class="sub">Queries Apple Business Manager for hardware IMEIs, matches against Webbing cellular modem IMEIs</span></span></div>
+            </div>
+            <table class="t-table">
+              <thead><tr><th>Icon</th><th>Meaning</th></tr></thead>
+              <tbody>
+                <tr><td>✓ (green)</td><td>iPad + SIM matched pair</td></tr>
+                <tr><td>✗ (amber)</td><td>iPad without SIM match</td></tr>
+                <tr><td>📶</td><td>Mobile hotspot (standalone SIM)</td></tr>
+                <tr><td>🌐</td><td>Cradlepoint router</td></tr>
+                <tr><td>🛰️</td><td>Starlink terminal</td></tr>
+                <tr><td>📡</td><td>Standalone SIM</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- FLEET TABLE -->
+        <div class="section" id="fleet">
+          <div class="section-card">
+            <div class="section-header"><span class="section-icon">📋</span><span class="section-title">Fleet Overview Table</span></div>
+            <p>The Fleet Table shows every device and SIM in one unified view. Click <code>⚙️ Columns</code> to customize visible columns.</p>
+            <div class="callout tip"><span class="callout-icon">💡</span> Column selections are saved in your browser and persist across sessions. Click <strong>Reset</strong> to restore defaults.</div>
+            <h4>iPad Columns</h4>
+            <table class="t-table">
+              <thead><tr><th>Column</th><th>Description</th></tr></thead>
+              <tbody>
+                <tr><td><strong>iPad Name</strong></td><td>MDM device name (bold, click to open drawer)</td></tr>
+                <tr><td><strong>iPad Serial</strong></td><td>Apple hardware serial number</td></tr>
+                <tr><td><strong>Model</strong></td><td>e.g., iPad (9th generation)</td></tr>
+                <tr><td><strong>OS Version</strong></td><td>Installed iOS/iPadOS version</td></tr>
+                <tr><td><strong>Battery</strong></td><td>Live % — 🟢 >50% · 🟡 21-50% · 🔴 ≤20%</td></tr>
+                <tr><td><strong>Last Seen</strong></td><td>Last MDM check-in timestamp</td></tr>
+              </tbody>
+            </table>
+            <h4>SIM Columns</h4>
+            <table class="t-table">
+              <thead><tr><th>Column</th><th>Description</th></tr></thead>
+              <tbody>
+                <tr><td><strong>SIM Serial</strong></td><td>Webbing SSID identifier</td></tr>
+                <tr><td><strong>ICCID</strong></td><td>SIM chip identifier</td></tr>
+                <tr><td><strong>IMEI</strong></td><td>Cellular modem IMEI (bridged via ABM)</td></tr>
+                <tr><td><strong>Carrier</strong></td><td>Active network badge (AT&T, T-Mobile, Verizon)</td></tr>
+                <tr><td><strong>SIM Status</strong></td><td><span style="color:var(--green);">Active</span> or <span style="color:var(--orange);">Suspended</span></td></tr>
+              </tbody>
+            </table>
+            <h4>Usage Columns</h4>
+            <table class="t-table">
+              <thead><tr><th>Column</th><th>Description</th></tr></thead>
+              <tbody>
+                <tr><td><strong>Usage (GB)</strong></td><td>Data consumed in selected date range</td></tr>
+                <tr><td><strong>Active Days</strong></td><td>Days with cellular activity</td></tr>
+              </tbody>
+            </table>
+            <h3>Exporting Data</h3>
+            <p>Click <strong>📥 Export CSV</strong> in the usage summary bar. The file includes every device with individual + total usage and a TOTAL summary row.</p>
+          </div>
+        </div>
+
+        <!-- DEVICE DRAWER -->
+        <div class="section" id="drawer">
+          <div class="section-card">
+            <div class="section-header"><span class="section-icon">📱</span><span class="section-title">Device Detail Drawer</span></div>
+            <p>Click any device row in the Fleet Table to slide open the drawer — your single-device command center.</p>
+            <table class="t-table">
+              <thead><tr><th>Section</th><th>What's There</th></tr></thead>
+              <tbody>
+                <tr><td><strong>Hero</strong></td><td>Model, serial, iOS version, battery %, status badges</td></tr>
+                <tr><td><strong>⚡ Quick Actions</strong></td><td>📺 Screen Share · 🔒 Lock · 🔄 Restart · ⏻ Shutdown</td></tr>
+                <tr><td><strong>📦 Managed Apps</strong></td><td>All installed enterprise apps and versions</td></tr>
+                <tr><td><strong>📱 Device Info</strong></td><td>Full specs — serial, MAC, IP, IMEI, EID, ICCID</td></tr>
+                <tr><td><strong>📺 CoBrowse</strong></td><td>Launch interactive remote screen viewing</td></tr>
+                <tr><td><strong>🔧 MDM Controls</strong></td><td>Lock, Restart, Shutdown, Push Apps, Refresh, Clear Passcode</td></tr>
+                <tr><td><strong>📍 Lost Mode</strong></td><td>Enable/Disable with custom message</td></tr>
+                <tr><td><strong>📶 SIM Controls</strong></td><td>Resume/Suspend SIM, change carrier, send SMS</td></tr>
+                <tr><td><strong>📊 Live Telemetry</strong></td><td>Carrier, IP, APN, country, PDP session</td></tr>
+                <tr><td><strong>🗺️ Location Map</strong></td><td>Dual-layer: cell tower triangulation + Fello app GPS</td></tr>
+                <tr><td><strong>🛰️ Starlink</strong></td><td>Reboot, Stow, Unstow (if applicable)</td></tr>
+                <tr><td><strong>⚠️ Danger Zone</strong></td><td>Factory Reset / Wipe (double-confirmed)</td></tr>
+              </tbody>
+            </table>
+            <div class="callout danger"><span class="callout-icon">⚠️</span> <strong>Factory Reset / Wipe</strong> permanently erases all data. Double confirmation required. Cannot be undone.</div>
+          </div>
+        </div>
+
+        <!-- QUICK ACTIONS -->
+        <div class="section" id="actions">
+          <div class="section-card">
+            <div class="section-header"><span class="section-icon">⚡</span><span class="section-title">Sidebar Quick Actions</span></div>
+            <h3>📡 Coverage / Site Checker</h3>
+            <ul>
+              <li><strong>Auto-runs</strong> on order load using the shipping address</li>
+              <li>Checks signal for <strong>T-Mobile</strong>, <strong>AT&T</strong>, and <strong>Verizon</strong></li>
+              <li>Shows signal bars, dBm values, 5G/4G availability</li>
+              <li><strong>★ Best</strong> badge highlights the recommended carrier</li>
+              <li>Click <strong>Apply</strong> to provision all SIMs to that network</li>
+            </ul>
+            <h4>Signal Quality</h4>
+            <table class="t-table">
+              <thead><tr><th>dBm</th><th>Bars</th><th>Quality</th></tr></thead>
+              <tbody>
+                <tr><td>≥ -75</td><td>████</td><td style="color:var(--green);">Excellent</td></tr>
+                <tr><td>-76 to -85</td><td>███░</td><td style="color:var(--green);">Good</td></tr>
+                <tr><td>-86 to -95</td><td>██░░</td><td style="color:var(--orange);">Fair</td></tr>
+                <tr><td>&lt; -95</td><td>█░░░</td><td style="color:var(--red);">Poor</td></tr>
+              </tbody>
+            </table>
+            <h3>⚡ Bulk Fleet Actions</h3>
+            <table class="t-table">
+              <thead><tr><th>Button</th><th>What It Does</th></tr></thead>
+              <tbody>
+                <tr><td><strong>⏸ Suspend Service</strong></td><td>Suspends all SIMs — use for returned equipment</td></tr>
+                <tr><td><strong>▶ Resume Service</strong></td><td>Reactivates all SIMs — use before deployment</td></tr>
+                <tr><td><strong>🔴 Lost Mode</strong></td><td>Locks all iPads with custom screen message</td></tr>
+                <tr><td><strong>🟢 Unlock</strong></td><td>Clears Lost Mode from all iPads</td></tr>
+                <tr><td><strong>Carrier + Apply All</strong></td><td>Switch all SIMs to a specific carrier plan</td></tr>
+              </tbody>
+            </table>
+            <h4>Carrier Plans</h4>
+            <table class="t-table">
+              <thead><tr><th>Plan ID</th><th>Name</th></tr></thead>
+              <tbody>
+                <tr><td>11105</td><td>🌐 Multi-Carrier (US, CA, MX)</td></tr>
+                <tr><td>11125</td><td>📶 AT&T</td></tr>
+                <tr><td>11126</td><td>📶 T-Mobile</td></tr>
+                <tr><td>11127</td><td>📶 Verizon</td></tr>
+              </tbody>
+            </table>
+            <h3>📊 Data Usage</h3>
+            <ul>
+              <li>Dates <strong>auto-fill</strong> from rental start/end dates</li>
+              <li>Click <strong>📊 Calculate</strong> to fetch consumption</li>
+              <li>Results merge into the Fleet Table</li>
+              <li><strong>📥 Export CSV</strong> for billing reports</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- FELLO PULSE -->
+        <div class="section" id="pulse">
+          <div class="section-card">
+            <div class="section-header"><span class="section-icon">📡</span><span class="section-title">Fello Pulse</span><span class="section-badge">Customer Portal</span></div>
+            <p>Fello Pulse is a <strong>customer-facing live dashboard</strong> you share with event organizers so they can self-manage their data.</p>
+            <h3>How to Generate a Pulse Link</h3>
+            <div class="workflow">
+              <div class="step"><span class="step-num">1</span><span class="step-text">Search any order in the Lookup</span></div>
+              <div class="step"><span class="step-num">2</span><span class="step-text">Click <strong>📡 Fello Pulse</strong> on the order bar <span class="sub">(auto-generates on load)</span></span></div>
+              <div class="step"><span class="step-num">3</span><span class="step-text">Copy the link or scan the QR code</span></div>
+              <div class="step"><span class="step-num">4</span><span class="step-text">Share with the customer</span></div>
+            </div>
+            <h3>What the Customer Sees</h3>
+            <table class="t-table">
+              <thead><tr><th>Feature</th><th>Description</th><th>When</th></tr></thead>
+              <tbody>
+                <tr><td><strong>Data Usage Gauge</strong></td><td>Big % + color-coded progress bar</td><td>Always</td></tr>
+                <tr><td><strong>Burn Rate Projection</strong></td><td>"At current pace, 4.8 GB of 6 GB by end"</td><td>Has usage data</td></tr>
+                <tr><td><strong>Daily Usage Chart</strong></td><td>Bar chart showing GB per day</td><td>Has usage data</td></tr>
+                <tr><td><strong>Rental Timeline</strong></td><td>"Day 3 of 5 · 2 days remaining"</td><td>Always</td></tr>
+                <tr><td><strong>Device Fleet Cards</strong></td><td>Model, carrier, online status, usage</td><td>Always</td></tr>
+                <tr><td><strong>Per-Device Bars</strong></td><td>Color-coded % of allocation</td><td>Always</td></tr>
+                <tr><td><strong>🏆 Top Consumer</strong></td><td>Gold badge on highest-usage device</td><td>Usage > 0</td></tr>
+                <tr><td><strong>📶 WiFi + QR</strong></td><td>SSID, password, copy, scannable QR</td><td>Routers</td></tr>
+                <tr><td><strong>💡 Data Tips</strong></td><td>Collapsible saving tips</td><td>Usage > 50%</td></tr>
+                <tr><td><strong>⚠️ Usage Alerts</strong></td><td>Yellow 70%, red 90%</td><td>Usage > 70%</td></tr>
+                <tr><td><strong>📈 Top-Up Request</strong></td><td>Pre-filled email for more data</td><td>Usage > 80%</td></tr>
+                <tr><td><strong>🆘 Need Help?</strong></td><td>Support contact button</td><td>Always</td></tr>
+              </tbody>
+            </table>
+            <div class="callout tip"><span class="callout-icon">💡</span> Encourage event organizers to bookmark their Pulse link. Automated color shifts at 70% and 90% provide proactive warnings.</div>
+            <h3>Managing Links</h3>
+            <ul>
+              <li><strong>Revoke</strong> — Click Revoke to immediately kill access</li>
+              <li><strong>Expiration</strong> — Links auto-expire 7 days after rental end</li>
+              <li><strong>Security</strong> — 32-character cryptographic tokens</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- TOOL MODULES -->
+        <div class="section" id="modules">
+          <div class="section-card">
+            <div class="section-header"><span class="section-icon">🧰</span><span class="section-title">Tool Modules</span></div>
+            <table class="t-table">
+              <thead><tr><th>Module</th><th>Path</th><th>Key Capabilities</th><th>Who Uses It</th></tr></thead>
+              <tbody>
+                <tr><td><strong>🌐 Cradlepoint</strong></td><td><code>/cradlepoint/</code></td><td>Router fleet, WiFi config, QR codes, GPS tracking, bandwidth</td><td>Network engineers, on-site leads</td></tr>
+                <tr><td><strong>📶 Webbing IoT</strong></td><td><code>/webbing/</code></td><td>SIM inventory, bulk carrier switch, suspend/resume, usage reports</td><td>Inventory, logistics, billing</td></tr>
+                <tr><td><strong>📡 Starlink</strong></td><td><code>/starlink/</code></td><td>Dish telemetry, data accounting, stow/unstow, WiFi profiles</td><td>Field ops, event techs, billing</td></tr>
+                <tr><td><strong>📱 SimpleMDM</strong></td><td><code>/simplemdm/</code></td><td>ABM/DEP enrollment, apps, wallpapers, Lost Mode, screen share</td><td>MDM admins, deployment engineers</td></tr>
+                <tr><td><strong>📦 IMS Orders</strong></td><td><code>/orders/</code></td><td>Order details, line items, shipping, dates</td><td>Warehouse prep, logistics</td></tr>
+                <tr><td><strong>🛰️ Site Checker</strong></td><td><code>/checker/</code></td><td>Starlink venue readiness, obstructions, rain fade</td><td>Sales reps, event planners</td></tr>
+                <tr><td><strong>✅ Customer Verify</strong></td><td><code>/verify/</code></td><td>Quote fraud scoring, domain check, Hunter.io</td><td>Sales ops</td></tr>
+                <tr><td><strong>📊 Reports</strong></td><td><code>/reports/</code></td><td>Cellular overage auditing, CSV billing export</td><td>Billing, accounting</td></tr>
+                <tr><td><strong>📋 Audit Log</strong></td><td><code>/audit/</code></td><td>User action trail, session timelines</td><td>Admin, security</td></tr>
+                <tr><td><strong>👥 User Management</strong></td><td><code>/admin/users</code></td><td>Account provisioning, role assignment</td><td>System admins</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- WORKFLOWS -->
+        <div class="section" id="workflows">
+          <div class="section-card">
+            <div class="section-header"><span class="section-icon">🔄</span><span class="section-title">Common Workflows</span></div>
+
+            <h3>🔄 Pre-Event: Prepare an Order</h3>
+            <div class="workflow">
+              <div class="step"><span class="step-num">1</span><span class="step-text"><strong>Search</strong> the order number <span class="sub">e.g., FE13916</span></span></div>
+              <div class="step"><span class="step-num">2</span><span class="step-text"><strong>Check Coverage</strong> — review auto-generated site check, click <strong>Apply</strong> on best carrier</span></div>
+              <div class="step"><span class="step-num">3</span><span class="step-text"><strong>Resume Service</strong> — click ▶ Resume Service in sidebar</span></div>
+              <div class="step"><span class="step-num">4</span><span class="step-text"><strong>Verify</strong> — scan fleet table for any Suspended badges</span></div>
+              <div class="step"><span class="step-num">5</span><span class="step-text"><strong>Pulse</strong> — copy generated share link, send to event organizer</span></div>
+              <div class="step"><span class="step-num">6</span><span class="step-text"><strong>Export</strong> — download CSV for warehouse packing checklist</span></div>
+            </div>
+
+            <h3>🛑 Post-Event: Decommission Equipment</h3>
+            <div class="workflow">
+              <div class="step"><span class="step-num">1</span><span class="step-text"><strong>Search</strong> the order</span></div>
+              <div class="step"><span class="step-num">2</span><span class="step-text"><strong>Suspend</strong> — click ⏸ Suspend Service <span class="sub">Prevents idle data charges</span></span></div>
+              <div class="step"><span class="step-num">3</span><span class="step-text"><strong>Lost Mode</strong> — click 🔴 with return message <span class="sub">Secures iPads in transit</span></span></div>
+              <div class="step"><span class="step-num">4</span><span class="step-text"><strong>Usage</strong> — set dates to rental period, click Calculate</span></div>
+              <div class="step"><span class="step-num">5</span><span class="step-text"><strong>Export</strong> — download billing CSV</span></div>
+              <div class="step"><span class="step-num">6</span><span class="step-text"><strong>Revoke</strong> — kill the Pulse share link</span></div>
+            </div>
+
+            <h3>🆘 During Event: Troubleshoot a Device</h3>
+            <div class="workflow">
+              <div class="step"><span class="step-num">1</span><span class="step-text"><strong>Search</strong> order or device serial</span></div>
+              <div class="step"><span class="step-num">2</span><span class="step-text"><strong>Open Drawer</strong> — click the device row</span></div>
+              <div class="step"><span class="step-num">3</span><span class="step-text"><strong>Diagnose:</strong>
+                <span class="sub">No connectivity → Check SIM Status, Resume if Suspended</span>
+                <span class="sub">Wrong carrier → Change Carrier in SIM Controls</span>
+                <span class="sub">App issue → Push Apps in MDM Controls</span>
+                <span class="sub">Screen frozen → Remote Restart in Quick Actions</span>
+                <span class="sub">Need to see screen → Launch Screen Share via CoBrowse</span>
+              </span></div>
+            </div>
+
+            <h3>📊 Billing: Generate a Usage Report</h3>
+            <div class="workflow">
+              <div class="step"><span class="step-num">1</span><span class="step-text">Search the order in Lookup</span></div>
+              <div class="step"><span class="step-num">2</span><span class="step-text">Confirm date range in <strong>📊 Data Usage</strong> sidebar card</span></div>
+              <div class="step"><span class="step-num">3</span><span class="step-text">Click <strong>📊 Calculate</strong></span></div>
+              <div class="step"><span class="step-num">4</span><span class="step-text">Review total GB and active lines</span></div>
+              <div class="step"><span class="step-num">5</span><span class="step-text">Click <strong>📥 Export CSV</strong> to download</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- TROUBLESHOOTING -->
+        <div class="section" id="troubleshooting">
+          <div class="section-card">
+            <div class="section-header"><span class="section-icon">🔧</span><span class="section-title">Troubleshooting & FAQs</span></div>
+            <table class="t-table">
+              <thead><tr><th>Issue</th><th>Cause</th><th>Solution</th></tr></thead>
+              <tbody>
+                <tr><td><strong>iPad shows ✗ (unmatched)</strong></td><td>Wi-Fi-only model or IMEI not in ABM</td><td>Verify it's cellular. Check ABM enrollment.</td></tr>
+                <tr><td><strong>"No existing order found"</strong></td><td>New order without MDM group</td><td>Use the <strong>Create Order</strong> form to provision.</td></tr>
+                <tr><td><strong>Usage shows "—"</strong></td><td>Not calculated yet</td><td>Set dates and click <strong>📊 Calculate</strong>.</td></tr>
+                <tr><td><strong>Carrier switch failed</strong></td><td>SIMs in transient state</td><td>Wait 30s, refresh, retry.</td></tr>
+                <tr><td><strong>Screen share won't connect</strong></td><td>iPad offline or app not running</td><td>Send MDM Push, verify connectivity.</td></tr>
+                <tr><td><strong>Lost Mode unresponsive</strong></td><td>Device unenrolled</td><td>Check enrollment in device drawer.</td></tr>
+                <tr><td><strong>Starlink "Offline"</strong></td><td>Dish powered down / obstructed</td><td>Check power, inspect placement, Reboot.</td></tr>
+                <tr><td><strong>Pulse link expired</strong></td><td>Past rental end + 7 days</td><td>Generate a new link from the order.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- QUICK REFERENCE -->
+        <div class="section" id="reference">
+          <div class="section-card">
+            <div class="section-header"><span class="section-icon">⚡</span><span class="section-title">Quick Reference</span></div>
+            <h3>Keyboard Shortcuts</h3>
+            <table class="t-table">
+              <thead><tr><th>Key</th><th>Action</th></tr></thead>
+              <tbody>
+                <tr><td><kbd>Enter</kbd></td><td>Execute search</td></tr>
+                <tr><td><kbd>Escape</kbd></td><td>Close drawer / modal</td></tr>
+              </tbody>
+            </table>
+            <h3>Navigation Quick Reference</h3>
+            <table class="t-table">
+              <thead><tr><th>Module</th><th>Path</th><th>Shortcut</th></tr></thead>
+              <tbody>
+                <tr><td>Lookup (home)</td><td><code>/lookup/</code></td><td>Click Fello logo</td></tr>
+                <tr><td>Cradlepoint</td><td><code>/cradlepoint/</code></td><td>Tools → 🌐</td></tr>
+                <tr><td>Webbing</td><td><code>/webbing/</code></td><td>Tools → 📶</td></tr>
+                <tr><td>Starlink</td><td><code>/starlink/</code></td><td>Tools → 📡</td></tr>
+                <tr><td>SimpleMDM</td><td><code>/simplemdm/</code></td><td>Tools → 📱</td></tr>
+                <tr><td>Orders</td><td><code>/orders/</code></td><td>Tools → 📦</td></tr>
+                <tr><td>Reports</td><td><code>/reports/</code></td><td>Tools → 📊</td></tr>
+                <tr><td>Training</td><td><code>/training/</code></td><td>Tools → 📖</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div><!-- /main-content -->
+    </div><!-- /layout -->
+  </div><!-- /page-container -->
+
+  <script src="/shared-header.js"></script>
+  <script>
+    // TOC active state tracking
+    const tocLinks = document.querySelectorAll('.toc-link');
+    const sections = document.querySelectorAll('.section');
+    function updateToc() {
+      let current = '';
+      sections.forEach(s => {
+        if (s.getBoundingClientRect().top <= 120) current = s.id;
+      });
+      tocLinks.forEach(l => {
+        l.classList.toggle('active', l.getAttribute('href') === '#' + current);
+      });
+    }
+    window.addEventListener('scroll', updateToc);
+    updateToc();
+  </script>
+</body>
+</html>

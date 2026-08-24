@@ -13,6 +13,7 @@
     { href: '/orders/', icon: '📦', label: 'IMS Orders', key: 'orders' },
     { href: '/cradlepoint/', icon: '🌐', label: 'Cradlepoint', key: 'cradlepoint' },
     { href: '/reports/', icon: '📊', label: 'Reports', key: 'reports' },
+    { href: '/training/', icon: '📖', label: 'Training', key: 'training' },
   ];
 
   const toolLinks = tools.map(t => {
