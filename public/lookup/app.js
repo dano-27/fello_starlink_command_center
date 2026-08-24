@@ -2218,7 +2218,11 @@
       if (enrichContainer) {
         const acct = row.mdmAccount || 'fello';
         try {
-          const enrichResp = await fetch(`/api/simplemdm/devices/${row.mdmId}/enrich?account=${acct}`);
+          // Fire BOTH requests in parallel — coverage runs while enrich renders
+          const enrichPromise = fetch(`/api/simplemdm/devices/${row.mdmId}/enrich?account=${acct}`);
+          const covPromise = fetch(`/api/simplemdm/devices/${row.mdmId}/coverage?account=${acct}`).catch(function() { return null; });
+          
+          const enrichResp = await enrichPromise;
           const enrichData = await enrichResp.json();
           let enrichHtml = '';
 
@@ -2246,9 +2250,10 @@
 
           enrichContainer.innerHTML = enrichHtml || '';
 
-          // Now fetch coverage
+          // Now use the pre-fired coverage promise
           try {
-            const covResp = await fetch(`/api/simplemdm/devices/${row.mdmId}/coverage?account=${acct}`);
+            const covResp = await covPromise;
+            if (!covResp || !covResp.ok) throw new Error('Coverage unavailable');
             const covData = await covResp.json();
             if (covData.available && covData.carriers) {
               let covHtml = '<div style="padding:12px 20px;border-top:1px solid var(--border,#e2e8f0);">';

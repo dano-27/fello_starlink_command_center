@@ -6225,6 +6225,105 @@ setInterval(() => {
 }, WEBBING_SYNC_INTERVAL);
 
 // ── Webbing Config Check ────────────────────────────────────────────────
+
+// ── SimpleMDM Device Cache ──────────────────────────────────────────────
+// Background cache of all SimpleMDM devices across all accounts.
+// Eliminates the need to paginate the entire fleet during every lookup search.
+let simpleMdmDeviceCache = {};  // { accountId: devices[] }
+let simpleMdmCacheTime = null;
+let simpleMdmSyncing = false;
+const SIMPLEMDM_SYNC_INTERVAL = 10 * 60 * 1000; // 10 minutes
+
+async function syncSimpleMdmDevices() {
+  if (simpleMdmSyncing) return;
+  simpleMdmSyncing = true;
+  try {
+    const newCache = {};
+    for (const [acctId, acct] of Object.entries(MDM_ACCOUNTS)) {
+      const mdmKey = acct.getKey();
+      if (!mdmKey) continue;
+      const auth = 'Basic ' + Buffer.from(mdmKey + ':').toString('base64');
+      const devices = [];
+      let hasMore = true;
+      let startingAfter = '';
+      
+      while (hasMore) {
+        const url = `https://a.simplemdm.com/api/v1/devices?limit=100${startingAfter ? `&starting_after=${startingAfter}` : ''}`;
+        const resp = await fetch(url, { headers: { 'Authorization': auth }, signal: AbortSignal.timeout(15000) });
+        if (!resp.ok) break;
+        const data = await resp.json();
+        const items = data.data || [];
+        
+        for (const d of items) {
+          const attr = d.attributes || {};
+          const subs = attr.service_subscriptions || [];
+          const primarySub = Array.isArray(subs) && subs.length > 0 ? subs[0] : {};
+          devices.push({
+            id: d.id,
+            name: (attr.name || '').trim(),
+            serial: attr.serial_number,
+            model: attr.model_name,
+            osVersion: attr.os_version,
+            batteryLevel: attr.battery_level,
+            lastSeenAt: attr.last_seen_at,
+            phoneNumber: attr.phone_number || primarySub.phone_number || null,
+            wifiMac: attr.wifi_mac || null,
+            imei: (primarySub.imei || attr.imei || '').replace(/\s/g, '') || null,
+            iccid: (primarySub.iccid || attr.iccid || '').replace(/\s/g, '') || null,
+            eid: (primarySub.eid || '').replace(/\s/g, '') || null,
+            carrier: primarySub.current_carrier_network || null,
+            capacity: attr.device_capacity || null,
+            availableCapacity: attr.available_device_capacity || null,
+            enrolledAt: attr.enrolled_at || null,
+            deviceGroupId: attr.device_group_id || null,
+            mdmAccount: acctId,
+            mdmAccountName: acct.name,
+            barcode: ''
+          });
+        }
+        hasMore = data.has_more === true;
+        startingAfter = items.length > 0 ? items[items.length - 1].id : '';
+        if (!startingAfter) break;
+      }
+      
+      newCache[acctId] = devices;
+      console.log(`[SimpleMDM Cache] ${acct.name}: ${devices.length} devices`);
+    }
+    simpleMdmDeviceCache = newCache;
+    simpleMdmCacheTime = new Date();
+    const total = Object.values(newCache).reduce((s, d) => s + d.length, 0);
+    console.log(`[SimpleMDM Cache] Sync complete: ${total} total devices across ${Object.keys(newCache).length} accounts`);
+  } catch (err) {
+    console.error('[SimpleMDM Cache] Sync error:', err.message);
+  } finally {
+    simpleMdmSyncing = false;
+  }
+}
+
+// Helper: get cached MDM devices matching a branch/order prefix
+function getCachedMdmDevicesByPrefix(prefix) {
+  const lowerPrefix = prefix.toLowerCase();
+  const results = [];
+  for (const [acctId, devices] of Object.entries(simpleMdmDeviceCache)) {
+    for (const d of devices) {
+      if (d.name.toLowerCase().startsWith(lowerPrefix)) {
+        results.push(d);
+      }
+    }
+  }
+  return results;
+}
+
+// Start SimpleMDM sync (delayed to not compete with Webbing sync on startup)
+setTimeout(() => {
+  syncSimpleMdmDevices().catch(e => console.error('[SimpleMDM Cache] Initial sync failed:', e.message));
+}, 15000); // 15 second delay
+
+setInterval(() => {
+  syncSimpleMdmDevices().catch(e => console.error('[SimpleMDM Cache] Periodic sync failed:', e.message));
+}, SIMPLEMDM_SYNC_INTERVAL);
+
+// ── Webbing Config Check ────────────────────────────────────────────────
 app.get('/api/webbing/config', (req, res) => {
   const configured = !!(process.env.WEBBING_USERNAME && process.env.WEBBING_PASSWORD && process.env.WEBBING_WSKEY);
   res.json({ configured, deviceCount: webbingDeviceCache.length, lastSync: webbingCacheTime });
@@ -7924,6 +8023,7 @@ app.get('/api/lookup', async (req, res) => {
   const query = (req.query.q || '').trim();
   if (!query) return res.status(400).json({ error: 'Missing search query (q)' });
   
+  const lookupStart = Date.now();
   console.log(`[Lookup] Search: "${query}"`);
   
   // Detect search type: MDM account name | ICCID (19-20 digits) | IMEI (15 digits) | group/branch | device serial
@@ -8313,46 +8413,43 @@ app.get('/api/lookup', async (req, res) => {
         return (d.IMEI || '') === query || String(d.IMEI) === query;
       });
       
-      // Step 2: Fetch live data (works even if device not in cache)
+      // Step 2: Fetch live data, usage, and location in PARALLEL (not sequential)
       let liveData = null;
+      let usage = null;
+      let location = null;
+      const serviceDeviceId = device?.ServiceDeviceID || null;
       try {
         const client = getWebbingClient();
-        liveData = await client.getLiveData(query);
+        const endDate = new Date().toLocaleDateString('en-US');
+        const startDate = new Date(Date.now() - 30*24*60*60*1000).toLocaleDateString('en-US');
+        
+        const promises = [
+          client.getLiveData(query).catch(e => { console.log(`[Lookup] GetSDLiveData error: ${e.message}`); return null; })
+        ];
+        if (serviceDeviceId) {
+          promises.push(
+            client.getDeviceUsage(serviceDeviceId, startDate, endDate, 'Day').catch(e => { console.log('[Lookup] Usage error:', e.message); return null; }),
+            client.getLocation(serviceDeviceId).catch(e => { console.log('[Lookup] Location error:', e.message); return null; })
+          );
+        }
+        
+        const [liveResult, usageResult, locResult] = await Promise.all(promises);
+        liveData = liveResult;
+        
+        if (usageResult) {
+          const records = usageResult?.UsageRecords || usageResult?.records || [];
+          const totalMB = records.reduce((sum, r) => sum + (parseFloat(r.TotalMB || r.totalMB || 0)), 0);
+          usage = { totalMB: Math.round(totalMB * 100) / 100, records, period: `${startDate} - ${endDate}` };
+        }
+        if (locResult) {
+          location = locResult?.LocationInfo || locResult;
+        }
       } catch (e) {
-        console.log(`[Lookup] GetSDLiveData error for ${searchType} ${query}: ${e.message}`);
+        console.log(`[Lookup] Parallel fetch error: ${e.message}`);
       }
       
       if (!device && !liveData) {
         return res.json({ type: searchType.toLowerCase(), found: false, query });
-      }
-      
-      // Step 3: Fetch usage (last 30 days) if we have a ServiceDeviceID
-      const serviceDeviceId = device?.ServiceDeviceID || null;
-      let usage = null;
-      if (serviceDeviceId) {
-        try {
-          const client = getWebbingClient();
-          const endDate = new Date().toLocaleDateString('en-US');
-          const startDate = new Date(Date.now() - 30*24*60*60*1000).toLocaleDateString('en-US');
-          const usageResult = await client.getDeviceUsage(serviceDeviceId, startDate, endDate, 'Day');
-          const records = usageResult?.UsageRecords || usageResult?.records || [];
-          const totalMB = records.reduce((sum, r) => sum + (parseFloat(r.TotalMB || r.totalMB || 0)), 0);
-          usage = { totalMB: Math.round(totalMB * 100) / 100, records, period: `${startDate} - ${endDate}` };
-        } catch (e) {
-          console.log('[Lookup] Usage error:', e.message);
-        }
-      }
-      
-      // Step 4: Fetch location if we have ServiceDeviceID
-      let location = null;
-      if (serviceDeviceId) {
-        try {
-          const client = getWebbingClient();
-          const locResult = await client.getLocation(serviceDeviceId);
-          location = locResult?.LocationInfo || locResult;
-        } catch (e) {
-          console.log('[Lookup] Location error:', e.message);
-        }
       }
       
       return res.json({
@@ -8481,89 +8578,67 @@ app.get('/api/lookup', async (req, res) => {
           webbingDevices: [], simpleMdmDevices: [], stats: { webbingCount: 0, mdmCount: 0, countMatch: true } });
       }
       
-      // Step 2: Fetch live data for each device (with rate limiting)
-      const webbingDevices = [];
-      const client = getWebbingClient();
-      for (const d of branchDevices) {
-        try {
-          const liveResult = d._liveData || await client.getLiveData(d.ServiceDeviceID);
-          webbingDevices.push({
-            serviceDeviceId: d.ServiceDeviceID,
-            serial: d.Serial,
-            ssid: d.SSID,
-            imei: liveResult.IMEI ? String(liveResult.IMEI) : null,
-            iccid: liveResult.ICCID ? String(liveResult.ICCID) : null,
-            status: d.StatusName,
-            statusId: d.StatusID,
-            plan: d.ProductName,
-            carrier: liveResult.VPLMN || liveResult.CarrierName || null,
-            ip: liveResult.IP || null,
-            model: liveResult.Model || null,
-            vendor: liveResult.Vendor || null
-          });
-        } catch (err) {
-          webbingDevices.push({
-            serviceDeviceId: d.ServiceDeviceID,
-            serial: d.Serial,
-            ssid: d.SSID,
-            imei: null, iccid: null,
-            status: d.StatusName,
-            statusId: d.StatusID,
-            plan: d.ProductName,
-            carrier: null, ip: null, model: null, vendor: null
-          });
-        }
-        await new Promise(r => setTimeout(r, 100));
-      }
+      // Step 2: Build Webbing device list from cached data (NO live telemetry — deferred to drawer)
+      const webbingDevices = branchDevices.map(d => ({
+        serviceDeviceId: d.ServiceDeviceID,
+        serial: d.Serial,
+        ssid: d.SSID,
+        imei: d.IMEI ? String(d.IMEI) : null,
+        iccid: d.ICCID ? String(d.ICCID) : null,
+        msisdn: d.MSISDN || null,
+        status: d.StatusName,
+        statusId: d.StatusID,
+        plan: d.ProductName,
+        carrier: null,  // carrier comes from live data or SIM controls
+        ip: null,       // IP comes from live data in device drawer
+        model: null, vendor: null
+      }));
+      console.log(`[Lookup] Built ${webbingDevices.length} devices from Webbing cache (no live telemetry — instant)`);
       
-      // Step 3: Scan ALL SimpleMDM accounts for matching iPads by name prefix
-      const simpleMdmDevices = [];
-      for (const [mdmAcctId, mdmAcct] of Object.entries(MDM_ACCOUNTS)) {
-        const mdmKey = mdmAcct.getKey();
-        if (!mdmKey) continue;
-        try {
-          const auth = 'Basic ' + Buffer.from(mdmKey + ':').toString('base64');
-          const branchPrefix = branchName.toLowerCase();
-          let hasMore = true;
-          let startingAfter = '';
-          
-          while (hasMore) {
-            const url = `https://a.simplemdm.com/api/v1/devices?limit=100${startingAfter ? `&starting_after=${startingAfter}` : ''}`;
-            const devResp = await fetch(url, { headers: { 'Authorization': auth } });
-            if (!devResp.ok) break;
-            const devData = await devResp.json();
-            const items = devData.data || [];
-            
-            for (const d of items) {
+      // Step 3: Get matching SimpleMDM iPads from cache (instant in-memory filter)
+      const simpleMdmDevices = getCachedMdmDevicesByPrefix(branchName);
+      
+      // If cache is empty (first startup, not synced yet), fall back to SimpleMDM search API
+      if (simpleMdmDevices.length === 0 && simpleMdmCacheTime === null) {
+        console.log('[Lookup] SimpleMDM cache not ready, using search API fallback...');
+        for (const [mdmAcctId, mdmAcct] of Object.entries(MDM_ACCOUNTS)) {
+          const mdmKey = mdmAcct.getKey();
+          if (!mdmKey) continue;
+          try {
+            const auth = 'Basic ' + Buffer.from(mdmKey + ':').toString('base64');
+            const searchUrl = `https://a.simplemdm.com/api/v1/devices?search=${encodeURIComponent(branchName)}&limit=100`;
+            const resp = await fetch(searchUrl, { headers: { 'Authorization': auth }, signal: AbortSignal.timeout(10000) });
+            if (!resp.ok) continue;
+            const data = await resp.json();
+            for (const d of (data.data || [])) {
               const attr = d.attributes || {};
               const name = (attr.name || '').trim();
-              if (name.toLowerCase().startsWith(branchPrefix)) {
+              if (name.toLowerCase().startsWith(branchName.toLowerCase())) {
+                const subs = attr.service_subscriptions || [];
+                const primarySub = Array.isArray(subs) && subs.length > 0 ? subs[0] : {};
                 simpleMdmDevices.push({
                   id: d.id, name, serial: attr.serial_number,
                   model: attr.model_name, osVersion: attr.os_version,
                   batteryLevel: attr.battery_level, lastSeenAt: attr.last_seen_at,
-                  phoneNumber: attr.phone_number || null,
+                  phoneNumber: attr.phone_number || primarySub.phone_number || null,
                   wifiMac: attr.wifi_mac || null,
-                  imei: attr.imei || null,
-                  iccid: attr.iccid || null,
+                  imei: (primarySub.imei || attr.imei || '').replace(/\s/g, '') || null,
+                  iccid: (primarySub.iccid || attr.iccid || '').replace(/\s/g, '') || null,
+                  eid: (primarySub.eid || '').replace(/\s/g, '') || null,
+                  carrier: primarySub.current_carrier_network || null,
                   capacity: attr.device_capacity || null,
-                  availableCapacity: attr.available_device_capacity || null,
                   enrolledAt: attr.enrolled_at || null,
                   deviceGroupId: attr.device_group_id || null,
-                  mdmAccount: mdmAcctId,
-                  mdmAccountName: mdmAcct.name,
-            barcode: ''
+                  mdmAccount: mdmAcctId, mdmAccountName: mdmAcct.name, barcode: ''
                 });
               }
             }
-            hasMore = devData.has_more === true;
-            startingAfter = items.length > 0 ? items[items.length - 1].id : '';
-            if (!startingAfter) break;
+          } catch (e) {
+            console.error(`[Lookup] SimpleMDM fallback error:`, e.message);
           }
-        } catch (e) {
-          console.error(`[Lookup] SimpleMDM ${mdmAcct.name} scan error:`, e.message);
         }
       }
+      console.log(`[Lookup] SimpleMDM: ${simpleMdmDevices.length} devices (${simpleMdmCacheTime ? 'from cache' : 'fallback search'})  ⏱ ${Date.now() - lookupStart}ms`);
       
       simpleMdmDevices.sort((a, b) => {
         const numA = parseInt((a.name.match(/\((\d+)\)/) || [])[1]) || 0;
@@ -8801,12 +8876,20 @@ app.get('/api/lookup', async (req, res) => {
           console.log(`[Lookup] Error fetching group relationships:`, relErr.message);
         }
         
-        // Step 2: Fetch each device's details
+        // Step 2: Fetch device details in BATCHES of 10 (not sequential)
         const simpleMdmDevices = [];
+        const BATCH_SIZE = 10;
         
-        for (const devId of deviceIds) {
-          try {
-            const devResp = await smdmRequest(mdmKey, `/devices/${devId}`);
+        for (let i = 0; i < deviceIds.length; i += BATCH_SIZE) {
+          const batch = deviceIds.slice(i, i + BATCH_SIZE);
+          const batchResults = await Promise.all(
+            batch.map(devId => 
+              smdmRequest(mdmKey, `/devices/${devId}`)
+                .catch(e => { console.log(`[Lookup] Error fetching device ${devId}:`, e.message); return null; })
+            )
+          );
+          
+          for (const devResp of batchResults) {
             const d = devResp?.data;
             if (!d) continue;
             
@@ -8836,8 +8919,6 @@ app.get('/api/lookup', async (req, res) => {
               mdmAccountName: mdmAcct.name,
               barcode: ''
             });
-          } catch (devErr) {
-            console.log(`[Lookup] Error fetching device ${devId}:`, devErr.message);
           }
         }
         
