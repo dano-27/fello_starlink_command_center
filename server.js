@@ -3156,134 +3156,152 @@ function saveDcrLog(log) {
 
 let dcrSubmissions = loadDcrLog();
 
-// ── Generate styled HTML backup of a DCR submission ─────────────────
-function generateDcrHtml(sub) {
-  const esc = (s) => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  const row = (label, value) => {
-    if (value === undefined || value === null || value === '') return '';
-    return `<tr><td style="padding:8px 12px;color:#8892b0;font-weight:600;white-space:nowrap;border-bottom:1px solid #2a3050;">${esc(label)}</td><td style="padding:8px 12px;color:#ccd6f6;border-bottom:1px solid #2a3050;">${esc(String(value))}</td></tr>`;
-  };
-  const section = (icon, title, rows) => {
-    const filtered = rows.filter(r => r);
-    if (!filtered.length) return '';
-    return `<div style="margin-bottom:24px;"><h3 style="color:#64ffda;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #2a3050;">${icon} ${esc(title)}</h3><table style="width:100%;border-collapse:collapse;">${filtered.join('')}</table></div>`;
-  };
+// ── Generate PDF backup of a DCR submission ─────────────────────────
+function generateDcrPdf(sub, outputPath) {
+  return new Promise((resolve, reject) => {
+    try {
+      const PDFDocument = require('pdfkit');
+      const doc = new PDFDocument({ size: 'LETTER', margin: 50, info: {
+        Title: `DCR Form — ${sub.orderNumber || sub.eventName || sub.id}`,
+        Author: 'Fello Command Center',
+        Subject: 'Device Configuration Request',
+      }});
 
-  let apps = '';
-  if (sub.apps && sub.apps.length) {
-    const appList = sub.apps.map(a => typeof a === 'string' ? a : (a.name || a)).join(', ');
-    apps = row('Apps', appList);
-  }
-  let appLinks = '';
-  if (sub.appLinks && sub.appLinks.length) {
-    const links = sub.appLinks.map(a => typeof a === 'object' ? `${a.name} (${a.url})` : a).join(', ');
-    appLinks = row('App Store Links', links);
-  }
-  let restrictionUrls = '';
-  if (sub.restrictionUrls && sub.restrictionUrls.length) {
-    restrictionUrls = row('Restriction URLs', sub.restrictionUrls.join(', '));
-  }
-  let webClips = '';
-  if (sub.webClips && sub.webClips.length) {
-    const clips = sub.webClips.map((name, i) => {
-      const url = sub.webClipUrls && sub.webClipUrls[i] ? ` → ${sub.webClipUrls[i]}` : '';
-      return `${name}${url}`;
-    }).join(', ');
-    webClips = row('Web Clips', clips);
-  }
-  let appLoginApps = '';
-  if (sub.appLoginApps && sub.appLoginApps.length) {
-    appLoginApps = row('Apps Needing Login', sub.appLoginApps.join(', '));
-  }
+      const stream = fs.createWriteStream(outputPath);
+      doc.pipe(stream);
 
-  const html = `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>DCR Form — ${esc(sub.orderNumber || sub.eventName || sub.id)}</title>
-  <style>
-    body { font-family: -apple-system, 'Segoe UI', Roboto, sans-serif; background: #0a192f; color: #ccd6f6; margin: 0; padding: 32px; }
-    .container { max-width: 800px; margin: 0 auto; background: #112240; border-radius: 16px; padding: 32px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
-    .header { text-align: center; margin-bottom: 32px; padding-bottom: 20px; border-bottom: 2px solid #64ffda; }
-    .header h1 { color: #64ffda; font-size: 28px; margin: 0 0 8px; }
-    .header .meta { color: #8892b0; font-size: 13px; }
-    .badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; }
-    .pending { background: rgba(245,158,11,0.2); color: #f59e0b; }
-    .footer { text-align: center; margin-top: 32px; padding-top: 16px; border-top: 1px solid #2a3050; color: #8892b0; font-size: 11px; }
-    @media print { body { background: #fff; color: #333; } .container { box-shadow: none; background: #fff; } h3 { color: #0066cc !important; } td { color: #333 !important; } }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h1>📝 Device Configuration Request</h1>
-      <div class="meta">
-        <strong>${esc(sub.orderNumber || '')}</strong>${sub.company ? ' · ' + esc(sub.company) : ''}${sub.eventName ? ' · ' + esc(sub.eventName) : ''}<br>
-        Submitted: ${sub.timestamp ? new Date(sub.timestamp).toLocaleString() : '—'} · 
-        Status: <span class="badge pending">${esc(sub.status || 'pending')}</span> · 
-        ID: ${esc(sub.id)}
-      </div>
-    </div>
+      const pageW = doc.page.width - 100;
+      const col1W = 140;
 
-    ${section('📦', 'Order & Contact', [
-      row('Order Number', sub.orderNumber),
-      row('Event Name', sub.eventName),
-      row('Event Dates', sub.eventDates),
-      row('Venue', sub.venue),
-      row('Contact Name', sub.contactName),
-      row('Company', sub.company),
-      row('Email', sub.email),
-      row('Phone', sub.phone),
-    ])}
+      // ── Header ──
+      doc.rect(0, 0, doc.page.width, 100).fill('#0a192f');
+      doc.fontSize(22).fillColor('#64ffda').text('Device Configuration Request', 50, 30, { align: 'center' });
+      const headerLine2 = [sub.orderNumber, sub.company, sub.eventName].filter(Boolean).join('  ·  ');
+      doc.fontSize(10).fillColor('#8892b0').text(headerLine2, 50, 58, { align: 'center' });
+      doc.fontSize(8).fillColor('#8892b0').text(
+        `Submitted: ${sub.timestamp ? new Date(sub.timestamp).toLocaleString() : '—'}   |   Status: ${(sub.status || 'pending').toUpperCase()}   |   ID: ${sub.id}`,
+        50, 75, { align: 'center' }
+      );
 
-    ${section('⚙️', 'Configuration', [
-      row('Config Mode', sub.configMode),
-      row('All Apps on All Devices', sub.allAppsAllDevices),
-      row('Home Screen Layout', sub.homeScreenLayout),
-      row('Custom Layout', sub.customLayoutDescription),
-      row('Naming Convention', sub.namingConvention),
-      row('Custom Naming Format', sub.customNamingFormat),
-      row('Location Services', sub.locationServices),
-      apps,
-      appLinks,
-    ])}
+      let y = 115;
 
-    ${section('🔐', 'Network & Security', [
-      row('Wi-Fi Enabled', sub.wifiEnabled),
-      row('SSID', sub.wifiSsid),
-      row('Password', sub.wifiPassword),
-      row('Security Type', sub.wifiSecurity),
-      row('Hidden Network', sub.wifiHidden),
-      row('Restrictions Enabled', sub.restrictionsEnabled),
-      row('Restriction Type', sub.restrictionType),
-      restrictionUrls,
-      row('Lockdown Mode', sub.lockdownMode),
-      row('Guided Access Passcode', sub.guidedAccessPasscode),
-    ])}
+      const sectionHeader = (title) => {
+        if (y > 680) { doc.addPage(); y = 50; }
+        doc.rect(50, y, pageW, 24).fill('#112240');
+        doc.fontSize(11).fillColor('#64ffda').text(title, 58, y + 6);
+        y += 32;
+      };
 
-    ${section('🔗', 'Web Clips', [webClips])}
+      const kvRow = (label, value) => {
+        if (value === undefined || value === null || value === '' || value === 'false') return;
+        const val = String(value);
+        if (y > 710) { doc.addPage(); y = 50; }
+        doc.rect(50, y, pageW, 18).fill('#fafafa');
+        doc.fontSize(8.5).fillColor('#555').text(label, 58, y + 4, { width: col1W - 12 });
+        doc.fontSize(8.5).fillColor('#222').text(val, 50 + col1W, y + 4, { width: pageW - col1W - 8 });
+        doc.moveTo(50, y + 18).lineTo(50 + pageW, y + 18).strokeColor('#e0e0e0').lineWidth(0.5).stroke();
+        y += 20;
+      };
 
-    ${section('🎨', 'Branding & Media', [
-      row('Custom Wallpaper', sub.customWallpaper),
-      row('Media Instructions', sub.mediaInstructions),
-    ])}
+      const kvRowDouble = (label1, value1, label2, value2) => {
+        if ((value1 === undefined || value1 === null || value1 === '') && (value2 === undefined || value2 === null || value2 === '')) return;
+        if (y > 710) { doc.addPage(); y = 50; }
+        const halfW = pageW / 2;
+        doc.rect(50, y, pageW, 18).fill('#fafafa');
+        if (value1 !== undefined && value1 !== null && value1 !== '') {
+          doc.fontSize(8.5).fillColor('#555').text(label1, 58, y + 4, { width: 100 });
+          doc.fontSize(8.5).fillColor('#222').text(String(value1), 160, y + 4, { width: halfW - 118 });
+        }
+        if (value2 !== undefined && value2 !== null && value2 !== '') {
+          doc.fontSize(8.5).fillColor('#555').text(label2, 50 + halfW + 8, y + 4, { width: 100 });
+          doc.fontSize(8.5).fillColor('#222').text(String(value2), 50 + halfW + 110, y + 4, { width: halfW - 118 });
+        }
+        doc.moveTo(50, y + 18).lineTo(50 + pageW, y + 18).strokeColor('#e0e0e0').lineWidth(0.5).stroke();
+        y += 20;
+      };
 
-    ${section('🔑', 'App Login & Credentials', [
-      row('App Login Required', sub.appLoginEnabled),
-      appLoginApps,
-    ])}
+      // ── Order & Contact ──
+      sectionHeader('Order & Contact');
+      kvRowDouble('Order Number', sub.orderNumber, 'Event Name', sub.eventName);
+      kvRowDouble('Event Dates', sub.eventDates, 'Venue', sub.venue);
+      kvRowDouble('Contact Name', sub.contactName, 'Company', sub.company);
+      kvRowDouble('Email', sub.email, 'Phone', sub.phone);
+      y += 8;
 
-    ${sub.additionalComments ? `<div style="margin-bottom:24px;"><h3 style="color:#64ffda;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #2a3050;">💬 Additional Comments</h3><div style="background:#1a1f36;padding:16px;border-radius:8px;white-space:pre-wrap;font-size:14px;line-height:1.6;">${esc(sub.additionalComments)}</div></div>` : ''}
+      // ── Configuration ──
+      sectionHeader('Configuration');
+      kvRowDouble('Config Mode', sub.configMode, 'All Apps All Devices', sub.allAppsAllDevices);
+      kvRowDouble('Home Screen Layout', sub.homeScreenLayout, 'Custom Layout', sub.customLayoutDescription);
+      kvRowDouble('Naming Convention', sub.namingConvention, 'Custom Format', sub.customNamingFormat);
+      kvRow('Location Services', sub.locationServices);
+      if (sub.apps && sub.apps.length) {
+        const appList = sub.apps.map(a => typeof a === 'string' ? a : (a.name || a)).join(', ');
+        kvRow('Apps', appList);
+      }
+      if (sub.appLinks && sub.appLinks.length) {
+        const links = sub.appLinks.map(a => typeof a === 'object' ? `${a.name} (${a.url})` : a).join(', ');
+        kvRow('App Store Links', links);
+      }
+      y += 8;
 
-    <div class="footer">
-      Generated by Fello Command Center · ${new Date().toISOString()}<br>
-      This is an automated backup of the submitted Device Configuration Request form.
-    </div>
-  </div>
-</body>
-</html>`;
-  return html;
+      // ── Network & Security ──
+      sectionHeader('Network & Security');
+      kvRowDouble('Wi-Fi Enabled', sub.wifiEnabled, 'SSID', sub.wifiSsid);
+      kvRowDouble('Password', sub.wifiPassword, 'Security Type', sub.wifiSecurity);
+      kvRowDouble('Hidden Network', sub.wifiHidden, 'Restrictions', sub.restrictionsEnabled);
+      kvRowDouble('Restriction Type', sub.restrictionType, 'Lockdown Mode', sub.lockdownMode);
+      kvRow('Guided Access Passcode', sub.guidedAccessPasscode);
+      if (sub.restrictionUrls && sub.restrictionUrls.length) {
+        kvRow('Restriction URLs', sub.restrictionUrls.join(', '));
+      }
+      y += 8;
+
+      // ── Web Clips ──
+      if (sub.webClips && sub.webClips.length) {
+        sectionHeader('Web Clips');
+        sub.webClips.forEach((name, i) => {
+          const url = sub.webClipUrls && sub.webClipUrls[i] ? sub.webClipUrls[i] : '';
+          kvRowDouble('Name', name, 'URL', url);
+        });
+        y += 8;
+      }
+
+      // ── Branding & Media ──
+      sectionHeader('Branding & Media');
+      kvRowDouble('Custom Wallpaper', sub.customWallpaper, 'Media Instructions', sub.mediaInstructions);
+      y += 8;
+
+      // ── App Login & Credentials ──
+      sectionHeader('App Login & Credentials');
+      kvRow('App Login Required', sub.appLoginEnabled);
+      if (sub.appLoginApps && sub.appLoginApps.length) {
+        kvRow('Apps Needing Login', sub.appLoginApps.join(', '));
+      }
+      y += 8;
+
+      // ── Additional Comments ──
+      if (sub.additionalComments) {
+        sectionHeader('Additional Comments');
+        if (y > 650) { doc.addPage(); y = 50; }
+        doc.fontSize(9).fillColor('#333').text(sub.additionalComments, 58, y, {
+          width: pageW - 16, lineGap: 3
+        });
+        y = doc.y + 16;
+      }
+
+      // ── Footer ──
+      const footerY = doc.page.height - 40;
+      doc.fontSize(7).fillColor('#999')
+        .text(`Generated by Fello Command Center  ·  ${new Date().toISOString()}  ·  Automated backup of Device Configuration Request.`,
+          50, footerY, { align: 'center', width: pageW });
+
+      doc.end();
+      stream.on('finish', () => resolve(outputPath));
+      stream.on('error', reject);
+    } catch (err) {
+      reject(err);
+    }
+  });
 }
 
 // ── DCR Submit endpoint (public, CORS enabled) ─────────────────────
@@ -3330,40 +3348,42 @@ app.post('/api/dcr/submit', async (req, res) => {
   saveDcrLog(dcrSubmissions);
   console.log(`[DCR] Submission received: "${dcrData.eventName}" (${dcrData.configMode || 'Custom'})`);
 
-  // Generate and upload HTML backup of the filled-out form to Google Drive
+  // Generate and upload PDF backup of the filled-out form to Google Drive
   if (googleDrive.isConfigured()) {
     try {
       const folderName = submission.orderNumber
         ? `${submission.orderNumber}${submission.company ? ' - ' + submission.company : (submission.eventName ? ' - ' + submission.eventName : '')}`
         : submission.company || submission.eventName || submission.id;
       
-      const htmlContent = generateDcrHtml(submission);
-      const tmpPath = path.join(UPLOAD_DIR, `${submission.id}-form-backup.html`);
+      const pdfFilename = `DCR-${submission.orderNumber || submission.id}-Form.pdf`;
+      const tmpPath = path.join(UPLOAD_DIR, `${submission.id}-form-backup.pdf`);
       fs.mkdirSync(path.dirname(tmpPath), { recursive: true });
-      fs.writeFileSync(tmpPath, htmlContent, 'utf8');
+      
+      await generateDcrPdf(submission, tmpPath);
+      const pdfStats = fs.statSync(tmpPath);
       
       const folder = await googleDrive.createSubmissionFolder(folderName);
       if (folder) {
         // Create a "Form Backup" subfolder
         const backupFolder = await googleDrive.createSubmissionFolder('Form Backup', folder.folderId);
         const targetFolderId = backupFolder ? backupFolder.folderId : folder.folderId;
-        const result = await googleDrive.uploadFile(tmpPath, `DCR-${submission.orderNumber || submission.id}-Form.html`, 'text/html', targetFolderId);
+        const result = await googleDrive.uploadFile(tmpPath, pdfFilename, 'application/pdf', targetFolderId);
         if (result) {
           submission.driveFolderId = folder.folderId;
           submission.driveFolderUrl = folder.folderUrl;
           submission.formBackupUrl = result.webViewLink;
           if (!submission.files) submission.files = [];
           submission.files.push({
-            name: `DCR-${submission.orderNumber || submission.id}-Form.html`,
-            size: Buffer.byteLength(htmlContent, 'utf8'),
-            type: 'text/html',
+            name: pdfFilename,
+            size: pdfStats.size,
+            type: 'application/pdf',
             category: 'form-backup',
             driveFileId: result.fileId,
             driveUrl: result.webViewLink,
             driveDownloadUrl: result.downloadUrl,
           });
           saveDcrLog(dcrSubmissions);
-          console.log(`[DCR] ✅ Form backup uploaded to Drive: ${result.webViewLink}`);
+          console.log(`[DCR] ✅ Form backup PDF uploaded to Drive: ${result.webViewLink}`);
         }
         // Clean up temp file
         try { fs.unlinkSync(tmpPath); } catch (e) {}
