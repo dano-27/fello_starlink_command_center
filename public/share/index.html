@@ -337,10 +337,9 @@
         var statusLabel = d.isOnline === false ? 'Offline' : d.isOnline === true && d.type === 'router' ? 'Online' : d.status === 'Active' ? 'Active' : d.status || 'Active';
         var displayName = d.deviceName || d.name || (d.carrier || 'Cellular') + ' SIM';
         var typeLabels = { ipad: 'iPad', router: 'Router', hotspot: 'Mobile Hotspot', starlink: 'Starlink' };
-        var typeLabel = typeLabels[(d.type || '').toLowerCase()] || (d.model || 'Device');
+        var typeLabel = d.model || typeLabels[(d.type || '').toLowerCase()] || 'Device';
         var metaParts = [typeLabel];
-        if (d.carrier && d.carrier !== 'Cellular') metaParts.push(d.carrier);
-        if (d.model && d.type !== 'ipad') metaParts.push(d.model);
+        if (d.carrier) metaParts.push(d.carrier);
         if (d.routerSerial) metaParts.push('S/N: ' + d.routerSerial);
         else if (d.serialNumber) metaParts.push('S/N: ' + d.serialNumber);
         var metaLine = ' · ' + metaParts.join(' · ');

@@ -1971,11 +1971,11 @@ app.get('/api/public/share/:token/usage', async (req, res) => {
         const ipad = mdmMatches[iccid] || null;
         
         // Detect carrier from ProductName or matched data
-        const pn = dev.ProductName || '';
+        const pn = (dev.ProductName || '').replace(/&amp;/g, '&');
         let carrier = 'Cellular';
-        if (pn.includes('VZ') || pn.includes('Verizon')) carrier = 'Verizon';
-        else if (pn.includes('AT&T') || pn.includes('ATT')) carrier = 'AT&T';
-        else if (pn.includes('T-Mobile') || pn.includes('TMO')) carrier = 'T-Mobile';
+        if (pn.includes('VZ') || pn.includes('Verizon') || pn.toLowerCase().includes('verizon')) carrier = 'Verizon';
+        else if (pn.includes('AT&T') || pn.includes('ATT') || pn.includes('AT&amp;T')) carrier = 'AT&T';
+        else if (pn.includes('T-Mobile') || pn.includes('TMO') || pn.toLowerCase().includes('t-mobile')) carrier = 'T-Mobile';
         // Determine device type for icon
         // Matched to SimpleMDM iPad = 'ipad', unmatched SIM = 'hotspot' (standalone data device)
         const deviceType = ipad ? 'ipad' : 'hotspot';
