@@ -1923,8 +1923,8 @@ app.get('/api/public/share/:token/usage', async (req, res) => {
         }
         
         console.log('[Share] SimpleMDM search for "' + data.orderId + '": found ' + mdmDevices.length + ' devices, matched ' + Object.keys(mdmMatches).length + ' to SIMs');
-        // Log first few Webbing Model/Vendor for debugging device type detection
-        const sampleDevs = branchDevices.slice(0, 3).map(d => `Model="${d.Model||''}" Vendor="${d.Vendor||''}"`).join(', ');
+        // Log first few Webbing device types for debugging
+        const sampleDevs = branchDevices.slice(0, 3).map(d => `Type="${d.DeviceTypeName||''}" Product="${(d.ProductName||'').substring(0,30)}"`).join(', ');
         console.log('[Share] Webbing device samples: ' + sampleDevs);
       } else {
         console.log('[Share] No SimpleMDM key configured');
@@ -1980,25 +1980,29 @@ app.get('/api/public/share/:token/usage', async (req, res) => {
         else if (pn.includes('AT&T') || pn.includes('ATT') || pn.includes('AT&amp;T')) carrier = 'AT&T';
         else if (pn.includes('T-Mobile') || pn.includes('TMO') || pn.toLowerCase().includes('t-mobile')) carrier = 'T-Mobile';
         // Determine device type
-        // Check SimpleMDM match first, then fall back to Webbing Model/Vendor fields
-        const webbingModel = (dev.Model || '').toLowerCase();
-        const webbingVendor = (dev.Vendor || '').toLowerCase();
-        let deviceType = 'hotspot'; // default
+        // Check SimpleMDM match first, then use Webbing DeviceTypeName field
+        // Webbing cache fields: DeviceTypeName ('eSIM', 'SIM', etc.), ProductName, NO Model/Vendor
+        const webbingDeviceType = (dev.DeviceTypeName || '').toLowerCase();
+        let deviceType = 'hotspot'; // default for standalone SIM cards
         let displayModel = '';
         if (ipad) {
           deviceType = 'ipad';
           displayModel = ipad.model || 'iPad';
-        } else if (webbingModel.includes('ipad') || webbingModel.includes('apple') || webbingVendor.includes('apple')) {
+        } else if (webbingDeviceType === 'esim' || webbingDeviceType === 'e-sim') {
+          // eSIMs are embedded in iPads/iPhones — not hotspots
           deviceType = 'ipad';
-          displayModel = dev.Model || 'iPad';
-        } else if (webbingModel.includes('iphone') || webbingModel.includes('phone')) {
-          deviceType = 'ipad'; // show phone icon but treat as mobile device
-          displayModel = dev.Model || 'iPhone';
-        } else if (webbingModel.includes('cradlepoint') || webbingModel.includes('router') || webbingModel.includes('ibr')) {
-          deviceType = 'router';
-          displayModel = dev.Model || 'Router';
+          displayModel = 'iPad';
         } else {
-          displayModel = dev.Model || 'Mobile Hotspot';
+          // Physical SIM — could be hotspot, router, or iPad with physical SIM
+          // Check ProductName for hints
+          const pnLower = pn.toLowerCase();
+          if (pnLower.includes('hotspot') || pnLower.includes('mifi')) {
+            displayModel = 'Mobile Hotspot';
+          } else {
+            // Default to iPad for physical SIMs in a branch (most Fello deployments are iPads)
+            deviceType = 'ipad';
+            displayModel = 'iPad';
+          }
         }
         
         results.devices.push({
