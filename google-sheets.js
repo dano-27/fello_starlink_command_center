@@ -1,0 +1,261 @@
+/**
+ * Google Sheets Inventory Reader
+ * 
+ * Reads iPad/iPhone inventory from a shared Google Sheet and provides
+ * the data for merging into the Command Center inventory dashboard.
+ * 
+ * Uses the same service account as google-drive.js:
+ *   fello-dcr-uploads@fello-verify.iam.gserviceaccount.com
+ * 
+ * The sheet must be shared with the service account email (Viewer access).
+ * 
+ * Required env vars:
+ *   GOOGLE_SERVICE_ACCOUNT_KEY — JSON key file contents (raw or base64)
+ *   GOOGLE_SHEETS_INVENTORY_ID — Sheet ID (from the URL)
+ */
+
+const { google } = require('googleapis');
+
+// Sheet ID and cache
+const SHEET_ID = process.env.GOOGLE_SHEETS_INVENTORY_ID || '1alke7dZUvO_273oklR3UKmWmdVi6_hYCOjf_W6OacJ0';
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+let sheetsClient = null;
+let sheetCache = null;
+let sheetCacheTime = null;
+
+/**
+ * Initialize the Google Sheets client
+ */
+function getSheetsClient() {
+  if (sheetsClient) return sheetsClient;
+
+  const keyRaw = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
+  if (!keyRaw) {
+    console.log('[Sheets] Not configured — missing GOOGLE_SERVICE_ACCOUNT_KEY');
+    return null;
+  }
+
+  try {
+    let keyData;
+    try {
+      keyData = JSON.parse(keyRaw);
+    } catch {
+      keyData = JSON.parse(Buffer.from(keyRaw, 'base64').toString('utf8'));
+    }
+
+    const auth = new google.auth.GoogleAuth({
+      credentials: keyData,
+      scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
+    });
+
+    sheetsClient = google.sheets({ version: 'v4', auth });
+    console.log(`[Sheets] Initialized — reading from sheet ${SHEET_ID}`);
+    return sheetsClient;
+  } catch (err) {
+    console.error('[Sheets] Init error:', err.message);
+    return null;
+  }
+}
+
+/**
+ * Read all data from the first sheet tab
+ * Returns an array of row objects keyed by header names
+ */
+async function readSheet(range) {
+  const client = getSheetsClient();
+  if (!client) return null;
+
+  try {
+    const response = await client.spreadsheets.values.get({
+      spreadsheetId: SHEET_ID,
+      range: range || 'Sheet1',
+    });
+
+    const rows = response.data.values;
+    if (!rows || rows.length < 2) {
+      console.log('[Sheets] No data found in sheet');
+      return [];
+    }
+
+    // First row = headers, rest = data
+    const headers = rows[0].map(h => h.toString().trim().toLowerCase());
+    const data = [];
+
+    for (let i = 1; i < rows.length; i++) {
+      const row = {};
+      for (let j = 0; j < headers.length; j++) {
+        row[headers[j]] = rows[i][j] !== undefined ? rows[i][j].toString().trim() : '';
+      }
+      // Skip completely empty rows
+      if (Object.values(row).every(v => !v)) continue;
+      data.push(row);
+    }
+
+    return data;
+  } catch (err) {
+    console.error('[Sheets] Read error:', err.message);
+    return null;
+  }
+}
+
+/**
+ * Fetch the inventory sheet, auto-detecting column names.
+ * 
+ * Tries to find these columns (case-insensitive, partial match):
+ *   model/device/name → product name
+ *   total/stock/qty/quantity → total stock count
+ *   deployed/out/rented → deployed count
+ *   available/in/remaining → available count
+ *   category/type → category
+ *   serial/sn → serial numbers
+ *   notes/comments → notes
+ * 
+ * Returns normalized product objects compatible with the inventory dashboard.
+ */
+async function fetchInventory() {
+  // Return cache if fresh
+  if (sheetCache && sheetCacheTime && (Date.now() - sheetCacheTime < CACHE_TTL)) {
+    return sheetCache;
+  }
+
+  // Try to get sheet tab names first
+  const client = getSheetsClient();
+  if (!client) return null;
+
+  let tabNames = [];
+  try {
+    const meta = await client.spreadsheets.get({
+      spreadsheetId: SHEET_ID,
+      fields: 'sheets.properties.title',
+    });
+    tabNames = meta.data.sheets.map(s => s.properties.title);
+    console.log('[Sheets] Tabs found:', tabNames.join(', '));
+  } catch (err) {
+    console.error('[Sheets] Meta error:', err.message);
+    tabNames = ['Sheet1'];
+  }
+
+  // Read all tabs and combine
+  const allProducts = [];
+
+  for (const tab of tabNames) {
+    const rows = await readSheet(tab);
+    if (!rows || rows.length === 0) continue;
+
+    // Auto-detect columns from headers
+    const headers = Object.keys(rows[0]);
+    const colMap = detectColumns(headers);
+    console.log(`[Sheets] Tab "${tab}": ${rows.length} rows, columns: ${JSON.stringify(colMap)}`);
+
+    for (const row of rows) {
+      const name = row[colMap.name] || '';
+      if (!name) continue;
+
+      const total = parseInt(row[colMap.total] || '0') || 0;
+      const deployed = parseInt(row[colMap.deployed] || '0') || 0;
+      const available = colMap.available ? (parseInt(row[colMap.available] || '0') || 0) : Math.max(0, total - deployed);
+      const category = row[colMap.category] || guessCategory(name);
+      const notes = row[colMap.notes] || '';
+      const partNumber = row[colMap.partNumber] || '';
+      const manufacturer = row[colMap.manufacturer] || guessMfg(name);
+
+      allProducts.push({
+        id: 'sheet-' + name.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase(),
+        name,
+        partNumber,
+        manufacturer,
+        category,
+        totalStock: total,
+        deployed,
+        available,
+        utilization: total > 0 ? Math.round((deployed / total) * 100) : 0,
+        status: available < 3 && total > 0 ? 'low' : available < 10 && total > 0 ? 'watch' : 'ok',
+        msrp: null,
+        source: 'google-sheet',
+        sheetTab: tab,
+        notes,
+        forecast: { demand: 0, returns: 0, projected: available, upcomingOrders: [] }
+      });
+    }
+  }
+
+  sheetCache = allProducts;
+  sheetCacheTime = Date.now();
+  console.log(`[Sheets] Loaded ${allProducts.length} products from Google Sheets`);
+  return allProducts;
+}
+
+/**
+ * Auto-detect column mapping from header names
+ */
+function detectColumns(headers) {
+  const map = { name: null, total: null, deployed: null, available: null, category: null, notes: null, partNumber: null, manufacturer: null };
+
+  for (const h of headers) {
+    const l = h.toLowerCase();
+    if (!map.name && (l.includes('model') || l.includes('device') || l.includes('name') || l.includes('product') || l.includes('item'))) map.name = h;
+    if (!map.total && (l.includes('total') || l.includes('stock') || l === 'qty' || l === 'quantity' || l.includes('count') || l.includes('on hand') || l.includes('onhand'))) map.total = h;
+    if (!map.deployed && (l.includes('deploy') || l.includes('out') || l.includes('rent') || l.includes('checked out') || l.includes('in use') || l.includes('in field'))) map.deployed = h;
+    if (!map.available && (l.includes('available') || l.includes('in stock') || l.includes('remaining') || l.includes('in warehouse') || l === 'in')) map.available = h;
+    if (!map.category && (l.includes('category') || l.includes('type') || l.includes('group'))) map.category = h;
+    if (!map.notes && (l.includes('note') || l.includes('comment') || l.includes('description'))) map.notes = h;
+    if (!map.partNumber && (l.includes('part') || l.includes('sku') || l.includes('model #') || l.includes('model number'))) map.partNumber = h;
+    if (!map.manufacturer && (l.includes('manufacturer') || l.includes('brand') || l.includes('make') || l.includes('vendor'))) map.manufacturer = h;
+  }
+
+  // Fallbacks: if no name column found, use first column
+  if (!map.name && headers.length > 0) map.name = headers[0];
+
+  return map;
+}
+
+/**
+ * Guess category from product name
+ */
+function guessCategory(name) {
+  const l = name.toLowerCase();
+  if (l.includes('ipad')) return 'iPads';
+  if (l.includes('iphone')) return 'iPhones';
+  if (l.includes('case') || l.includes('cover')) return 'Cases';
+  if (l.includes('charger') || l.includes('charging')) return 'Chargers';
+  if (l.includes('cable') || l.includes('lightning') || l.includes('usb')) return 'Cables';
+  if (l.includes('router') || l.includes('hotspot') || l.includes('mifi')) return 'Routers';
+  if (l.includes('starlink')) return 'Starlink';
+  if (l.includes('square') || l.includes('terminal') || l.includes('reader')) return 'POS Devices';
+  return 'Other';
+}
+
+/**
+ * Guess manufacturer from product name
+ */
+function guessMfg(name) {
+  const l = name.toLowerCase();
+  if (l.includes('ipad') || l.includes('iphone') || l.includes('apple') || l.includes('lightning')) return 'Apple';
+  if (l.includes('samsung')) return 'Samsung';
+  if (l.includes('square')) return 'Square';
+  if (l.includes('starlink') || l.includes('spacex')) return 'SpaceX';
+  return '';
+}
+
+/**
+ * Check if the Sheets integration is configured
+ */
+function isConfigured() {
+  return !!(process.env.GOOGLE_SERVICE_ACCOUNT_KEY);
+}
+
+/**
+ * Clear the cache (force refresh on next fetch)
+ */
+function clearCache() {
+  sheetCache = null;
+  sheetCacheTime = null;
+}
+
+module.exports = {
+  fetchInventory,
+  isConfigured,
+  clearCache,
+  getCache: () => sheetCache,
+  getSheetId: () => SHEET_ID
+};

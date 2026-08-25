@@ -6,6 +6,7 @@ const multer = require('multer');
 const { FelloCrmClient, CrmApiError } = require('./fello-crm-client');
 const { CustomerVerifyService } = require('./customer-verify');
 const googleDrive = require('./google-drive');
+const googleSheets = require('./google-sheets');
 const geminiAssistant = require('./gemini-assistant');
 // ── Auth & Audit ──────────────────────────────────────────────────────
 const DATA_DIR = fs.existsSync('/data') ? '/data' : path.join(__dirname, 'data');
@@ -7386,6 +7387,30 @@ let inventoryCache = null;
 let inventoryCacheTime = null;
 const INVENTORY_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
+// Google Sheets inventory status
+app.get('/api/inventory/sheets-status', (req, res) => {
+  res.json({
+    configured: googleSheets.isConfigured(),
+    sheetId: googleSheets.getSheetId(),
+    cached: !!googleSheets.getCache(),
+    productCount: googleSheets.getCache()?.length || 0,
+    sheetUrl: `https://docs.google.com/spreadsheets/d/${googleSheets.getSheetId()}/edit`
+  });
+});
+
+// Force refresh Google Sheets data
+app.post('/api/inventory/sheets-refresh', async (req, res) => {
+  try {
+    googleSheets.clearCache();
+    inventoryCache = null; // Also clear inventory cache to force re-merge
+    inventoryCacheTime = null;
+    const products = await googleSheets.fetchInventory();
+    res.json({ success: true, productCount: products?.length || 0 });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/inventory/dashboard', async (req, res) => {
   try {
     // Forecast window: ?days=N or ?from=YYYY-MM-DD&to=YYYY-MM-DD
@@ -7618,6 +7643,27 @@ app.get('/api/inventory/dashboard', async (req, res) => {
     })
     .filter(p => p.totalStock > 0 || p.deployed > 0 || p.forecast.demand > 0)
     .sort((a, b) => b.totalStock - a.totalStock);
+
+    // Merge Google Sheets inventory (iPads, iPhones, etc.)
+    let sheetCount = 0;
+    try {
+      if (googleSheets.isConfigured()) {
+        const sheetProducts = await googleSheets.fetchInventory();
+        if (sheetProducts && sheetProducts.length > 0) {
+          for (const sp of sheetProducts) {
+            totalStock += sp.totalStock;
+            totalDeployed += sp.deployed;
+            products.push(sp);
+          }
+          sheetCount = sheetProducts.length;
+          console.log('[Inventory] Merged ' + sheetCount + ' products from Google Sheets');
+        }
+      }
+    } catch (err) {
+      console.error('[Inventory] Google Sheets merge error:', err.message);
+    }
+    // Re-sort after merge
+    if (sheetCount > 0) products.sort((a, b) => b.totalStock - a.totalStock);
 
     const categories = {};
     for (const p of products) {
