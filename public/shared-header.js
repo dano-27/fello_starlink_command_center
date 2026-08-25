@@ -11,6 +11,7 @@
     { href: '/starlink/', icon: '📡', label: 'Starlink', key: 'starlink' },
     { href: '/hexnode/', icon: '🔒', label: 'Hexnode UEM', key: 'hexnode' },
     { href: '/orders/', icon: '📦', label: 'IMS Orders', key: 'orders' },
+    { href: '/inventory/', icon: '🏭', label: 'Inventory', key: 'inventory' },
     { href: '/cradlepoint/', icon: '🌐', label: 'Cradlepoint', key: 'cradlepoint' },
     { href: '/reports/', icon: '📊', label: 'Reports', key: 'reports' },
     { href: '/training/', icon: '📖', label: 'Training', key: 'training' },
