@@ -238,10 +238,13 @@ function parsePivotFormat(rows) {
   const products = [];
   for (const m of modelNames) {
     const d = modelData[m.col];
-    const deployed = d.active;
-    const available = d.capable;
-    const total = d.total; // active + inactive + capable
-    const name = 'iPad ' + d.name;
+    // Active = has SIM (ready to rent), Capable = no SIM (needs SIM), Inactive = damaged
+    const totalUsable = d.active + d.capable; // exclude damaged
+    const readyToDeploy = d.active; // has SIM, ready to go
+    const needsSIM = d.capable;
+    const damaged = d.inactive;
+    const total = d.total; // all units including damaged
+    const name = d.name.toLowerCase().includes('iphone') ? d.name : 'iPad ' + d.name;
 
     products.push({
       id: 'sheet-' + name.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase(),
@@ -249,15 +252,15 @@ function parsePivotFormat(rows) {
       partNumber: '',
       manufacturer: 'Apple',
       category: guessCategory(name),
-      totalStock: total,
-      deployed,
-      available,
-      utilization: total > 0 ? Math.round((deployed / total) * 100) : 0,
-      status: available < 3 && total > 0 ? 'low' : available < 10 && total > 0 ? 'watch' : 'ok',
+      totalStock: totalUsable,
+      deployed: 0, // sheet doesn't track who has them — IMS orders handle that
+      available: readyToDeploy,
+      utilization: totalUsable > 0 ? Math.round(((totalUsable - readyToDeploy) / totalUsable) * 100) : 0,
+      status: readyToDeploy < 3 && totalUsable > 0 ? 'low' : readyToDeploy < 10 && totalUsable > 0 ? 'watch' : 'ok',
       msrp: null,
       source: 'google-sheet',
-      notes: `Active: ${d.active}, Inactive: ${d.inactive}, Capable: ${d.capable}`,
-      forecast: { demand: 0, returns: 0, projected: available, upcomingOrders: [] }
+      notes: `Ready (w/ SIM): ${readyToDeploy} | Needs SIM: ${needsSIM} | Damaged: ${damaged}`,
+      forecast: { demand: 0, returns: 0, projected: readyToDeploy, upcomingOrders: [] }
     });
   }
 
