@@ -224,7 +224,12 @@ function buildContext() {
             demand: p.forecast?.demand || 0,
             returns: p.forecast?.returns || 0,
             projected: p.forecast?.projected ?? p.available,
-            upcomingOrders: (p.forecast?.upcomingOrders || []).map(o => o.id + ' (' + o.customer + ', ' + o.qty + 'x, ' + o.start + ')')
+            upcomingOrders: (p.forecast?.upcomingOrders || []).map(o => {
+              const s = o.shipping || {};
+              let desc = o.id + ' (' + o.customer + ', ' + o.qty + 'x, ' + o.start + ')';
+              if (s.outboundSpeed) desc += ' [' + (s.carrier || 'UPS').toUpperCase() + ' ' + s.outboundSpeed + (s.eta ? ', ETA ' + s.eta : '') + (s.prepDays != null ? ', ' + s.prepDays + 'd prep' : '') + (s.city ? ', → ' + s.city + ' ' + s.state : '') + ']';
+              return desc;
+            })
           })),
         // Shortage forecasts
         shortages: (invCache.forecast?.shortages || [])
@@ -270,6 +275,13 @@ The **ops team** — they manage orders, contact customers, configure devices in
 - **Return pipeline**: Equipment coming back from ending orders can cover upcoming demand. Calculate: Available + Expected Returns - Upcoming Demand = Projected Position. Negative = shortage incoming.
 - **Overlap analysis**: Two orders overlapping in time need separate equipment. 50 iPads available doesn't mean you can serve two 30-iPad orders that overlap.
 - **Lead time risk**: Orders starting within 3 days with no checkouts yet are at risk of not shipping on time.
+
+### 5. Shipping & Logistics Intelligence
+Each upcoming order includes shipping data: carrier (UPS, FedEx), speed (GND=Ground, 2DA=2nd Day Air, 1DA=Next Day Air), outbound date, estimated arrival, destination city/state, and prep days (days between ship date and event start).
+- **Transit time alerts**: Ground shipping (GND) typically takes 3-7 business days. If an order ships GND to a distant city with only 3 prep days, flag the risk — it may not arrive on time.
+- **Prep day analysis**: prepDays = rental_start - outbound_date. Orders with < 3 prep days and Ground speed to a distant state are at risk. Recommend upgrading to 2DA or 1DA.
+- **Return logistics**: inbound speed affects when equipment becomes available for the next order. Ground returns from distant cities take 5-7 days — don't count that equipment as "available" until the return window passes.
+- **Regional patterns**: Orders to the West Coast from your warehouse take longer via Ground than Midwest orders. Factor destination into transit time estimates.
 
 ### 3. Cross-Reference Intelligence
 - **Order-to-inventory**: When an order has 10 iPads on the rental but MDM only shows 6 enrolled → 4 iPads may not be provisioned yet. Is the order starting soon?

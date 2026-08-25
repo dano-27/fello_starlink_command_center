@@ -7442,6 +7442,26 @@ app.get('/api/inventory/dashboard', async (req, res) => {
           detail._status = o.status;
           detail._start = o.start_date || o.shipments_min_rental_start || '';
           detail._end = o.end_date || o.shipments_max_rental_end || '';
+          // Extract shipping data from shipments array
+          const ship = (o.shipments && o.shipments[0]) || {};
+          detail._shipping = {
+            outboundSpeed: ship.outbound_speed || null,
+            inboundSpeed: ship.inbound_speed || null,
+            carrier: ship.outbound_carrier || null,
+            outboundDate: ship.outbound_date ? ship.outbound_date.slice(0, 10) : null,
+            eta: ship.outbound_estimated_arrival_date || null,
+            inboundDate: ship.inbound_date ? ship.inbound_date.slice(0, 10) : null,
+            inboundEta: ship.inbound_estimated_arrival_date || null,
+            city: (ship.outbound_address || {}).city || null,
+            state: (ship.outbound_address || {}).state || null,
+            prepDays: null
+          };
+          // Calculate prep days (outbound_date to rental_start)
+          if (detail._shipping.outboundDate && detail._start && detail._start !== '0000-00-00') {
+            const outMs = new Date(detail._shipping.outboundDate).getTime();
+            const startMs = new Date(detail._start).getTime();
+            detail._shipping.prepDays = Math.round((startMs - outMs) / 86400000);
+          }
           return detail;
         } catch { return null; }
       }));
@@ -7483,7 +7503,7 @@ app.get('/api/inventory/dashboard', async (req, res) => {
             if (oStart <= windowEnd && oStart >= windowStart) {
               if (!demandByModelId[mid]) demandByModelId[mid] = { total: 0, orders: [] };
               demandByModelId[mid].total += qty;
-              demandByModelId[mid].orders.push({ id: oid, customer: cust, start: oStart, end: oEnd, qty, status: oStatus });
+              demandByModelId[mid].orders.push({ id: oid, customer: cust, start: oStart, end: oEnd, qty, status: oStatus, shipping: detail._shipping });
             }
           }
 

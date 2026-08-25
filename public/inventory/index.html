@@ -961,20 +961,31 @@
                       <th>Quantity</th>
                       <th>Start Date</th>
                       <th>End Date</th>
+                      <th>Ship Speed</th>
+                      <th>Destination</th>
                       <th>Status</th>
                     </tr>
                   </thead>
                   <tbody>
-                    ${p.forecast.upcomingOrders.map(o => `
+                    ${p.forecast.upcomingOrders.map(o => {
+                      const s = o.shipping || {};
+                      const speed = s.outboundSpeed || '-';
+                      const carrier = s.carrier ? s.carrier.toUpperCase() : '';
+                      const dest = s.city && s.state ? s.city + ', ' + s.state : '-';
+                      const prep = s.prepDays != null ? s.prepDays + 'd' : '-';
+                      const speedColor = speed === 'GND' && s.prepDays != null && s.prepDays < 4 ? '#c62828' : 'inherit';
+                      return `
                       <tr>
                         <td style="font-weight: 600; color: var(--blue);">${o.id || '-'}</td>
                         <td>${o.customer || 'Unknown Customer'}</td>
                         <td style="font-weight: 600;">${formatNumber(o.qty || 0)}</td>
                         <td>${o.start || '-'}</td>
                         <td>${o.end || '-'}</td>
+                        <td><span style="font-weight: 600; color: ${speedColor};">${carrier} ${speed}</span>${prep !== '-' ? ` <span style="font-size: 10px; color: var(--charcol);">(${prep} prep)</span>` : ''}</td>
+                        <td style="font-size: 11px;">${dest}</td>
                         <td><span class="order-status-badge order-status-${(o.status || '').toLowerCase()}">${o.status || '-'}</span></td>
-                      </tr>
-                    `).join('')}
+                      </tr>`;
+                    }).join('')}
                   </tbody>
                 </table>
               </div>
