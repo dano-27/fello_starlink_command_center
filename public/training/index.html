@@ -110,12 +110,15 @@
         <a class="toc-link" href="#overview">Overview</a>
         <a class="toc-link" href="#getting-started">Getting Started</a>
         <a class="toc-link" href="#search">Unified Search</a>
+        <a class="toc-link" href="#smart-search">Smart Search & AI Reports</a>
         <a class="toc-link" href="#fleet">Fleet Table</a>
         <a class="toc-link" href="#drawer">Device Drawer</a>
         <a class="toc-link" href="#actions">Quick Actions</a>
         <a class="toc-link" href="#pulse">Fello Pulse</a>
         <a class="toc-link" href="#modules">Tool Modules</a>
         <a class="toc-link" href="#dcr">Device Config Requests</a>
+        <a class="toc-link" href="#inventory">Equipment Inventory</a>
+        <a class="toc-link" href="#ai-assistant">Fello AI Assistant</a>
         <a class="toc-link" href="#workflows">Workflows</a>
         <a class="toc-link" href="#troubleshooting">Troubleshooting</a>
         <a class="toc-link" href="#reference">Quick Reference</a>
@@ -128,16 +131,18 @@
         <div class="section" id="overview">
           <div class="section-card">
             <div class="section-header"><span class="section-icon">🏠</span><span class="section-title">What is the Command Center?</span></div>
-            <p>The Fello Command Center is a unified operations platform that brings together <strong>six core systems</strong> into one dashboard. One search pulls everything together.</p>
+            <p>The Fello Command Center is a unified operations platform that brings together <strong>eight core systems</strong> into one dashboard. One search pulls everything together.</p>
             <table class="t-table">
               <thead><tr><th>System</th><th>What It Controls</th><th>Integration</th></tr></thead>
               <tbody>
                 <tr><td><strong>IMS NextGen CRM</strong></td><td>Rental orders, customers, events, line items, shipping</td><td>Fly API</td></tr>
+                <tr><td><strong>IMS Inventory</strong></td><td>Equipment stock levels — total units, deployed, available</td><td>REST API</td></tr>
                 <tr><td><strong>SimpleMDM</strong></td><td>iPad enrollment, apps, profiles, Lost Mode, wallpapers</td><td>REST API (multi-tenant)</td></tr>
                 <tr><td><strong>Webbing IoT</strong></td><td>Cellular SIMs — activate, suspend, carrier switch, data usage</td><td>SOAP + REST API</td></tr>
                 <tr><td><strong>Apple Business Manager</strong></td><td>Hardware IMEI/EID registry, DEP enrollment</td><td>RSA-authenticated API</td></tr>
                 <tr><td><strong>Cradlepoint NetCloud</strong></td><td>Cellular routers — WiFi config, GPS, bandwidth</td><td>ECM REST API</td></tr>
                 <tr><td><strong>SpaceX Starlink</strong></td><td>Satellite terminals — telemetry, stow/unstow, data usage</td><td>Public API</td></tr>
+                <tr><td><strong>Fello AI (Gemini)</strong></td><td>Cross-referenced analytics, natural language reports</td><td>Google Gemini API</td></tr>
               </tbody>
             </table>
           </div>
@@ -205,6 +210,40 @@
                 <tr><td>📡</td><td>Standalone SIM</td></tr>
               </tbody>
             </table>
+          </div>
+        </div>
+
+        <!-- SMART SEARCH & AI REPORTS -->
+        <div class="section" id="smart-search">
+          <div class="section-card">
+            <div class="section-header"><span class="section-icon">✨</span><span class="section-title">Smart Search & AI Reports</span><span class="section-badge">New</span></div>
+            <p>The <strong>Hub search bar</strong> and <strong>Lookup search bar</strong> both support AI-powered queries. Type a natural language question instead of an order number to get a full operational analysis.</p>
+
+            <h3>How It Works</h3>
+            <p>The system auto-detects whether you're searching for an order or asking a question:</p>
+            <table class="t-table">
+              <thead><tr><th>Input</th><th>Action</th></tr></thead>
+              <tbody>
+                <tr><td><code>SQ14973</code>, <code>FE16443</code></td><td>Normal order/device lookup</td></tr>
+                <tr><td><code>89014103...</code> (18-20 digits)</td><td>ICCID lookup</td></tr>
+                <tr><td>"active orders summary"</td><td>AI generates a full-page report</td></tr>
+                <tr><td>"what's running low in inventory?"</td><td>AI analyzes inventory data</td></tr>
+                <tr><td>"which orders have pending DCRs?"</td><td>AI cross-references DCR + order data</td></tr>
+              </tbody>
+            </table>
+
+            <h3>Quick Prompt Chips</h3>
+            <p>The Hub page has <strong>preset prompt chips</strong> below the search bar for common queries:</p>
+            <ul>
+              <li><span class="chip">Active orders</span> — Summary of all confirmed orders with health status</li>
+              <li><span class="chip">Data warnings</span> — Orders with high data usage (80%+ or 95%+)</li>
+              <li><span class="chip">Pending DCRs</span> — Customer config requests awaiting action</li>
+              <li><span class="chip">Fleet status</span> — Overall SIM, iPad, and device counts</li>
+            </ul>
+
+            <h3>AI Report Panel</h3>
+            <p>AI responses render as <strong>full-page reports</strong> with formatted tables, headers, and bullet points — much more detail than the floating chat widget.</p>
+            <div class="callout tip"><span class="callout-icon">💡</span> <strong>Tip:</strong> AI reports cross-reference data from Webbing, SimpleMDM, Pulse, DCRs, and Inventory. Ask compound questions like "which orders need attention this week?" for the best insights.</div>
           </div>
         </div>
 
@@ -520,6 +559,101 @@
           </div>
         </div>
 
+        <!-- EQUIPMENT INVENTORY -->
+        <div class="section" id="inventory">
+          <div class="section-card">
+            <div class="section-header"><span class="section-icon">🏭</span><span class="section-title">Equipment Inventory</span><span class="section-badge">New</span></div>
+            <p>The Inventory dashboard shows <strong>real-time stock levels</strong> for all 92+ product models, pulled directly from the IMS NextGen API. It cross-references active order checkouts to calculate what's deployed vs available.</p>
+
+            <h3>Accessing Inventory</h3>
+            <ul>
+              <li><strong>Tools → 🏭 Inventory</strong> from any page</li>
+              <li>Direct URL: <code>/inventory/</code></li>
+            </ul>
+
+            <h3>Dashboard Layout</h3>
+            <h4>Summary Cards</h4>
+            <p>Four cards at the top showing overall fleet health:</p>
+            <table class="t-table">
+              <thead><tr><th>Card</th><th>Shows</th></tr></thead>
+              <tbody>
+                <tr><td>📦 Total Products</td><td>Number of distinct product models (e.g., 92)</td></tr>
+                <tr><td>🏭 Total Units</td><td>Sum of all inventory items (~17,000)</td></tr>
+                <tr><td>🚀 Deployed</td><td>Units currently checked out on active orders</td></tr>
+                <tr><td>✅ Available</td><td>Units available for new orders</td></tr>
+              </tbody>
+            </table>
+
+            <h4>Controls</h4>
+            <ul>
+              <li><strong>Search</strong> — Filter products by name or part number</li>
+              <li><strong>Category Filter</strong> — iPads, POS Devices, Cases, Starlink, Power Banks, Chargers, etc.</li>
+              <li><strong>Sort</strong> — By stock level, deployed count, available, utilization, or name</li>
+            </ul>
+
+            <h4>Product Table</h4>
+            <p>Each product row shows:</p>
+            <ul>
+              <li><strong>Total Stock</strong> — total units in the system</li>
+              <li><strong>Deployed</strong> — checked out minus checked in across all active orders</li>
+              <li><strong>Available</strong> — total minus deployed</li>
+              <li><strong>Utilization</strong> — percentage bar showing how much of stock is deployed</li>
+              <li><strong>Status Badge</strong>:</li>
+            </ul>
+            <table class="t-table">
+              <thead><tr><th>Badge</th><th>Meaning</th><th>Trigger</th></tr></thead>
+              <tbody>
+                <tr><td>🟢 OK</td><td>Healthy stock levels</td><td>Utilization &lt; 70%</td></tr>
+                <tr><td>🟡 Watch</td><td>Getting busy</td><td>Utilization 70-90%</td></tr>
+                <tr><td>🔴 Low</td><td>Needs attention</td><td>Available &lt; 5 or utilization &gt; 90%</td></tr>
+              </tbody>
+            </table>
+
+            <div class="callout info"><span class="callout-icon">ℹ️</span> <strong>Data refresh:</strong> Inventory data is cached for 5 minutes. The first load may take a few seconds as it fetches from the IMS API and cross-references all active order checkouts.</div>
+          </div>
+        </div>
+
+        <!-- FELLO AI ASSISTANT -->
+        <div class="section" id="ai-assistant">
+          <div class="section-card">
+            <div class="section-header"><span class="section-icon">🤖</span><span class="section-title">Fello AI Assistant</span><span class="section-badge">New</span></div>
+            <p>Fello AI is an intelligent operations analyst that cross-references <strong>all Command Center data</strong> — Webbing SIMs, SimpleMDM iPads, Pulse usage, DCRs, and Equipment Inventory — to provide actionable insights.</p>
+
+            <h3>Two Ways to Use AI</h3>
+            <table class="t-table">
+              <thead><tr><th>Method</th><th>Where</th><th>Best For</th></tr></thead>
+              <tbody>
+                <tr><td><strong>✨ Chat Widget</strong></td><td>Bottom-right corner (every page)</td><td>Quick questions, conversational follow-ups</td></tr>
+                <tr><td><strong>Search Bar</strong></td><td>Hub or Lookup page search</td><td>Full-page reports with tables and detailed analysis</td></tr>
+              </tbody>
+            </table>
+
+            <h3>What Fello AI Knows</h3>
+            <ul>
+              <li><strong>Order Health</strong> — per-order cross-reference of SIM counts, iPad counts, usage, DCR status</li>
+              <li><strong>Fleet Summary</strong> — total active/suspended SIMs, total MDM devices, Pulse links</li>
+              <li><strong>Inventory Levels</strong> — stock counts, deployed vs available, low-stock alerts</li>
+              <li><strong>DCR Status</strong> — pending/in-progress/completed config requests per order</li>
+              <li><strong>Data Usage</strong> — Pulse link usage percentages and risk levels</li>
+            </ul>
+
+            <h3>Example Questions</h3>
+            <table class="t-table">
+              <thead><tr><th>Question</th><th>What You Get</th></tr></thead>
+              <tbody>
+                <tr><td>"active orders summary"</td><td>Cross-referenced health report of all orders with issues flagged</td></tr>
+                <tr><td>"which orders have pending DCRs?"</td><td>List of orders with customer config requests awaiting action</td></tr>
+                <tr><td>"what equipment is running low?"</td><td>Inventory items at 🔴 Low or 🟡 Watch status</td></tr>
+                <tr><td>"SQ14973 status"</td><td>Deep dive on a specific order — SIMs, iPads, usage, DCRs</td></tr>
+                <tr><td>"any data usage warnings?"</td><td>Orders approaching data limits (80%+ or 95%+)</td></tr>
+              </tbody>
+            </table>
+
+            <div class="callout warn"><span class="callout-icon">⚠️</span> <strong>After a deploy:</strong> Fello AI may show limited data for ~10 minutes while caches rebuild. This is normal — data will populate automatically.</div>
+            <div class="callout tip"><span class="callout-icon">💡</span> <strong>Pro tip:</strong> AI responses are better with specific questions. "What needs my attention right now?" works better than just "status."</div>
+          </div>
+        </div>
+
         <!-- WORKFLOWS -->
         <div class="section" id="workflows">
           <div class="section-card">
@@ -611,6 +745,7 @@
                 <tr><td>Starlink</td><td><code>/starlink/</code></td><td>Tools → 📡</td></tr>
                 <tr><td>SimpleMDM</td><td><code>/simplemdm/</code></td><td>Tools → 📱</td></tr>
                 <tr><td>Orders</td><td><code>/orders/</code></td><td>Tools → 📦</td></tr>
+                <tr><td>Inventory</td><td><code>/inventory/</code></td><td>Tools → 🏭</td></tr>
                 <tr><td>Reports</td><td><code>/reports/</code></td><td>Tools → 📊</td></tr>
                 <tr><td>Training</td><td><code>/training/</code></td><td>Tools → 📖</td></tr>
               </tbody>
