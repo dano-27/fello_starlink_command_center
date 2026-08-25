@@ -86,26 +86,54 @@ async function exportCSV() {
   }
 }
 
-async function fetchInventory() {
-  if (sheetCache && sheetCacheTime && (Date.now() - sheetCacheTime < CACHE_TTL)) {
-    return sheetCache;
+/**
+ * Background sync — runs every 5 min, retries on failure
+ */
+let bgSyncTimer = null;
+function startBackgroundSync() {
+  async function sync() {
+    console.log('[Sheets] Background sync starting...');
+    const rows = await exportCSV();
+    if (rows && rows.length >= 2) {
+      const firstCell = (rows[0][0] || '').trim();
+      const products = (!firstCell && rows[0].length > 2) ? parsePivotFormat(rows) : parseStandardFormat(rows);
+      sheetCache = products;
+      sheetCacheTime = Date.now();
+      console.log(`[Sheets] Background sync: ${products.length} products loaded`);
+    } else {
+      console.log('[Sheets] Background sync: no data, will retry');
+    }
   }
 
-  const rows = await exportCSV();
-  if (!rows || rows.length < 2) {
-    sheetCache = [];
-    sheetCacheTime = Date.now();
-    return [];
-  }
+  // First attempt after 10s (let server finish starting)
+  setTimeout(sync, 10000);
+  // Then every 5 minutes
+  bgSyncTimer = setInterval(sync, CACHE_TTL);
+}
 
+/**
+ * Import CSV data directly (manual paste fallback)
+ */
+function importCSV(csvText) {
+  const rows = parseCSV(csvText);
+  if (!rows || rows.length < 2) return { error: 'No valid data' };
   const firstCell = (rows[0][0] || '').trim();
   const products = (!firstCell && rows[0].length > 2) ? parsePivotFormat(rows) : parseStandardFormat(rows);
-
   sheetCache = products;
   sheetCacheTime = Date.now();
-  console.log(`[Sheets] ${products.length} products loaded`);
-  return products;
+  lastError = null;
+  console.log(`[Sheets] Manual import: ${products.length} products`);
+  return { success: true, productCount: products.length };
 }
+
+async function fetchInventory() {
+  // Return cache (populated by background sync) — never block on Google
+  return sheetCache || [];
+}
+
+// Start background sync on module load
+startBackgroundSync();
+
 
 function parsePivotFormat(rows) {
   const headers = rows[0];
@@ -196,6 +224,6 @@ async function debugRead() {
 }
 
 module.exports = {
-  fetchInventory, isConfigured, clearCache, debugRead,
+  fetchInventory, isConfigured, clearCache, debugRead, importCSV,
   getCache: () => sheetCache, getSheetId: () => SHEET_ID, getLastError: () => lastError
 };

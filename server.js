@@ -7403,10 +7403,26 @@ app.get('/api/inventory/sheets-status', (req, res) => {
 app.post('/api/inventory/sheets-refresh', async (req, res) => {
   try {
     googleSheets.clearCache();
-    inventoryCache = null; // Also clear inventory cache to force re-merge
+    inventoryCache = null;
     inventoryCacheTime = null;
     const products = await googleSheets.fetchInventory();
     res.json({ success: true, productCount: products?.length || 0 });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Manual CSV import fallback (paste CSV data directly)
+app.post('/api/inventory/sheets-import', express.text({ limit: '1mb' }), (req, res) => {
+  try {
+    const csvText = req.body;
+    if (!csvText || typeof csvText !== 'string') {
+      return res.status(400).json({ error: 'Send CSV text in request body' });
+    }
+    inventoryCache = null; // Clear inventory cache
+    inventoryCacheTime = null;
+    const result = googleSheets.importCSV(csvText);
+    res.json(result);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
