@@ -7418,12 +7418,63 @@ app.get('/api/inventory/dashboard', async (req, res) => {
     const windowStart = customFrom || today;
     const windowLabel = customFrom ? `${customFrom} to ${customTo}` : `${forecastDays}d`;
 
+    // Discover legacy order IDs (SQ/LE/SH/AR) from Webbing branch cache
+    // This only uses branch NAMES for ID discovery — not SIM data
+    const legacyPrefixes = ['SQ', 'LE', 'SH', 'AR'];
+    const nextgenOrderIds = new Set(allOrders.map(o => (o.fly_order_id || '').toUpperCase()));
+    const legacyOrderIds = [];
+    if (typeof webbingDeviceCache !== 'undefined' && webbingDeviceCache.length > 0) {
+      const branchNames = new Set();
+      for (const d of webbingDeviceCache) {
+        if (d.BranchName) branchNames.add(d.BranchName.toUpperCase());
+      }
+      for (const branch of branchNames) {
+        if (legacyPrefixes.some(p => branch.startsWith(p)) && !nextgenOrderIds.has(branch)) {
+          legacyOrderIds.push(branch);
+        }
+      }
+      console.log('[Inventory] Discovered ' + legacyOrderIds.length + ' legacy order IDs from ' + branchNames.size + ' Webbing branches');
+    }
+
+    // Fetch legacy order details in batches
+    const legacyOrders = [];
+    const LEG_BATCH = 20;
+    for (let i = 0; i < legacyOrderIds.length; i += LEG_BATCH) {
+      const batch = legacyOrderIds.slice(i, i + LEG_BATCH);
+      const results = await Promise.all(batch.map(async (oid) => {
+        try {
+          const resp = await fetch(imsBase + '/api/nextgen/v1/orders/' + oid, { headers });
+          if (!resp.ok) return null;
+          const detail = await resp.json();
+          if (!detail.rentals || detail.rentals.length === 0) return null;
+          // Build order-list-compatible object
+          const rentalStarts = detail.rentals.map(r => r.start_time).filter(Boolean).sort();
+          const rentalEnds = detail.rentals.map(r => r.end_time).filter(Boolean).sort().reverse();
+          return {
+            fly_order_id: oid,
+            status: detail.status || 'confirmed',
+            start_date: rentalStarts[0] || null,
+            end_date: rentalEnds[0] || null,
+            shipments_min_rental_start: rentalStarts[0] || null,
+            shipments_max_rental_end: rentalEnds[0] || null,
+            customer_name: detail.customer_name || '',
+            shipments: [],
+            _isLegacy: true
+          };
+        } catch { return null; }
+      }));
+      legacyOrders.push(...results.filter(Boolean));
+    }
+
+    // Merge all orders
+    const mergedOrders = [...allOrders, ...legacyOrders];
+
     // All orders with dates (confirmed, quote, tentative)
-    const actionableOrders = allOrders.filter(o =>
+    const actionableOrders = mergedOrders.filter(o =>
       (o.status === 'confirmed' || o.status === 'quote' || o.status === 'tentative') &&
       (o.start_date || o.shipments_min_rental_start)
     );
-    console.log('[Inventory] ' + inventory.length + ' products, ' + actionableOrders.length + ' orders with dates');
+    console.log('[Inventory] ' + inventory.length + ' products, ' + actionableOrders.length + ' orders (' + legacyOrders.length + ' legacy)');
 
     // Fetch order details in batches for rental data
     const deployedByModelId = {};
