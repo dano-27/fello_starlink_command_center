@@ -233,11 +233,31 @@ function clearCache() { sheetCache = null; sheetCacheTime = null; }
 
 async function debugRead() {
   try {
-    const rows = await exportCSV();
-    if (!rows) return { error: 'Export returned null' };
+    const token = await getAccessToken();
+    if (!token) return { error: 'No access token - check GOOGLE_SERVICE_ACCOUNT_KEY' };
+
+    const url = `https://www.googleapis.com/drive/v3/files/${SHEET_ID}/export?mimeType=text/csv`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+
+    const resp = await fetch(url, {
+      headers: { 'Authorization': `Bearer ${token}` },
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
+
+    if (!resp.ok) {
+      const errText = await resp.text();
+      return { error: `HTTP ${resp.status}`, detail: errText.slice(0, 500), url };
+    }
+
+    const csvText = await resp.text();
+    if (!csvText) return { error: 'Empty CSV body' };
+
+    const rows = parseCSV(csvText);
     return { sheetId: SHEET_ID, rowCount: rows.length, headers: rows[0], rows: rows.slice(0, 6) };
   } catch (e) {
-    return { error: e.message };
+    return { error: e.message, name: e.name };
   }
 }
 
