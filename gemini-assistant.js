@@ -242,11 +242,6 @@ async function chat(userMessage, history = []) {
   // Build fresh context
   const context = buildContext();
 
-  const model = genAI.getGenerativeModel({
-    model: 'gemini-3.6-flash',
-    systemInstruction: SYSTEM_PROMPT
-  });
-
   // Convert history to Gemini format
   const geminiHistory = [];
 
@@ -268,18 +263,44 @@ async function chat(userMessage, history = []) {
     });
   }
 
-  const chatSession = model.startChat({ history: geminiHistory });
+  // Retry with exponential backoff
+  const MAX_RETRIES = 3;
+  const MODELS = ['gemini-3.6-flash', 'gemini-2.5-flash'];
+  let lastError = null;
 
-  try {
-    const result = await chatSession.sendMessage(userMessage);
-    return result.response.text();
-  } catch (e) {
-    console.error('[AI] Gemini API error:', e.message);
-    if (e.message.includes('429') || e.message.includes('RESOURCE_EXHAUSTED')) {
-      throw new Error('Rate limit reached. Please wait a moment and try again.');
+  for (const modelName of MODELS) {
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      try {
+        const model = genAI.getGenerativeModel({
+          model: modelName,
+          systemInstruction: SYSTEM_PROMPT
+        });
+        const chatSession = model.startChat({ history: geminiHistory });
+        const result = await chatSession.sendMessage(userMessage);
+        return result.response.text();
+      } catch (e) {
+        lastError = e;
+        const isRetryable = e.message.includes('503') || e.message.includes('429') || 
+                           e.message.includes('RESOURCE_EXHAUSTED') || e.message.includes('overloaded') ||
+                           e.message.includes('high demand');
+        if (isRetryable && attempt < MAX_RETRIES - 1) {
+          const delay = Math.pow(2, attempt) * 1000; // 1s, 2s, 4s
+          console.log(`[AI] ${modelName} attempt ${attempt + 1} failed (${e.message.substring(0, 60)}), retrying in ${delay}ms...`);
+          await new Promise(r => setTimeout(r, delay));
+          continue;
+        }
+        if (isRetryable) {
+          console.log(`[AI] ${modelName} exhausted retries, trying next model...`);
+          break; // Try next model
+        }
+        // Non-retryable error
+        throw new Error('AI service error: ' + e.message);
+      }
     }
-    throw new Error('AI service error: ' + e.message);
   }
+
+  console.error('[AI] All models and retries exhausted:', lastError?.message);
+  throw new Error('AI service is temporarily busy. Please try again in a few seconds.');
 }
 
 module.exports = { init, isConfigured, chat, buildContext };
