@@ -49,17 +49,31 @@ function getClients() {
 }
 
 /**
- * Read a specific tab's data via Sheets API
+ * Promise with timeout
+ */
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms))
+  ]);
+}
+
+/**
+ * Read a specific tab's data via Sheets API (with 15s timeout)
  */
 async function readTab(tabName) {
   const clients = getClients();
   if (!clients) return null;
 
   try {
-    const resp = await clients.sheets.spreadsheets.values.get({
-      spreadsheetId: SHEET_ID,
-      range: `'${tabName}'`,
-    });
+    const resp = await withTimeout(
+      clients.sheets.spreadsheets.values.get({
+        spreadsheetId: SHEET_ID,
+        range: `'${tabName}'`,
+      }),
+      15000,
+      `readTab("${tabName}")`
+    );
     return resp.data.values || [];
   } catch (err) {
     console.error(`[Sheets] Error reading tab "${tabName}":`, err.message);
@@ -129,10 +143,14 @@ async function getTabNames() {
   if (!clients) return [];
 
   try {
-    const meta = await clients.sheets.spreadsheets.get({
-      spreadsheetId: SHEET_ID,
-      fields: 'sheets.properties.title',
-    });
+    const meta = await withTimeout(
+      clients.sheets.spreadsheets.get({
+        spreadsheetId: SHEET_ID,
+        fields: 'sheets.properties.title',
+      }),
+      10000,
+      'getTabNames'
+    );
     return meta.data.sheets.map(s => s.properties.title);
   } catch (err) {
     console.error('[Sheets] Get tabs error:', err.message);
@@ -375,10 +393,19 @@ function clearCache() { sheetCache = null; sheetCacheTime = null; }
 
 async function debugRead() {
   const tabs = await getTabNames();
+  if (tabs.length === 0) {
+    // Try Drive API fallback
+    const rows = await readTabViaDrive();
+    return { sheetId: SHEET_ID, tabs: [], fallback: 'drive-csv', rowCount: rows ? rows.length : 0, headers: rows && rows[0] ? rows[0] : [] };
+  }
   const tabPreview = {};
-  for (const tab of tabs.slice(0, 5)) {
-    const rows = await readTab(tab);
-    tabPreview[tab] = rows ? { rowCount: rows.length, headers: rows[0], firstRow: rows[1] } : { error: 'Could not read' };
+  for (const tab of tabs.slice(0, 8)) {
+    try {
+      const rows = await readTab(tab);
+      tabPreview[tab] = rows ? { rowCount: rows.length, headers: rows[0], firstRow: rows.length > 1 ? rows[1] : null } : { error: 'Could not read' };
+    } catch (e) {
+      tabPreview[tab] = { error: e.message };
+    }
   }
   return { sheetId: SHEET_ID, tabs, tabPreview, totalTabs: tabs.length };
 }
