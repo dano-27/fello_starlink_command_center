@@ -64,37 +64,63 @@ function parseCSV(csvText) {
 }
 
 /**
- * Export CSV with timeout using Promise.race
+ * Export CSV using Google Docs export URL (different backend than Drive API)
  */
 async function exportCSV() {
-  const client = getDriveClient();
-  if (!client) { lastError = 'No drive client'; return null; }
+  const keyRaw = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
+  if (!keyRaw) { lastError = 'No service account key'; return null; }
 
   try {
-    const exportPromise = client.files.export({
-      fileId: SHEET_ID,
-      mimeType: 'text/csv',
+    // Get access token
+    let keyData;
+    try { keyData = JSON.parse(keyRaw); } catch { keyData = JSON.parse(Buffer.from(keyRaw, 'base64').toString('utf8')); }
+
+    const auth = new google.auth.GoogleAuth({
+      credentials: keyData,
+      scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly', 'https://www.googleapis.com/auth/drive.readonly'],
     });
+    const client = await auth.getClient();
+    const tokenResp = await client.getAccessToken();
+    const token = tokenResp.token || tokenResp;
 
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('Drive export timed out after 30s')), API_TIMEOUT)
-    );
+    if (!token) { lastError = 'Could not get access token'; return null; }
 
-    const response = await Promise.race([exportPromise, timeoutPromise]);
-    const csvText = response.data;
+    // Use Google Docs export URL — different infra than Drive API
+    const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=0`;
 
-    if (!csvText || typeof csvText !== 'string') {
-      lastError = 'Empty or non-string CSV response';
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+
+    const resp = await fetch(url, {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'User-Agent': 'FelloCommandCenter/1.0'
+      },
+      signal: controller.signal,
+      redirect: 'follow'
+    });
+    clearTimeout(timeout);
+
+    if (!resp.ok) {
+      const errText = await resp.text();
+      lastError = `Export HTTP ${resp.status}: ${errText.slice(0, 200)}`;
+      console.error('[Sheets]', lastError);
+      return null;
+    }
+
+    const csvText = await resp.text();
+    if (!csvText || csvText.length < 10) {
+      lastError = `Empty CSV (${csvText?.length || 0} bytes)`;
       return null;
     }
 
     const rows = parseCSV(csvText);
     lastError = null;
-    console.log(`[Sheets] Exported ${rows.length} rows, ${rows[0]?.length || 0} cols`);
+    console.log(`[Sheets] Exported ${rows.length} rows, ${rows[0]?.length || 0} cols via docs URL`);
     return rows;
   } catch (err) {
-    lastError = err.message;
-    console.error('[Sheets] Export error:', err.message);
+    lastError = `${err.name}: ${err.message}`;
+    console.error('[Sheets] Export error:', lastError);
     return null;
   }
 }
