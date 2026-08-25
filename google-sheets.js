@@ -94,11 +94,11 @@ async function exportCSV() {
   const token = await getAccessToken();
   if (!token) { console.log('[Sheets] No access token'); return null; }
 
-  const url = `https://www.googleapis.com/drive/v3/files/${SHEET_ID}/export?mimeType=text/csv`;
+  const url = `https://www.googleapis.com/drive/v3/files/${SHEET_ID}/export?mimeType=${encodeURIComponent('text/csv')}`;
 
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
+    const timeout = setTimeout(() => controller.abort(), 45000);
 
     const resp = await fetch(url, {
       headers: { 'Authorization': `Bearer ${token}` },
@@ -236,9 +236,9 @@ async function debugRead() {
     const token = await getAccessToken();
     if (!token) return { error: 'No access token - check GOOGLE_SERVICE_ACCOUNT_KEY' };
 
-    const url = `https://www.googleapis.com/drive/v3/files/${SHEET_ID}/export?mimeType=text/csv`;
+    const url = `https://www.googleapis.com/drive/v3/files/${SHEET_ID}/export?mimeType=${encodeURIComponent('text/csv')}`;
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
+    const timeout = setTimeout(() => controller.abort(), 45000);
 
     const resp = await fetch(url, {
       headers: { 'Authorization': `Bearer ${token}` },
