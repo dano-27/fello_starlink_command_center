@@ -187,6 +187,23 @@ function buildContext() {
     mdmLastSync: dataSources.getSimpleMdmCacheTime()
   };
   ctx.currentTime = now.toISOString();
+
+  // Fleet summary (compact — don't send raw branch/device lists)
+  ctx.fleetSummary = {
+    totalWebbingSims: ctx.webbingDevices?.total || 0,
+    activeWebbingSims: ctx.webbingDevices?.active || 0,
+    suspendedWebbingSims: ctx.webbingDevices?.suspended || 0,
+    totalMdmDevices: ctx.simpleMdm?.totalDevices || 0,
+    totalPulseLinks: ctx.pulseOrders ? Object.keys(ctx.pulseOrders).length : 0,
+    totalDcrOrders: ctx.dcrByOrder ? Object.keys(ctx.dcrByOrder).length : 0
+  };
+
+  // Remove raw data — orderHealth already has everything cross-referenced
+  delete ctx.webbingDevices;
+  delete ctx.simpleMdm;
+  delete ctx.pulseOrders;
+  delete ctx.dcrByOrder;
+
   return ctx;
 }
 
@@ -273,10 +290,15 @@ async function chat(userMessage, history = []) {
       try {
         const model = genAI.getGenerativeModel({
           model: modelName,
-          systemInstruction: SYSTEM_PROMPT
+          systemInstruction: SYSTEM_PROMPT,
+          generationConfig: { maxOutputTokens: 4096 }
         });
         const chatSession = model.startChat({ history: geminiHistory });
-        const result = await chatSession.sendMessage(userMessage);
+        // 30-second timeout
+        const result = await Promise.race([
+          chatSession.sendMessage(userMessage),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Request timed out after 30s')), 30000))
+        ]);
         return result.response.text();
       } catch (e) {
         lastError = e;
@@ -288,7 +310,8 @@ async function chat(userMessage, history = []) {
         // Transient errors — retry with backoff
         const isRetryable = e.message.includes('503') || e.message.includes('429') || 
                            e.message.includes('RESOURCE_EXHAUSTED') || e.message.includes('overloaded') ||
-                           e.message.includes('high demand') || e.message.includes('Service Unavailable');
+                           e.message.includes('high demand') || e.message.includes('Service Unavailable') ||
+                           e.message.includes('timed out');
         if (isRetryable && attempt < MAX_RETRIES - 1) {
           const delay = Math.pow(2, attempt) * 1000;
           console.log(`[AI] ${modelName} attempt ${attempt + 1} failed (${e.message.substring(0, 80)}), retrying in ${delay}ms...`);
