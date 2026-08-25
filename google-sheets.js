@@ -46,7 +46,7 @@ function parseCSV(csvText) {
 async function exportCSV() {
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000);
+    const timeout = setTimeout(() => controller.abort(), 10000);
 
     console.log(`[Sheets] Fetching CSV from: ${PUBLISHED_CSV_URL.slice(0, 80)}...`);
     const resp = await fetch(PUBLISHED_CSV_URL, {
