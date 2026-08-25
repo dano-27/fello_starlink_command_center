@@ -2,10 +2,9 @@
  * Google Sheets Inventory Reader
  * 
  * Reads iPad/iPhone inventory from a shared Google Sheet.
- * - Summary tab: pivot table with model counts by SIM status
- * - Individual model tabs: detailed per-device inventory
+ * Uses ONLY the Drive API (files.export) — no Sheets API dependency.
  * 
- * Uses the Sheets API for multi-tab support.
+ * The Summary tab is exported as CSV via Drive API and parsed.
  * 
  * Required env vars:
  *   GOOGLE_SERVICE_ACCOUNT_KEY — JSON key file contents (raw or base64)
@@ -15,13 +14,12 @@ const { google } = require('googleapis');
 
 const SHEET_ID = process.env.GOOGLE_SHEETS_INVENTORY_ID || '1alke7dZUvO_273oklR3UKmWmdVi6_hYCOjf_W6OacJ0';
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-let sheetsClient = null;
 let driveClient = null;
 let sheetCache = null;
 let sheetCacheTime = null;
 
-function getClients() {
-  if (sheetsClient && driveClient) return { sheets: sheetsClient, drive: driveClient };
+function getDriveClient() {
+  if (driveClient) return driveClient;
 
   const keyRaw = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
   if (!keyRaw) {
@@ -35,13 +33,12 @@ function getClients() {
 
     const auth = new google.auth.GoogleAuth({
       credentials: keyData,
-      scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly', 'https://www.googleapis.com/auth/drive.readonly'],
+      scopes: ['https://www.googleapis.com/auth/drive.readonly'],
     });
 
-    sheetsClient = google.sheets({ version: 'v4', auth });
     driveClient = google.drive({ version: 'v3', auth });
-    console.log(`[Sheets] Initialized — reading sheet ${SHEET_ID}`);
-    return { sheets: sheetsClient, drive: driveClient };
+    console.log('[Sheets] Drive client initialized');
+    return driveClient;
   } catch (err) {
     console.error('[Sheets] Init error:', err.message);
     return null;
@@ -49,59 +46,7 @@ function getClients() {
 }
 
 /**
- * Promise with timeout
- */
-function withTimeout(promise, ms, label) {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) => setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms))
-  ]);
-}
-
-/**
- * Read a specific tab's data via Sheets API (with 15s timeout)
- */
-async function readTab(tabName) {
-  const clients = getClients();
-  if (!clients) return null;
-
-  try {
-    const resp = await withTimeout(
-      clients.sheets.spreadsheets.values.get({
-        spreadsheetId: SHEET_ID,
-        range: `'${tabName}'`,
-      }),
-      15000,
-      `readTab("${tabName}")`
-    );
-    return resp.data.values || [];
-  } catch (err) {
-    console.error(`[Sheets] Error reading tab "${tabName}":`, err.message);
-    return null;
-  }
-}
-
-/**
- * Read tab using Drive API CSV export (fallback if Sheets API fails)
- */
-async function readTabViaDrive() {
-  const clients = getClients();
-  if (!clients) return null;
-
-  try {
-    const response = await clients.drive.files.export({
-      fileId: SHEET_ID,
-      mimeType: 'text/csv',
-    });
-    return parseCSV(response.data || '');
-  } catch (err) {
-    console.error('[Sheets] Drive CSV export error:', err.message);
-    return null;
-  }
-}
-
-/**
- * Parse CSV text into 2D array
+ * Parse CSV text into 2D array (handles quoted fields)
  */
 function parseCSV(csvText) {
   const rows = [];
@@ -136,85 +81,65 @@ function parseCSV(csvText) {
 }
 
 /**
- * Get all tab names from the sheet
+ * Export first sheet tab as CSV via Drive API
  */
-async function getTabNames() {
-  const clients = getClients();
-  if (!clients) return [];
+async function exportCSV() {
+  const client = getDriveClient();
+  if (!client) return null;
 
   try {
-    const meta = await withTimeout(
-      clients.sheets.spreadsheets.get({
-        spreadsheetId: SHEET_ID,
-        fields: 'sheets.properties.title',
-      }),
-      10000,
-      'getTabNames'
-    );
-    return meta.data.sheets.map(s => s.properties.title);
+    const response = await client.files.export({
+      fileId: SHEET_ID,
+      mimeType: 'text/csv',
+    });
+
+    const csvText = response.data;
+    if (!csvText || typeof csvText !== 'string') {
+      console.log('[Sheets] Empty CSV response');
+      return null;
+    }
+
+    return parseCSV(csvText);
   } catch (err) {
-    console.error('[Sheets] Get tabs error:', err.message);
-    return [];
+    console.error('[Sheets] CSV export error:', err.message);
+    return null;
   }
 }
 
 /**
- * Main entry: fetch all tabs and build inventory
+ * Main entry: fetch inventory from Google Sheet
  */
 async function fetchInventory() {
   if (sheetCache && sheetCacheTime && (Date.now() - sheetCacheTime < CACHE_TTL)) {
     return sheetCache;
   }
 
-  let allProducts = [];
-
-  // Try Sheets API first (multi-tab), fall back to Drive API (first tab only)
-  let tabs = await getTabNames();
-
-  if (tabs.length > 0) {
-    console.log(`[Sheets] Found ${tabs.length} tabs: ${tabs.join(', ')}`);
-
-    for (const tab of tabs) {
-      const rows = await readTab(tab);
-      if (!rows || rows.length < 2) continue;
-
-      const tabLower = tab.toLowerCase();
-
-      if (tabLower === 'summary' || tabLower === 'overview') {
-        // Pivot table format
-        const pivotProducts = parsePivotFormat(rows, tab);
-        allProducts.push(...pivotProducts);
-        console.log(`[Sheets] Tab "${tab}": ${pivotProducts.length} products (pivot format)`);
-      } else {
-        // Detail tab — per-device inventory for a specific model
-        const detailProducts = parseDetailTab(rows, tab);
-        allProducts.push(...detailProducts);
-        console.log(`[Sheets] Tab "${tab}": ${detailProducts.length} detail records`);
-      }
-    }
-  } else {
-    // Fallback: Drive API CSV export (first tab only)
-    console.log('[Sheets] Falling back to Drive API CSV export');
-    const rows = await readTabViaDrive();
-    if (rows && rows.length >= 2) {
-      allProducts = parsePivotFormat(rows, 'Summary');
-    }
+  const rows = await exportCSV();
+  if (!rows || rows.length < 2) {
+    console.log('[Sheets] No data from sheet');
+    sheetCache = [];
+    sheetCacheTime = Date.now();
+    return [];
   }
 
-  sheetCache = allProducts;
+  // Detect format: pivot table if first header cell is empty
+  const firstCell = (rows[0][0] || '').trim();
+  const products = (!firstCell && rows[0].length > 2) ? parsePivotFormat(rows) : parseStandardFormat(rows);
+
+  sheetCache = products;
   sheetCacheTime = Date.now();
-  console.log(`[Sheets] Total: ${allProducts.length} inventory items from Google Sheets`);
-  return allProducts;
+  console.log(`[Sheets] Loaded ${products.length} products from Google Sheets`);
+  return products;
 }
 
 /**
- * Parse the Summary pivot table:
+ * Parse pivot table:
  * Row 0: [blank], "5th Gen", "6th Gen", ..., "Grand Total"
- * Row N: "4G Active", 748, 1194, ...     → has SIM, ready to rent
- * Row N: "4G Inactive", 8, 45, ...       → damaged/inoperable
- * Row N: "4G Capable", 569, 275, ...     → no SIM, needs SIM
+ * Rows:  "4G Active", 748, 1194, ...     → has SIM, ready to rent
+ *        "4G Inactive", 8, 45, ...       → damaged/inoperable
+ *        "4G Capable", 569, 275, ...     → no SIM, needs SIM
  */
-function parsePivotFormat(rows, tabName) {
+function parsePivotFormat(rows) {
   const headers = rows[0];
   const modelNames = [];
   const lastHeader = (headers[headers.length - 1] || '').toLowerCase();
@@ -231,8 +156,7 @@ function parsePivotFormat(rows, tabName) {
   }
 
   for (let r = 1; r < rows.length; r++) {
-    const row = rows[r];
-    const label = (row[0] || '').trim().toLowerCase();
+    const label = (rows[r][0] || '').trim().toLowerCase();
     if (!label) continue;
 
     const isActive = label.includes('active') && !label.includes('inactive');
@@ -240,7 +164,7 @@ function parsePivotFormat(rows, tabName) {
     const isCapable = label.includes('capable') || label.includes('available') || label.includes('warehouse');
 
     for (const m of modelNames) {
-      const val = parseInt(row[m.col] || '0') || 0;
+      const val = parseInt(rows[r][m.col] || '0') || 0;
       if (isActive) modelData[m.col].active += val;
       else if (isInactive) modelData[m.col].inactive += val;
       else if (isCapable) modelData[m.col].capable += val;
@@ -251,6 +175,7 @@ function parsePivotFormat(rows, tabName) {
   const products = [];
   for (const m of modelNames) {
     const d = modelData[m.col];
+    // Active = has SIM (ready to rent), Capable = no SIM, Inactive = damaged
     const totalUsable = d.active + d.capable;
     const readyToDeploy = d.active;
     const needsSIM = d.capable;
@@ -262,7 +187,7 @@ function parsePivotFormat(rows, tabName) {
       name,
       partNumber: '',
       manufacturer: 'Apple',
-      category: guessCategory(name),
+      category: name.toLowerCase().includes('iphone') ? 'iPhones' : 'iPads',
       totalStock: totalUsable,
       deployed: 0,
       available: readyToDeploy,
@@ -270,151 +195,70 @@ function parsePivotFormat(rows, tabName) {
       status: readyToDeploy < 3 && totalUsable > 0 ? 'low' : readyToDeploy < 10 && totalUsable > 0 ? 'watch' : 'ok',
       msrp: null,
       source: 'google-sheet',
-      sheetTab: tabName,
       notes: `Ready (w/ SIM): ${readyToDeploy} | Needs SIM: ${needsSIM} | Damaged: ${damaged}`,
       forecast: { demand: 0, returns: 0, projected: readyToDeploy, upcomingOrders: [] }
     });
   }
 
+  console.log(`[Sheets] Pivot: ${products.length} models parsed`);
   return products;
 }
 
 /**
- * Parse a detail tab (named after a model, e.g. "5th Gen", "6th Gen").
- * These tabs contain per-device records (serial numbers, SIM status, etc.)
- * 
- * Auto-detects columns and builds a summary for that model.
+ * Parse standard table format (one row per model)
  */
-function parseDetailTab(rows, tabName) {
+function parseStandardFormat(rows) {
   const headers = rows[0].map(h => (h || '').trim().toLowerCase());
-
-  // Find key columns
-  let serialCol = -1, statusCol = -1, simCol = -1, notesCol = -1, locationCol = -1;
+  const colMap = {};
   for (let i = 0; i < headers.length; i++) {
     const h = headers[i];
-    if (serialCol < 0 && (h.includes('serial') || h.includes('sn') || h.includes('asset'))) serialCol = i;
-    if (statusCol < 0 && (h.includes('status') || h.includes('condition') || h.includes('state'))) statusCol = i;
-    if (simCol < 0 && (h.includes('sim') || h.includes('iccid') || h.includes('esim') || h.includes('4g'))) simCol = i;
-    if (notesCol < 0 && (h.includes('note') || h.includes('comment'))) notesCol = i;
-    if (locationCol < 0 && (h.includes('location') || h.includes('where') || h.includes('assigned'))) locationCol = i;
+    if (!colMap.name && (h.includes('model') || h.includes('device') || h.includes('name') || h.includes('product'))) colMap.name = i;
+    if (!colMap.total && (h.includes('total') || h.includes('stock') || h === 'qty' || h.includes('count'))) colMap.total = i;
+    if (!colMap.deployed && (h.includes('deploy') || h.includes('out') || h.includes('rent'))) colMap.deployed = i;
+    if (!colMap.available && (h.includes('available') || h.includes('in stock') || h.includes('remaining'))) colMap.available = i;
   }
+  if (colMap.name === undefined) colMap.name = 0;
 
-  // Count devices by status
-  let totalDevices = 0, activeCount = 0, damagedCount = 0, needsSIMCount = 0;
-  const serialNumbers = [];
-
+  const products = [];
   for (let r = 1; r < rows.length; r++) {
     const row = rows[r];
-    if (!row || row.every(c => !(c || '').trim())) continue;
-    totalDevices++;
+    const name = (row[colMap.name] || '').trim();
+    if (!name) continue;
 
-    const serial = serialCol >= 0 ? (row[serialCol] || '').trim() : '';
-    if (serial) serialNumbers.push(serial);
+    const total = parseInt(row[colMap.total] || '0') || 0;
+    const deployed = parseInt(row[colMap.deployed] || '0') || 0;
+    const available = colMap.available !== undefined ? (parseInt(row[colMap.available] || '0') || 0) : Math.max(0, total - deployed);
 
-    const status = statusCol >= 0 ? (row[statusCol] || '').trim().toLowerCase() : '';
-    const simStatus = simCol >= 0 ? (row[simCol] || '').trim().toLowerCase() : '';
-
-    if (status.includes('inactive') || status.includes('damage') || status.includes('broken') || status.includes('repair')) {
-      damagedCount++;
-    } else if (simStatus.includes('active') || simStatus.includes('yes') || simStatus.includes('assigned')) {
-      activeCount++;
-    } else if (simStatus.includes('capable') || simStatus.includes('no') || simStatus.includes('none') || simStatus === '') {
-      needsSIMCount++;
-    } else {
-      activeCount++; // default to active if we can't tell
-    }
+    products.push({
+      id: 'sheet-' + name.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase(),
+      name,
+      partNumber: '', manufacturer: 'Apple',
+      category: name.toLowerCase().includes('iphone') ? 'iPhones' : 'iPads',
+      totalStock: total, deployed, available,
+      utilization: total > 0 ? Math.round((deployed / total) * 100) : 0,
+      status: available < 3 && total > 0 ? 'low' : available < 10 && total > 0 ? 'watch' : 'ok',
+      msrp: null, source: 'google-sheet', notes: '',
+      forecast: { demand: 0, returns: 0, projected: available, upcomingOrders: [] }
+    });
   }
-
-  if (totalDevices === 0) return [];
-
-  const modelName = tabName.toLowerCase().includes('iphone') ? tabName : 'iPad ' + tabName;
-
-  return [{
-    id: 'sheet-detail-' + modelName.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase(),
-    name: modelName + ' (Detail)',
-    partNumber: '',
-    manufacturer: 'Apple',
-    category: guessCategory(modelName),
-    totalStock: totalDevices - damagedCount,
-    deployed: 0,
-    available: activeCount,
-    utilization: 0,
-    status: activeCount < 3 ? 'low' : activeCount < 10 ? 'watch' : 'ok',
-    msrp: null,
-    source: 'google-sheet-detail',
-    sheetTab: tabName,
-    notes: `${totalDevices} devices tracked | Active: ${activeCount} | Needs SIM: ${needsSIMCount} | Damaged: ${damagedCount}`,
-    serialCount: totalDevices,
-    forecast: { demand: 0, returns: 0, projected: activeCount, upcomingOrders: [] }
-  }];
-}
-
-function guessCategory(name) {
-  const l = name.toLowerCase();
-  if (l.includes('ipad')) return 'iPads';
-  if (l.includes('iphone')) return 'iPhones';
-  if (l.includes('case') || l.includes('cover')) return 'Cases';
-  if (l.includes('charger') || l.includes('charging')) return 'Chargers';
-  if (l.includes('cable') || l.includes('lightning') || l.includes('usb')) return 'Cables';
-  if (l.includes('router') || l.includes('hotspot')) return 'Routers';
-  if (l.includes('starlink')) return 'Starlink';
-  if (l.includes('square') || l.includes('terminal') || l.includes('reader')) return 'POS Devices';
-  return 'Other';
-}
-
-function guessMfg(name) {
-  const l = name.toLowerCase();
-  if (l.includes('ipad') || l.includes('iphone') || l.includes('apple')) return 'Apple';
-  if (l.includes('samsung')) return 'Samsung';
-  if (l.includes('square')) return 'Square';
-  return '';
-}
-
-function detectColumns(headers) {
-  const map = { name: null, total: null, deployed: null, available: null, category: null, notes: null, partNumber: null, manufacturer: null };
-  for (const h of headers) {
-    const l = h.toLowerCase();
-    if (!map.name && (l.includes('model') || l.includes('device') || l.includes('name') || l.includes('product'))) map.name = h;
-    if (!map.total && (l.includes('total') || l.includes('stock') || l === 'qty' || l.includes('count'))) map.total = h;
-    if (!map.deployed && (l.includes('deploy') || l.includes('out') || l.includes('rent'))) map.deployed = h;
-    if (!map.available && (l.includes('available') || l.includes('in stock') || l.includes('remaining'))) map.available = h;
-    if (!map.category && (l.includes('category') || l.includes('type'))) map.category = h;
-    if (!map.notes && (l.includes('note') || l.includes('comment'))) map.notes = h;
-    if (!map.partNumber && (l.includes('part') || l.includes('sku'))) map.partNumber = h;
-    if (!map.manufacturer && (l.includes('manufacturer') || l.includes('brand'))) map.manufacturer = h;
-  }
-  if (!map.name && headers.length > 0) map.name = headers[0];
-  return map;
+  return products;
 }
 
 function isConfigured() { return !!(process.env.GOOGLE_SERVICE_ACCOUNT_KEY); }
-
 function clearCache() { sheetCache = null; sheetCacheTime = null; }
 
 async function debugRead() {
-  const tabs = await getTabNames();
-  if (tabs.length === 0) {
-    // Try Drive API fallback
-    const rows = await readTabViaDrive();
-    return { sheetId: SHEET_ID, tabs: [], fallback: 'drive-csv', rowCount: rows ? rows.length : 0, headers: rows && rows[0] ? rows[0] : [] };
-  }
-  const tabPreview = {};
-  for (const tab of tabs.slice(0, 8)) {
-    try {
-      const rows = await readTab(tab);
-      tabPreview[tab] = rows ? { rowCount: rows.length, headers: rows[0], firstRow: rows.length > 1 ? rows[1] : null } : { error: 'Could not read' };
-    } catch (e) {
-      tabPreview[tab] = { error: e.message };
-    }
-  }
-  return { sheetId: SHEET_ID, tabs, tabPreview, totalTabs: tabs.length };
+  const rows = await exportCSV();
+  if (!rows) return { error: 'Could not read sheet' };
+  return {
+    sheetId: SHEET_ID,
+    rowCount: rows.length,
+    headers: rows[0],
+    rows: rows.slice(0, 6)
+  };
 }
 
 module.exports = {
-  fetchInventory,
-  isConfigured,
-  clearCache,
-  debugRead,
-  getCache: () => sheetCache,
-  getSheetId: () => SHEET_ID
+  fetchInventory, isConfigured, clearCache, debugRead,
+  getCache: () => sheetCache, getSheetId: () => SHEET_ID
 };
