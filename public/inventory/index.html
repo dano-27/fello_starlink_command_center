@@ -54,7 +54,7 @@
     }
 
     .container {
-      max-width: 1200px;
+      max-width: 1280px;
       margin: 0 auto;
       padding: 20px;
     }
@@ -72,9 +72,78 @@
       font-size: 14px;
     }
 
+    /* Shortage Alerts Banner */
+    .shortage-banner {
+      background: #fff8f8;
+      border: 1px solid #ffccd5;
+      border-left: 6px solid #c62828;
+      border-radius: var(--radius);
+      padding: 18px 22px;
+      margin-bottom: 24px;
+      box-shadow: 0 4px 12px rgba(198, 40, 40, 0.08);
+    }
+    .shortage-banner-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 16px;
+      color: #c62828;
+      margin-bottom: 12px;
+    }
+    .shortage-banner-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .shortage-item {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 16px;
+      background: #fff;
+      border-radius: 10px;
+      border: 1px solid #ffe3e6;
+      font-size: 13px;
+    }
+    .shortage-item-main {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .shortage-item-title {
+      font-weight: 600;
+      color: var(--black);
+      font-size: 14px;
+    }
+    .shortage-item-stats {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      color: var(--charcol);
+      font-size: 13px;
+    }
+    .shortage-item-orders {
+      font-size: 12px;
+      color: #8a3b3b;
+      background: #fdf2f2;
+      padding: 4px 10px;
+      border-radius: 6px;
+      border: 1px solid #fcdada;
+    }
+    .shortage-deficit-badge {
+      background-color: #fce4ec;
+      color: #c62828;
+      padding: 2px 8px;
+      border-radius: var(--pill);
+      font-weight: 700;
+    }
+
     .summary-cards {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
       gap: 20px;
       margin-bottom: 32px;
     }
@@ -82,7 +151,7 @@
     .card {
       background: var(--white);
       border-radius: var(--radius);
-      padding: 24px;
+      padding: 22px;
       box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
       border: 1px solid var(--border);
       display: flex;
@@ -91,18 +160,19 @@
     }
 
     .card-icon {
-      font-size: 32px;
+      font-size: 28px;
       background: var(--light-blue);
-      width: 56px;
-      height: 56px;
+      width: 52px;
+      height: 52px;
       display: flex;
       align-items: center;
       justify-content: center;
       border-radius: 12px;
+      flex-shrink: 0;
     }
 
     .card-content h3 {
-      font-size: 14px;
+      font-size: 13px;
       color: var(--charcol);
       font-weight: 600;
       margin-bottom: 4px;
@@ -112,6 +182,9 @@
       font-size: 24px;
       font-weight: 700;
       color: var(--black);
+      display: flex;
+      align-items: center;
+      gap: 8px;
     }
 
     .card-content .subtext {
@@ -174,7 +247,7 @@
     }
 
     th, td {
-      padding: 16px;
+      padding: 14px 16px;
       border-bottom: 1px solid var(--border);
     }
 
@@ -185,6 +258,7 @@
       text-transform: uppercase;
       letter-spacing: 0.5px;
       background-color: var(--light-blue);
+      white-space: nowrap;
     }
     
     th:first-child { border-top-left-radius: var(--radius); }
@@ -194,13 +268,16 @@
       border-bottom: none;
     }
 
-    tr:hover td {
+    tr.product-row:hover td {
       background-color: var(--gray);
     }
 
     .product-name {
       font-weight: 600;
       color: var(--black);
+      display: flex;
+      align-items: center;
+      gap: 6px;
     }
 
     .manufacturer {
@@ -215,6 +292,7 @@
       border-radius: var(--pill);
       font-size: 12px;
       font-weight: 600;
+      white-space: nowrap;
     }
 
     .badge-category {
@@ -236,6 +314,11 @@
     .status-low {
       background-color: #ffebe9;
       color: var(--light-red);
+    }
+
+    .status-shortage {
+      background-color: #fce4ec;
+      color: #c62828;
     }
 
     .utilization-container {
@@ -260,6 +343,125 @@
     .progress-ok { background-color: var(--success-color); }
     .progress-watch { background-color: var(--yellow); }
     .progress-low { background-color: var(--light-red); }
+    .progress-shortage { background-color: #c62828; }
+
+    /* Expandable Row & Sub-table Styles */
+    .expandable-row {
+      cursor: pointer;
+    }
+
+    .expand-toggle {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 20px;
+      height: 20px;
+      border-radius: 4px;
+      color: var(--charcol);
+      font-size: 10px;
+      transition: transform 0.2s ease, background 0.15s;
+    }
+
+    .expandable-row:hover .expand-toggle {
+      background: var(--sky);
+      color: var(--blue);
+    }
+
+    .expandable-row.expanded .expand-toggle {
+      transform: rotate(90deg);
+    }
+
+    .orders-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 11px;
+      background: var(--sky);
+      color: var(--blue);
+      padding: 2px 8px;
+      border-radius: var(--pill);
+      font-weight: 600;
+    }
+
+    .orders-subtable-row td {
+      padding: 0 16px 16px 16px !important;
+      background-color: #fafbfc !important;
+      border-bottom: 2px solid var(--border);
+    }
+
+    .orders-subtable-wrapper {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px 20px;
+      margin-top: 6px;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+    }
+
+    .orders-subtable-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--charcol);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .orders-subtable {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    .orders-subtable th {
+      background-color: var(--light-blue);
+      padding: 10px 12px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--charcol);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .orders-subtable th:first-child { border-top-left-radius: 8px; }
+    .orders-subtable th:last-child { border-top-right-radius: 8px; }
+
+    .orders-subtable td {
+      padding: 10px 12px !important;
+      border-bottom: 1px solid #eee !important;
+      background-color: var(--white) !important;
+      font-size: 13px;
+    }
+
+    .orders-subtable tr:last-child td {
+      border-bottom: none !important;
+    }
+
+    .order-status-badge {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: var(--pill);
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: capitalize;
+    }
+
+    .order-status-confirmed {
+      background-color: #e6f6ec;
+      color: var(--success-color);
+    }
+
+    .order-status-quote {
+      background-color: var(--sky);
+      color: var(--blue);
+    }
+
+    .order-status-tentative {
+      background-color: #fff8e1;
+      color: #b7950b;
+    }
 
     .loading, .error {
       text-align: center;
@@ -286,7 +488,6 @@
     .hidden {
       display: none !important;
     }
-
   </style>
 </head>
 <body>
@@ -310,6 +511,10 @@
     </div>
 
     <div id="dashboard-content" class="hidden">
+      <!-- Shortage Alerts Banner -->
+      <div id="shortage-banner-container" class="hidden"></div>
+
+      <!-- Summary Cards -->
       <div class="summary-cards">
         <div class="card">
           <div class="card-icon">📦</div>
@@ -340,6 +545,16 @@
             <div class="value" id="total-available">-</div>
           </div>
         </div>
+        <div class="card">
+          <div class="card-icon" style="background: #fce4ec; color: #c62828;">⚠️</div>
+          <div class="card-content">
+            <h3>Shortage Alerts</h3>
+            <div class="value">
+              <span id="shortage-count" class="badge status-shortage" style="font-size: 18px; padding: 2px 14px;">0</span>
+            </div>
+            <div class="subtext" id="shortage-subtext">30d projected deficit</div>
+          </div>
+        </div>
       </div>
 
       <div class="controls">
@@ -362,13 +577,15 @@
             <option value="available-asc">Available (Low→High)</option>
             <option value="utilization-desc">Utilization (High→Low)</option>
             <option value="name-asc">Name (A→Z)</option>
+            <option value="demand-desc">30d Demand (High→Low)</option>
+            <option value="projected-asc">Projected (Lowest First)</option>
           </select>
         </div>
       </div>
 
       <div class="table-container">
         <table>
-          <thead>
+          <thead id="table-head">
             <tr>
               <th>Product</th>
               <th>Part #</th>
@@ -390,6 +607,8 @@
 
   <script>
     let allProducts = [];
+    let dashboardData = null;
+    let expandedProductIds = new Set();
     
     const elements = {
       loading: document.getElementById('loading-state'),
@@ -397,40 +616,48 @@
       errorMsg: document.getElementById('error-message'),
       content: document.getElementById('dashboard-content'),
       lastUpdated: document.getElementById('last-updated'),
+      shortageBannerContainer: document.getElementById('shortage-banner-container'),
       totalProducts: document.getElementById('total-products'),
       totalUnits: document.getElementById('total-units'),
       totalDeployed: document.getElementById('total-deployed'),
       totalAvailable: document.getElementById('total-available'),
+      shortageCount: document.getElementById('shortage-count'),
+      shortageSubtext: document.getElementById('shortage-subtext'),
       utilizationSubtext: document.getElementById('utilization-subtext'),
       categoryFilter: document.getElementById('category-filter'),
       searchInput: document.getElementById('search-input'),
       sortSelect: document.getElementById('sort-select'),
+      tableHead: document.getElementById('table-head'),
       tableBody: document.getElementById('table-body')
     };
 
     function formatNumber(num) {
+      if (num === null || num === undefined || isNaN(num)) return '0';
       return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
     }
 
     function getStatusClass(status) {
-      if (status === 'ok') return 'status-ok';
-      if (status === 'watch') return 'status-watch';
+      if (status === 'shortage') return 'status-shortage';
       if (status === 'low') return 'status-low';
+      if (status === 'watch') return 'status-watch';
+      if (status === 'ok') return 'status-ok';
       return 'status-ok';
     }
 
     function getProgressClass(status) {
-      if (status === 'ok') return 'progress-ok';
-      if (status === 'watch') return 'progress-watch';
+      if (status === 'shortage') return 'progress-shortage';
       if (status === 'low') return 'progress-low';
+      if (status === 'watch') return 'progress-watch';
+      if (status === 'ok') return 'progress-ok';
       return 'progress-ok';
     }
     
     function getStatusLabel(status) {
-      if (status === 'ok') return '🟢 OK';
-      if (status === 'watch') return '🟡 Watch';
+      if (status === 'shortage') return 'Shortage';
       if (status === 'low') return '🔴 Low';
-      return status;
+      if (status === 'watch') return '🟡 Watch';
+      if (status === 'ok') return '🟢 OK';
+      return status || 'OK';
     }
 
     async function fetchData() {
@@ -448,6 +675,7 @@
         }
 
         const data = await response.json();
+        dashboardData = data;
         processData(data);
         
         elements.loading.classList.add('hidden');
@@ -459,6 +687,45 @@
       }
     }
 
+    function renderShortageBanner(forecast, shortageCount) {
+      const shortages = (forecast && forecast.shortages) ? forecast.shortages : [];
+      if (shortages.length === 0) {
+        elements.shortageBannerContainer.classList.add('hidden');
+        elements.shortageBannerContainer.innerHTML = '';
+        return;
+      }
+
+      elements.shortageBannerContainer.classList.remove('hidden');
+      elements.shortageBannerContainer.innerHTML = `
+        <div class="shortage-banner">
+          <div class="shortage-banner-header">
+            <span>⚠️</span>
+            <span>Shortage Alerts (${shortages.length})</span>
+            <span style="font-size: 13px; font-weight: 500; color: var(--charcol); margin-left: auto;">30-Day Forecast</span>
+          </div>
+          <div class="shortage-banner-list">
+            ${shortages.map(item => `
+              <div class="shortage-item">
+                <div class="shortage-item-main">
+                  <div class="shortage-item-title">⚠️ ${item.name}</div>
+                  ${item.orders && item.orders.length > 0 ? `
+                    <div class="shortage-item-orders">
+                      <strong>Required for:</strong> ${item.orders.join(', ')}
+                    </div>
+                  ` : ''}
+                </div>
+                <div class="shortage-item-stats">
+                  <span>Available: <strong>${formatNumber(item.available)}</strong></span>
+                  <span>30d Demand: <strong style="color: var(--blue);">${formatNumber(item.demand30)}</strong></span>
+                  <span>Projected: <span class="shortage-deficit-badge">${formatNumber(item.projected30)}</span></span>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    }
+
     function processData(data) {
       // Update Summary
       elements.lastUpdated.textContent = `Last updated: ${new Date(data.summary.lastUpdated).toLocaleString()}`;
@@ -467,6 +734,14 @@
       elements.totalDeployed.textContent = formatNumber(data.summary.totalDeployed);
       elements.utilizationSubtext.textContent = `${data.summary.utilization}% utilization`;
       elements.totalAvailable.textContent = formatNumber(data.summary.totalAvailable);
+
+      // Shortage summary count
+      const shortageCount = data.summary.shortageCount !== undefined ? data.summary.shortageCount : (data.forecast && data.forecast.shortages ? data.forecast.shortages.length : 0);
+      elements.shortageCount.textContent = formatNumber(shortageCount);
+      elements.shortageSubtext.textContent = shortageCount === 1 ? '1 item with deficit' : `${shortageCount} items with deficit`;
+
+      // Render Shortage Banner
+      renderShortageBanner(data.forecast, shortageCount);
 
       // Populate Categories
       const categories = Object.keys(data.categories || {});
@@ -482,17 +757,26 @@
         }
       });
       
-      data.products.forEach(p => {
-         if(p.category && !existingOptions.has(p.category)){
+      (data.products || []).forEach(p => {
+         if (p.category && !existingOptions.has(p.category)) {
            const option = document.createElement('option');
            option.value = p.category;
            option.textContent = p.category;
            elements.categoryFilter.appendChild(option);
            existingOptions.add(p.category);
          }
-      })
+      });
 
       allProducts = data.products || [];
+      renderTable();
+    }
+
+    function toggleRowExpand(productId) {
+      if (expandedProductIds.has(productId)) {
+        expandedProductIds.delete(productId);
+      } else {
+        expandedProductIds.add(productId);
+      }
       renderTable();
     }
 
@@ -500,6 +784,40 @@
       const searchTerm = elements.searchInput.value.toLowerCase();
       const categoryFilter = elements.categoryFilter.value;
       const sortBy = elements.sortSelect.value;
+
+      const hasForecast = allProducts.some(p => p.forecast && (p.forecast.demand30 !== undefined || p.forecast.projected30 !== undefined));
+
+      // Update Header
+      if (hasForecast) {
+        elements.tableHead.innerHTML = `
+          <tr>
+            <th>Product</th>
+            <th>Part #</th>
+            <th>Category</th>
+            <th>Total Stock</th>
+            <th>Deployed</th>
+            <th>Available</th>
+            <th>30d Demand</th>
+            <th>30d Returns</th>
+            <th>Projected</th>
+            <th>Utilization</th>
+            <th>Status</th>
+          </tr>
+        `;
+      } else {
+        elements.tableHead.innerHTML = `
+          <tr>
+            <th>Product</th>
+            <th>Part #</th>
+            <th>Category</th>
+            <th>Total Stock</th>
+            <th>Deployed</th>
+            <th>Available</th>
+            <th>Utilization</th>
+            <th>Status</th>
+          </tr>
+        `;
+      }
 
       // Filter
       let filtered = allProducts.filter(p => {
@@ -518,23 +836,49 @@
           case 'available-asc': return a.available - b.available;
           case 'utilization-desc': return b.utilization - a.utilization;
           case 'name-asc': return (a.name || '').localeCompare(b.name || '');
+          case 'demand-desc': return ((b.forecast && b.forecast.demand30) || 0) - ((a.forecast && a.forecast.demand30) || 0);
+          case 'projected-asc': return ((a.forecast && a.forecast.projected30) ?? a.available ?? 0) - ((b.forecast && b.forecast.projected30) ?? b.available ?? 0);
           default: return 0;
         }
       });
 
       // Render
       elements.tableBody.innerHTML = '';
-      if(filtered.length === 0){
-          elements.tableBody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--charcol);padding:24px;">No products found matching criteria.</td></tr>';
-          return;
+      const totalColumns = hasForecast ? 11 : 8;
+
+      if (filtered.length === 0) {
+        elements.tableBody.innerHTML = `<tr><td colspan="${totalColumns}" style="text-align:center;color:var(--charcol);padding:24px;">No products found matching criteria.</td></tr>`;
+        return;
       }
       
       filtered.forEach(p => {
+        const hasOrders = p.forecast && p.forecast.upcomingOrders && p.forecast.upcomingOrders.length > 0;
+        const isExpanded = expandedProductIds.has(p.id);
+
         const row = document.createElement('tr');
+        row.className = `product-row ${hasOrders ? 'expandable-row' : ''} ${isExpanded ? 'expanded' : ''}`;
         
+        let forecastColumnsHtml = '';
+        if (hasForecast) {
+          const demand30 = p.forecast ? (p.forecast.demand30 || 0) : 0;
+          const returns30 = p.forecast ? (p.forecast.returns30 || 0) : 0;
+          const projected30 = p.forecast && p.forecast.projected30 !== undefined ? p.forecast.projected30 : p.available;
+          const isNegative = projected30 < 0;
+
+          forecastColumnsHtml = `
+            <td><span style="color: var(--blue); font-weight: 600;">${formatNumber(demand30)}</span></td>
+            <td><span style="color: var(--success-color); font-weight: 600;">${formatNumber(returns30)}</span></td>
+            <td><span style="color: ${isNegative ? '#c62828' : 'inherit'}; font-weight: 600;">${formatNumber(projected30)}</span></td>
+          `;
+        }
+
         row.innerHTML = `
           <td>
-            <div class="product-name">${p.name}</div>
+            <div class="product-name">
+              ${hasOrders ? `<span class="expand-toggle">${isExpanded ? '▼' : '▶'}</span>` : ''}
+              <span>${p.name}</span>
+              ${hasOrders ? `<span class="orders-badge">📋 ${p.forecast.upcomingOrders.length}</span>` : ''}
+            </div>
             <div class="manufacturer">${p.manufacturer || ''}</div>
           </td>
           <td>${p.partNumber || '-'}</td>
@@ -542,17 +886,65 @@
           <td>${formatNumber(p.totalStock)}</td>
           <td>${formatNumber(p.deployed)}</td>
           <td>${formatNumber(p.available)}</td>
+          ${forecastColumnsHtml}
           <td>
             <div class="utilization-container">
               <div class="progress-bar-bg">
-                <div class="progress-bar-fill ${getProgressClass(p.status)}" style="width: ${p.utilization}%"></div>
+                <div class="progress-bar-fill ${getProgressClass(p.status)}" style="width: ${Math.min(100, Math.max(0, p.utilization))}%"></div>
               </div>
               <span>${p.utilization}%</span>
             </div>
           </td>
           <td><span class="badge ${getStatusClass(p.status)}">${getStatusLabel(p.status)}</span></td>
         `;
+
+        if (hasOrders) {
+          row.addEventListener('click', (e) => {
+            toggleRowExpand(p.id);
+          });
+        }
+
         elements.tableBody.appendChild(row);
+
+        // Render expanded orders sub-table if expanded
+        if (hasOrders && isExpanded) {
+          const subRow = document.createElement('tr');
+          subRow.className = 'orders-subtable-row';
+          subRow.innerHTML = `
+            <td colspan="${totalColumns}">
+              <div class="orders-subtable-wrapper">
+                <div class="orders-subtable-title">
+                  <span>📋</span> Upcoming Orders Demand for ${p.name} (${p.forecast.upcomingOrders.length})
+                </div>
+                <table class="orders-subtable">
+                  <thead>
+                    <tr>
+                      <th>Order ID</th>
+                      <th>Customer</th>
+                      <th>Quantity</th>
+                      <th>Start Date</th>
+                      <th>End Date</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${p.forecast.upcomingOrders.map(o => `
+                      <tr>
+                        <td style="font-weight: 600; color: var(--blue);">${o.id || '-'}</td>
+                        <td>${o.customer || 'Unknown Customer'}</td>
+                        <td style="font-weight: 600;">${formatNumber(o.qty || 0)}</td>
+                        <td>${o.start || '-'}</td>
+                        <td>${o.end || '-'}</td>
+                        <td><span class="order-status-badge order-status-${(o.status || '').toLowerCase()}">${o.status || '-'}</span></td>
+                      </tr>
+                    `).join('')}
+                  </tbody>
+                </table>
+              </div>
+            </td>
+          `;
+          elements.tableBody.appendChild(subRow);
+        }
       });
     }
 
