@@ -7373,6 +7373,133 @@ app.post('/api/orders/create', async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════
+// ██  INVENTORY DASHBOARD                                              ██
+// ═══════════════════════════════════════════════════════════════════════
+
+const CATEGORY_NAMES = {
+  1: 'iPads', 2: 'Cables', 3: 'Chargers', 4: 'Cases',
+  8: 'Routers', 9: 'Starlink', 10: 'Printers', 12: 'Power Banks',
+  14: 'POS Devices', 15: 'Accessories', 16: 'Peripherals', 22: 'Starlink Accessories'
+};
+
+let inventoryCache = null;
+let inventoryCacheTime = null;
+const INVENTORY_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+app.get('/api/inventory/dashboard', async (req, res) => {
+  try {
+    // Return cache if fresh
+    if (inventoryCache && inventoryCacheTime && (Date.now() - inventoryCacheTime < INVENTORY_CACHE_TTL)) {
+      return res.json(inventoryCache);
+    }
+
+    const imsToken = process.env.IMS_TOKEN || process.env.IMS_NEXTGEN_TOKEN || '2423|rydhEvIv6ZsEABia67jH5ffhMUJLthtu3YrfySpx93f5cc0e';
+    const imsBase = process.env.IMS_BASE_URL || process.env.IMS_NEXTGEN_URL || 'https://ims-v4-migration-prod-876702752852.us-east4.run.app';
+    const headers = { 'Authorization': 'Bearer ' + imsToken, 'Accept': 'application/json' };
+
+    // Fetch inventory models and orders in parallel
+    const [invResp, ordersResp] = await Promise.all([
+      fetch(imsBase + '/api/inventory', { headers }),
+      fetch(imsBase + '/api/orders', { headers })
+    ]);
+
+    if (!invResp.ok) throw new Error('IMS inventory API returned ' + invResp.status);
+    const inventory = await invResp.json();
+    const orders = ordersResp.ok ? await ordersResp.json() : [];
+
+    // Get confirmed/active order IDs for detail lookup
+    const activeOrders = orders.filter(o => o.status === 'confirmed' || o.status === 'active');
+    console.log('[Inventory] ' + inventory.length + ' products, ' + activeOrders.length + ' active orders');
+
+    // Fetch order details in batches to get checkout amounts
+    const deployedByModel = {}; // model_name -> { checkedOut, checkedIn }
+    const BATCH = 10;
+    for (let i = 0; i < activeOrders.length; i += BATCH) {
+      const batch = activeOrders.slice(i, i + BATCH);
+      const details = await Promise.all(batch.map(async (o) => {
+        try {
+          const resp = await fetch(imsBase + '/api/nextgen/v1/orders/' + o.fly_order_id, { headers });
+          return resp.ok ? await resp.json() : null;
+        } catch { return null; }
+      }));
+
+      for (const detail of details) {
+        if (!detail || !detail.rentals) continue;
+        for (const rental of detail.rentals) {
+          const modelName = (rental.model && rental.model.model_name) || '';
+          if (!modelName) continue;
+          if (!deployedByModel[modelName]) deployedByModel[modelName] = { out: 0, in: 0 };
+          deployedByModel[modelName].out += rental.checkout_amount || 0;
+          deployedByModel[modelName].in += rental.checkin_amount || 0;
+        }
+      }
+    }
+
+    // Build dashboard data
+    let totalStock = 0, totalDeployed = 0;
+    const products = inventory.map(item => {
+      const total = item.item_total || 0;
+      const dep = deployedByModel[item.model_name] || { out: 0, in: 0 };
+      const deployed = Math.max(0, dep.out - dep.in);
+      const available = Math.max(0, total - deployed);
+      const utilization = total > 0 ? Math.round((deployed / total) * 100) : 0;
+      totalStock += total;
+      totalDeployed += deployed;
+
+      let status = 'ok';
+      if (available < 5 && total > 0 || utilization > 90) status = 'low';
+      else if (utilization > 70) status = 'watch';
+
+      return {
+        id: item.id,
+        name: item.model_name || '',
+        partNumber: item.part_number || '',
+        manufacturer: item.manufacturer_name || '',
+        category: CATEGORY_NAMES[item.model_category] || 'Other',
+        categoryId: item.model_category || 0,
+        totalStock: total,
+        deployed,
+        available,
+        utilization,
+        status,
+        msrp: item.msrp || null,
+        minStock: item.min_stock || 0
+      };
+    }).sort((a, b) => b.totalStock - a.totalStock);
+
+    const categories = {};
+    for (const p of products) {
+      if (!categories[p.category]) categories[p.category] = { count: 0, units: 0, deployed: 0 };
+      categories[p.category].count++;
+      categories[p.category].units += p.totalStock;
+      categories[p.category].deployed += p.deployed;
+    }
+
+    const result = {
+      summary: {
+        totalModels: products.length,
+        totalUnits: totalStock,
+        totalDeployed,
+        totalAvailable: totalStock - totalDeployed,
+        utilization: totalStock > 0 ? Math.round((totalDeployed / totalStock) * 100) : 0,
+        activeOrders: activeOrders.length,
+        lastUpdated: new Date().toISOString()
+      },
+      categories,
+      products
+    };
+
+    inventoryCache = result;
+    inventoryCacheTime = Date.now();
+    console.log('[Inventory] Dashboard built: ' + products.length + ' products, ' + totalStock + ' units, ' + totalDeployed + ' deployed');
+    res.json(result);
+  } catch (err) {
+    console.error('[Inventory] Dashboard error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════
 // ██  FELLO CRM API ENDPOINTS                                         ██
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -9542,6 +9669,7 @@ app.listen(PORT, () => {
     getShareTokens: () => shareTokens,
     getDcrSubmissions: () => dcrSubmissions,
     getWebbingCacheTime: () => webbingCacheTime,
-    getSimpleMdmCacheTime: () => simpleMdmCacheTime
+    getSimpleMdmCacheTime: () => simpleMdmCacheTime,
+    getInventoryCache: () => inventoryCache
   });
 });

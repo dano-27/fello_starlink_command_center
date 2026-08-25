@@ -1,0 +1,570 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Equipment Inventory - Fello Command Center</title>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --blue: #3166ae; 
+      --yellow: #fcd230; 
+      --black: #232428; 
+      --charcol: #3e3e40;
+      --white: #fff; 
+      --gray: #fafafa; 
+      --border: #cfccca; 
+      --sky: #e1edfd; 
+      --light-blue: #f4f6fa;
+      --success-color: #05ac3f; 
+      --light-red: #ff4d41;
+      --font: 'Montserrat', sans-serif; 
+      --radius: 16px; 
+      --pill: 40px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: var(--font);
+      background-color: var(--gray);
+      color: var(--black);
+      line-height: 1.5;
+    }
+
+    .back-to-hub {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 10px 20px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--blue);
+      text-decoration: none;
+      border-radius: var(--pill);
+      background: var(--sky);
+      margin: 12px 16px;
+    }
+    .back-to-hub:hover {
+      background: var(--light-blue);
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+
+    .header {
+      margin-bottom: 24px;
+    }
+    .header h1 {
+      font-size: 28px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .header p {
+      color: var(--charcol);
+      font-size: 14px;
+    }
+
+    .summary-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 20px;
+      margin-bottom: 32px;
+    }
+
+    .card {
+      background: var(--white);
+      border-radius: var(--radius);
+      padding: 24px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+      border: 1px solid var(--border);
+      display: flex;
+      align-items: flex-start;
+      gap: 16px;
+    }
+
+    .card-icon {
+      font-size: 32px;
+      background: var(--light-blue);
+      width: 56px;
+      height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 12px;
+    }
+
+    .card-content h3 {
+      font-size: 14px;
+      color: var(--charcol);
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .card-content .value {
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--black);
+    }
+
+    .card-content .subtext {
+      font-size: 12px;
+      color: var(--charcol);
+      margin-top: 4px;
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+      margin-bottom: 24px;
+      background: var(--white);
+      padding: 16px;
+      border-radius: var(--radius);
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.02);
+      border: 1px solid var(--border);
+    }
+
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      flex: 1;
+      min-width: 200px;
+    }
+
+    .control-group label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--charcol);
+    }
+
+    .control-group input, .control-group select {
+      padding: 10px 16px;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-family: var(--font);
+      font-size: 14px;
+      outline: none;
+    }
+    
+    .control-group input:focus, .control-group select:focus {
+      border-color: var(--blue);
+    }
+
+    .table-container {
+      background: var(--white);
+      border-radius: var(--radius);
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+      border: 1px solid var(--border);
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+    }
+
+    th, td {
+      padding: 16px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    th {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--charcol);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      background-color: var(--light-blue);
+    }
+    
+    th:first-child { border-top-left-radius: var(--radius); }
+    th:last-child { border-top-right-radius: var(--radius); }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    tr:hover td {
+      background-color: var(--gray);
+    }
+
+    .product-name {
+      font-weight: 600;
+      color: var(--black);
+    }
+
+    .manufacturer {
+      font-size: 12px;
+      color: var(--charcol);
+      margin-top: 2px;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: var(--pill);
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .badge-category {
+      background-color: var(--light-blue);
+      color: var(--blue);
+      border: 1px solid var(--sky);
+    }
+
+    .status-ok {
+      background-color: #e6f6ec;
+      color: var(--success-color);
+    }
+
+    .status-watch {
+      background-color: #fff8e1;
+      color: #b7950b;
+    }
+
+    .status-low {
+      background-color: #ffebe9;
+      color: var(--light-red);
+    }
+
+    .utilization-container {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .progress-bar-bg {
+      width: 60px;
+      height: 6px;
+      background-color: var(--border);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      border-radius: 3px;
+    }
+    
+    .progress-ok { background-color: var(--success-color); }
+    .progress-watch { background-color: var(--yellow); }
+    .progress-low { background-color: var(--light-red); }
+
+    .loading, .error {
+      text-align: center;
+      padding: 40px;
+      font-size: 16px;
+      color: var(--charcol);
+    }
+
+    .spinner {
+      border: 4px solid var(--border);
+      border-top: 4px solid var(--blue);
+      border-radius: 50%;
+      width: 40px;
+      height: 40px;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 16px;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    
+    .hidden {
+      display: none !important;
+    }
+
+  </style>
+</head>
+<body>
+
+  <a href="/" class="back-to-hub">← Command Center</a>
+
+  <div class="container">
+    <div class="header">
+      <h1>Equipment Inventory</h1>
+      <p id="last-updated">Loading...</p>
+    </div>
+
+    <div id="loading-state" class="loading">
+      <div class="spinner"></div>
+      <p>Loading inventory data...</p>
+    </div>
+
+    <div id="error-state" class="error hidden">
+      <p id="error-message" style="color: var(--light-red); font-weight: 600;"></p>
+      <button onclick="fetchData()" style="margin-top: 16px; padding: 8px 16px; background: var(--blue); color: white; border: none; border-radius: 8px; cursor: pointer;">Retry</button>
+    </div>
+
+    <div id="dashboard-content" class="hidden">
+      <div class="summary-cards">
+        <div class="card">
+          <div class="card-icon">📦</div>
+          <div class="card-content">
+            <h3>Total Products</h3>
+            <div class="value" id="total-products">-</div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-icon">🏭</div>
+          <div class="card-content">
+            <h3>Total Units</h3>
+            <div class="value" id="total-units">-</div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-icon">🚀</div>
+          <div class="card-content">
+            <h3>Deployed</h3>
+            <div class="value" id="total-deployed">-</div>
+            <div class="subtext" id="utilization-subtext">-</div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-icon">✅</div>
+          <div class="card-content">
+            <h3>Available</h3>
+            <div class="value" id="total-available">-</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="controls">
+        <div class="control-group">
+          <label for="search-input">Search</label>
+          <input type="text" id="search-input" placeholder="Search products or part #...">
+        </div>
+        <div class="control-group">
+          <label for="category-filter">Category</label>
+          <select id="category-filter">
+            <option value="all">All Categories</option>
+          </select>
+        </div>
+        <div class="control-group">
+          <label for="sort-select">Sort By</label>
+          <select id="sort-select">
+            <option value="stock-desc">Stock (High→Low)</option>
+            <option value="stock-asc">Stock (Low→High)</option>
+            <option value="deployed-desc">Deployed (High→Low)</option>
+            <option value="available-asc">Available (Low→High)</option>
+            <option value="utilization-desc">Utilization (High→Low)</option>
+            <option value="name-asc">Name (A→Z)</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Product</th>
+              <th>Part #</th>
+              <th>Category</th>
+              <th>Total Stock</th>
+              <th>Deployed</th>
+              <th>Available</th>
+              <th>Utilization</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="table-body">
+            <!-- Rows will be inserted here -->
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let allProducts = [];
+    
+    const elements = {
+      loading: document.getElementById('loading-state'),
+      error: document.getElementById('error-state'),
+      errorMsg: document.getElementById('error-message'),
+      content: document.getElementById('dashboard-content'),
+      lastUpdated: document.getElementById('last-updated'),
+      totalProducts: document.getElementById('total-products'),
+      totalUnits: document.getElementById('total-units'),
+      totalDeployed: document.getElementById('total-deployed'),
+      totalAvailable: document.getElementById('total-available'),
+      utilizationSubtext: document.getElementById('utilization-subtext'),
+      categoryFilter: document.getElementById('category-filter'),
+      searchInput: document.getElementById('search-input'),
+      sortSelect: document.getElementById('sort-select'),
+      tableBody: document.getElementById('table-body')
+    };
+
+    function formatNumber(num) {
+      return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+    }
+
+    function getStatusClass(status) {
+      if (status === 'ok') return 'status-ok';
+      if (status === 'watch') return 'status-watch';
+      if (status === 'low') return 'status-low';
+      return 'status-ok';
+    }
+
+    function getProgressClass(status) {
+      if (status === 'ok') return 'progress-ok';
+      if (status === 'watch') return 'progress-watch';
+      if (status === 'low') return 'progress-low';
+      return 'progress-ok';
+    }
+    
+    function getStatusLabel(status) {
+      if (status === 'ok') return '🟢 OK';
+      if (status === 'watch') return '🟡 Watch';
+      if (status === 'low') return '🔴 Low';
+      return status;
+    }
+
+    async function fetchData() {
+      elements.loading.classList.remove('hidden');
+      elements.error.classList.add('hidden');
+      elements.content.classList.add('hidden');
+
+      try {
+        const response = await fetch('/api/inventory/dashboard', {
+          credentials: 'same-origin'
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch inventory: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        processData(data);
+        
+        elements.loading.classList.add('hidden');
+        elements.content.classList.remove('hidden');
+      } catch (err) {
+        elements.loading.classList.add('hidden');
+        elements.error.classList.remove('hidden');
+        elements.errorMsg.textContent = err.message || 'An error occurred while loading data.';
+      }
+    }
+
+    function processData(data) {
+      // Update Summary
+      elements.lastUpdated.textContent = `Last updated: ${new Date(data.summary.lastUpdated).toLocaleString()}`;
+      elements.totalProducts.textContent = formatNumber(data.summary.totalModels);
+      elements.totalUnits.textContent = formatNumber(data.summary.totalUnits);
+      elements.totalDeployed.textContent = formatNumber(data.summary.totalDeployed);
+      elements.utilizationSubtext.textContent = `${data.summary.utilization}% utilization`;
+      elements.totalAvailable.textContent = formatNumber(data.summary.totalAvailable);
+
+      // Populate Categories
+      const categories = Object.keys(data.categories || {});
+      const existingOptions = new Set(['all']);
+      
+      categories.forEach(cat => {
+        if (!existingOptions.has(cat)) {
+          const option = document.createElement('option');
+          option.value = cat;
+          option.textContent = cat;
+          elements.categoryFilter.appendChild(option);
+          existingOptions.add(cat);
+        }
+      });
+      
+      data.products.forEach(p => {
+         if(p.category && !existingOptions.has(p.category)){
+           const option = document.createElement('option');
+           option.value = p.category;
+           option.textContent = p.category;
+           elements.categoryFilter.appendChild(option);
+           existingOptions.add(p.category);
+         }
+      })
+
+      allProducts = data.products || [];
+      renderTable();
+    }
+
+    function renderTable() {
+      const searchTerm = elements.searchInput.value.toLowerCase();
+      const categoryFilter = elements.categoryFilter.value;
+      const sortBy = elements.sortSelect.value;
+
+      // Filter
+      let filtered = allProducts.filter(p => {
+        const matchesSearch = (p.name && p.name.toLowerCase().includes(searchTerm)) || 
+                              (p.partNumber && p.partNumber.toLowerCase().includes(searchTerm));
+        const matchesCat = categoryFilter === 'all' || p.category === categoryFilter;
+        return matchesSearch && matchesCat;
+      });
+
+      // Sort
+      filtered.sort((a, b) => {
+        switch (sortBy) {
+          case 'stock-desc': return b.totalStock - a.totalStock;
+          case 'stock-asc': return a.totalStock - b.totalStock;
+          case 'deployed-desc': return b.deployed - a.deployed;
+          case 'available-asc': return a.available - b.available;
+          case 'utilization-desc': return b.utilization - a.utilization;
+          case 'name-asc': return (a.name || '').localeCompare(b.name || '');
+          default: return 0;
+        }
+      });
+
+      // Render
+      elements.tableBody.innerHTML = '';
+      if(filtered.length === 0){
+          elements.tableBody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--charcol);padding:24px;">No products found matching criteria.</td></tr>';
+          return;
+      }
+      
+      filtered.forEach(p => {
+        const row = document.createElement('tr');
+        
+        row.innerHTML = `
+          <td>
+            <div class="product-name">${p.name}</div>
+            <div class="manufacturer">${p.manufacturer || ''}</div>
+          </td>
+          <td>${p.partNumber || '-'}</td>
+          <td><span class="badge badge-category">${p.category}</span></td>
+          <td>${formatNumber(p.totalStock)}</td>
+          <td>${formatNumber(p.deployed)}</td>
+          <td>${formatNumber(p.available)}</td>
+          <td>
+            <div class="utilization-container">
+              <div class="progress-bar-bg">
+                <div class="progress-bar-fill ${getProgressClass(p.status)}" style="width: ${p.utilization}%"></div>
+              </div>
+              <span>${p.utilization}%</span>
+            </div>
+          </td>
+          <td><span class="badge ${getStatusClass(p.status)}">${getStatusLabel(p.status)}</span></td>
+        `;
+        elements.tableBody.appendChild(row);
+      });
+    }
+
+    // Event Listeners
+    elements.searchInput.addEventListener('input', renderTable);
+    elements.categoryFilter.addEventListener('change', renderTable);
+    elements.sortSelect.addEventListener('change', renderTable);
+
+    // Initial fetch
+    document.addEventListener('DOMContentLoaded', fetchData);
+  </script>
+  
+  <script src="/ai-assistant.js"></script>
+</body>
+</html>

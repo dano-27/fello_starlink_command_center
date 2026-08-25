@@ -204,6 +204,26 @@ function buildContext() {
   delete ctx.pulseOrders;
   delete ctx.dcrByOrder;
 
+  // Inventory summary (if cached)
+  try {
+    const invCache = dataSources.getInventoryCache?.();
+    if (invCache) {
+      ctx.inventory = {
+        totalModels: invCache.summary.totalModels,
+        totalUnits: invCache.summary.totalUnits,
+        totalDeployed: invCache.summary.totalDeployed,
+        totalAvailable: invCache.summary.totalAvailable,
+        utilization: invCache.summary.utilization + '%',
+        // Only include low/watch items to keep context small
+        lowStock: invCache.products
+          .filter(p => p.status === 'low' || p.status === 'watch')
+          .map(p => ({ name: p.name, total: p.totalStock, deployed: p.deployed, available: p.available, utilization: p.utilization + '%', status: p.status }))
+      };
+    }
+  } catch (e) {
+    // Inventory not loaded yet — skip
+  }
+
   return ctx;
 }
 
@@ -219,6 +239,7 @@ You are talking to the **ops team** — they manage orders, contact customers, c
 - **fleetSummary**: High-level counts (total SIMs, active SIMs, total iPads, Pulse links, DCR orders)
 - **orderHealth**: Per-order cross-reference combining Webbing SIMs, MDM iPads, Pulse usage data, DCR status, and pre-computed issues
 - **systemHealth**: Whether Webbing and MDM caches have synced
+- **inventory**: Equipment stock levels — totalUnits, totalDeployed, totalAvailable, utilization%, and a list of low/watch stock items with names and counts
 
 ## Understanding Null Data
 Null usage data is **normal and common** — it does NOT mean something is broken. Common reasons:
