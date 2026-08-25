@@ -7411,6 +7411,38 @@ app.post('/api/inventory/sheets-refresh', async (req, res) => {
   }
 });
 
+// Debug: raw sheet read
+app.get('/api/inventory/sheets-debug', async (req, res) => {
+  try {
+    const { google } = require('googleapis');
+    const keyRaw = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
+    if (!keyRaw) return res.json({ error: 'No service account key' });
+    let keyData;
+    try { keyData = JSON.parse(keyRaw); } catch { keyData = JSON.parse(Buffer.from(keyRaw, 'base64').toString('utf8')); }
+    const auth = new google.auth.GoogleAuth({ credentials: keyData, scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'] });
+    const sheets = google.sheets({ version: 'v4', auth });
+    const sheetId = process.env.GOOGLE_SHEETS_INVENTORY_ID || '1alke7dZUvO_273oklR3UKmWmdVi6_hYCOjf_W6OacJ0';
+
+    // Get tab names
+    const meta = await sheets.spreadsheets.get({ spreadsheetId: sheetId, fields: 'sheets.properties.title' });
+    const tabs = meta.data.sheets.map(s => s.properties.title);
+
+    // Read first 5 rows of each tab
+    const tabData = {};
+    for (const tab of tabs) {
+      try {
+        const resp = await sheets.spreadsheets.values.get({ spreadsheetId: sheetId, range: `'${tab}'!A1:Z10` });
+        tabData[tab] = resp.data.values || [];
+      } catch (e) {
+        tabData[tab] = { error: e.message };
+      }
+    }
+    res.json({ sheetId, tabs, tabData });
+  } catch (err) {
+    res.status(500).json({ error: err.message, stack: err.stack?.split('\n').slice(0,3) });
+  }
+});
+
 app.get('/api/inventory/dashboard', async (req, res) => {
   try {
     // Forecast window: ?days=N or ?from=YYYY-MM-DD&to=YYYY-MM-DD
