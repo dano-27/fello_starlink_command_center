@@ -265,7 +265,7 @@ async function chat(userMessage, history = []) {
 
   // Retry with exponential backoff
   const MAX_RETRIES = 3;
-  const MODELS = ['gemini-3.1-pro', 'gemini-3.7-flash', 'gemini-3.6-flash'];
+  const MODELS = ['gemini-3.7-flash', 'gemini-3.6-flash'];
   let lastError = null;
 
   for (const modelName of MODELS) {
@@ -280,20 +280,27 @@ async function chat(userMessage, history = []) {
         return result.response.text();
       } catch (e) {
         lastError = e;
+        // Model not found — skip to next model immediately
+        if (e.message.includes('404') || e.message.includes('not found') || e.message.includes('Not Found')) {
+          console.log(`[AI] ${modelName} not available, trying next model...`);
+          break;
+        }
+        // Transient errors — retry with backoff
         const isRetryable = e.message.includes('503') || e.message.includes('429') || 
                            e.message.includes('RESOURCE_EXHAUSTED') || e.message.includes('overloaded') ||
-                           e.message.includes('high demand');
+                           e.message.includes('high demand') || e.message.includes('Service Unavailable');
         if (isRetryable && attempt < MAX_RETRIES - 1) {
-          const delay = Math.pow(2, attempt) * 1000; // 1s, 2s, 4s
-          console.log(`[AI] ${modelName} attempt ${attempt + 1} failed (${e.message.substring(0, 60)}), retrying in ${delay}ms...`);
+          const delay = Math.pow(2, attempt) * 1000;
+          console.log(`[AI] ${modelName} attempt ${attempt + 1} failed (${e.message.substring(0, 80)}), retrying in ${delay}ms...`);
           await new Promise(r => setTimeout(r, delay));
           continue;
         }
         if (isRetryable) {
           console.log(`[AI] ${modelName} exhausted retries, trying next model...`);
-          break; // Try next model
+          break;
         }
-        // Non-retryable error
+        // Non-retryable, non-404 error
+        console.error('[AI] Non-retryable error:', e.message);
         throw new Error('AI service error: ' + e.message);
       }
     }
