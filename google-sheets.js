@@ -1,40 +1,20 @@
 /**
  * Google Sheets Inventory Reader
  * 
- * Reads iPad/iPhone inventory from a shared Google Sheet.
- * Uses googleapis Drive client with Promise.race timeout.
+ * Reads iPad/iPhone inventory from a published Google Sheet CSV.
+ * Uses a simple HTTPS fetch — no Google API client needed.
+ * 
+ * The sheet must be "Published to Web" as CSV.
  */
 
-const { google } = require('googleapis');
+const PUBLISHED_CSV_URL = process.env.GOOGLE_SHEETS_CSV_URL ||
+  'https://docs.google.com/spreadsheets/d/e/2PACX-1vQU4Nf5PC7Sw_nzqVq397fyCT5Fg9iViXwpxGlBHt71ox78sCdV7w-mwHXIrMkTGXuekFXmRKN0XRLu/pub?gid=0&single=true&output=csv';
 
-const SHEET_ID = process.env.GOOGLE_SHEETS_INVENTORY_ID || '1alke7dZUvO_273oklR3UKmWmdVi6_hYCOjf_W6OacJ0';
+const SHEET_ID = '1alke7dZUvO_273oklR3UKmWmdVi6_hYCOjf_W6OacJ0';
 const CACHE_TTL = 5 * 60 * 1000;
-const API_TIMEOUT = 30000; // 30 seconds
-let driveClient = null;
 let sheetCache = null;
 let sheetCacheTime = null;
 let lastError = null;
-
-function getDriveClient() {
-  if (driveClient) return driveClient;
-  const keyRaw = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
-  if (!keyRaw) return null;
-  try {
-    let keyData;
-    try { keyData = JSON.parse(keyRaw); } catch { keyData = JSON.parse(Buffer.from(keyRaw, 'base64').toString('utf8')); }
-    const auth = new google.auth.GoogleAuth({
-      credentials: keyData,
-      scopes: ['https://www.googleapis.com/auth/drive.readonly'],
-    });
-    driveClient = google.drive({ version: 'v3', auth });
-    console.log('[Sheets] Drive client ready');
-    return driveClient;
-  } catch (err) {
-    lastError = err.message;
-    console.error('[Sheets] Init error:', err.message);
-    return null;
-  }
-}
 
 function parseCSV(csvText) {
   const rows = [];
@@ -63,64 +43,45 @@ function parseCSV(csvText) {
   return rows;
 }
 
-/**
- * Export CSV using Google Docs export URL (different backend than Drive API)
- */
 async function exportCSV() {
-  const keyRaw = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
-  if (!keyRaw) { lastError = 'No service account key'; return null; }
-
   try {
-    // Get access token
-    let keyData;
-    try { keyData = JSON.parse(keyRaw); } catch { keyData = JSON.parse(Buffer.from(keyRaw, 'base64').toString('utf8')); }
-
-    const auth = new google.auth.GoogleAuth({
-      credentials: keyData,
-      scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly', 'https://www.googleapis.com/auth/drive.readonly'],
-    });
-    const client = await auth.getClient();
-    const tokenResp = await client.getAccessToken();
-    const token = tokenResp.token || tokenResp;
-
-    if (!token) { lastError = 'Could not get access token'; return null; }
-
-    // Use Google Docs export URL — different infra than Drive API
-    const url = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=0`;
-
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 30000);
 
-    const resp = await fetch(url, {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'User-Agent': 'FelloCommandCenter/1.0'
-      },
+    console.log(`[Sheets] Fetching CSV from: ${PUBLISHED_CSV_URL.slice(0, 80)}...`);
+    const resp = await fetch(PUBLISHED_CSV_URL, {
       signal: controller.signal,
-      redirect: 'follow'
+      redirect: 'follow',
+      headers: { 'User-Agent': 'FelloCommandCenter/1.0' }
     });
     clearTimeout(timeout);
 
     if (!resp.ok) {
-      const errText = await resp.text();
-      lastError = `Export HTTP ${resp.status}: ${errText.slice(0, 200)}`;
+      const body = await resp.text();
+      lastError = `HTTP ${resp.status}: ${body.slice(0, 200)}`;
       console.error('[Sheets]', lastError);
       return null;
     }
 
     const csvText = await resp.text();
     if (!csvText || csvText.length < 10) {
-      lastError = `Empty CSV (${csvText?.length || 0} bytes)`;
+      lastError = `Empty response (${csvText?.length || 0} bytes)`;
+      return null;
+    }
+
+    // Check if we got HTML instead of CSV (login page)
+    if (csvText.trim().startsWith('<!DOCTYPE') || csvText.trim().startsWith('<html')) {
+      lastError = 'Got HTML instead of CSV — sheet may not be published';
       return null;
     }
 
     const rows = parseCSV(csvText);
     lastError = null;
-    console.log(`[Sheets] Exported ${rows.length} rows, ${rows[0]?.length || 0} cols via docs URL`);
+    console.log(`[Sheets] Got ${rows.length} rows, ${rows[0]?.length || 0} cols`);
     return rows;
   } catch (err) {
     lastError = `${err.name}: ${err.message}`;
-    console.error('[Sheets] Export error:', lastError);
+    console.error('[Sheets] Fetch error:', lastError);
     return null;
   }
 }
@@ -221,16 +182,16 @@ function parseStandardFormat(rows) {
   });
 }
 
-function isConfigured() { return !!process.env.GOOGLE_SERVICE_ACCOUNT_KEY; }
+function isConfigured() { return true; } // Always configured — uses published URL
 function clearCache() { sheetCache = null; sheetCacheTime = null; }
 
 async function debugRead() {
   try {
     const rows = await exportCSV();
-    if (!rows) return { error: lastError || 'Export failed', sheetId: SHEET_ID };
-    return { sheetId: SHEET_ID, success: true, rowCount: rows.length, headers: rows[0], rows: rows.slice(0, 6) };
+    if (!rows) return { error: lastError, url: PUBLISHED_CSV_URL };
+    return { success: true, sheetId: SHEET_ID, rowCount: rows.length, headers: rows[0], rows: rows.slice(0, 6), url: PUBLISHED_CSV_URL };
   } catch (e) {
-    return { error: e.message, sheetId: SHEET_ID };
+    return { error: e.message };
   }
 }
 
