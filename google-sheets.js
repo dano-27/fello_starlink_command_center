@@ -133,20 +133,8 @@ async function readSheetAsCSV() {
       return [];
     }
 
-    // First row = headers, rest = data
-    const headers = rows[0].map(h => h.toString().trim().toLowerCase());
-    const data = [];
-
-    for (let i = 1; i < rows.length; i++) {
-      const row = {};
-      for (let j = 0; j < headers.length; j++) {
-        row[headers[j]] = (rows[i][j] !== undefined) ? rows[i][j].toString().trim() : '';
-      }
-      data.push(row);
-    }
-
-    console.log(`[Sheets] Parsed ${data.length} rows with headers: ${headers.join(', ')}`);
-    return data;
+    console.log(`[Sheets] Parsed ${rows.length} rows, ${rows[0].length} columns. Headers: ${rows[0].slice(0, 5).join(', ')}...`);
+    return rows;
   } catch (err) {
     console.error('[Sheets] CSV export error:', err.message);
     return null;
@@ -154,15 +142,19 @@ async function readSheetAsCSV() {
 }
 
 /**
- * Fetch the inventory sheet, auto-detecting column names.
+ * Fetch the inventory sheet.
  * 
- * Tries to find these columns (case-insensitive, partial match):
- *   model/device/name → product name
- *   total/stock/qty/quantity → total stock count
- *   deployed/out/rented → deployed count
- *   available/in/remaining → available count
- *   category/type → category
- *   notes/comments → notes
+ * Supports TWO formats:
+ * 
+ * 1. PIVOT TABLE (auto-detected): Models as columns, statuses as rows
+ *    e.g. columns: [blank], 5th Gen, 6th Gen, ...
+ *         rows:    4G Active, 748, 1194, ...
+ *                  4G Inactive, 8, 45, ...
+ *                  4G Capable, 569, 275, ...
+ *    "Active" = deployed, "Capable/Available" = available, sum = total
+ * 
+ * 2. STANDARD TABLE: One row per model with named columns
+ *    e.g. Model, Total, Deployed, Available, Category
  * 
  * Returns normalized product objects compatible with the inventory dashboard.
  */
@@ -180,14 +172,115 @@ async function fetchInventory() {
     return [];
   }
 
-  // Auto-detect columns from headers
-  const headers = Object.keys(rows[0]);
+  // Detect format: pivot table if first cell is empty/blank and second+ cells look like model names
+  const headers = rows[0];
+  const firstCell = (headers[0] || '').trim().toLowerCase();
+  const isPivot = (!firstCell || firstCell === '') && headers.length > 2;
+
+  let allProducts;
+  if (isPivot) {
+    allProducts = parsePivotFormat(rows);
+  } else {
+    allProducts = parseStandardFormat(rows);
+  }
+
+  sheetCache = allProducts;
+  sheetCacheTime = Date.now();
+  console.log(`[Sheets] Loaded ${allProducts.length} products from Google Sheets (${isPivot ? 'pivot' : 'standard'} format)`);
+  return allProducts;
+}
+
+/**
+ * Parse pivot table format:
+ * Row 0 (headers): [blank], "5th Gen", "6th Gen", ..., "Grand Total"
+ * Row N: "4G Active", 748, 1194, ...
+ * Row N: "4G Inactive", 8, 45, ...
+ * Row N: "4G Capable", 569, 275, ...
+ */
+function parsePivotFormat(rows) {
+  const headers = rows[0];
+  // Model names are in columns 1..N-1 (skip first blank col and last "Grand Total" col)
+  const modelNames = [];
+  const lastHeader = (headers[headers.length - 1] || '').toLowerCase();
+  const skipLast = lastHeader.includes('total') || lastHeader.includes('grand');
+  
+  for (let col = 1; col < headers.length - (skipLast ? 1 : 0); col++) {
+    const name = (headers[col] || '').trim();
+    if (name) modelNames.push({ col, name });
+  }
+
+  // Parse status rows
+  const modelData = {};
+  for (const m of modelNames) {
+    modelData[m.col] = { name: m.name, active: 0, inactive: 0, capable: 0, total: 0 };
+  }
+
+  for (let r = 1; r < rows.length; r++) {
+    const row = rows[r];
+    const label = (row[0] || '').trim().toLowerCase();
+    if (!label) continue;
+
+    const isActive = label.includes('active') && !label.includes('inactive');
+    const isInactive = label.includes('inactive');
+    const isCapable = label.includes('capable') || label.includes('available') || label.includes('warehouse') || label.includes('in stock');
+
+    for (const m of modelNames) {
+      const val = parseInt(row[m.col] || '0') || 0;
+      if (isActive) modelData[m.col].active += val;
+      else if (isInactive) modelData[m.col].inactive += val;
+      else if (isCapable) modelData[m.col].capable += val;
+      // Always add to total
+      modelData[m.col].total += val;
+    }
+  }
+
+  // Build products
+  const products = [];
+  for (const m of modelNames) {
+    const d = modelData[m.col];
+    const deployed = d.active;
+    const available = d.capable;
+    const total = d.total; // active + inactive + capable
+    const name = 'iPad ' + d.name;
+
+    products.push({
+      id: 'sheet-' + name.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase(),
+      name,
+      partNumber: '',
+      manufacturer: 'Apple',
+      category: guessCategory(name),
+      totalStock: total,
+      deployed,
+      available,
+      utilization: total > 0 ? Math.round((deployed / total) * 100) : 0,
+      status: available < 3 && total > 0 ? 'low' : available < 10 && total > 0 ? 'watch' : 'ok',
+      msrp: null,
+      source: 'google-sheet',
+      notes: `Active: ${d.active}, Inactive: ${d.inactive}, Capable: ${d.capable}`,
+      forecast: { demand: 0, returns: 0, projected: available, upcomingOrders: [] }
+    });
+  }
+
+  console.log(`[Sheets] Pivot: ${modelNames.length} models parsed`);
+  return products;
+}
+
+/**
+ * Parse standard table format (one row per model)
+ */
+function parseStandardFormat(rows) {
+  const headerRow = rows[0];
+  const headers = headerRow.map(h => h.toString().trim().toLowerCase());
   const colMap = detectColumns(headers);
-  console.log(`[Sheets] Column mapping: ${JSON.stringify(colMap)}`);
+  console.log(`[Sheets] Standard format columns: ${JSON.stringify(colMap)}`);
 
-  const allProducts = [];
+  const products = [];
+  for (let i = 1; i < rows.length; i++) {
+    const row = {};
+    for (let j = 0; j < headers.length; j++) {
+      row[headers[j]] = (rows[i][j] !== undefined) ? rows[i][j].toString().trim() : '';
+    }
 
-  for (const row of rows) {
     const name = row[colMap.name] || '';
     if (!name) continue;
 
@@ -199,7 +292,7 @@ async function fetchInventory() {
     const partNumber = row[colMap.partNumber] || '';
     const manufacturer = row[colMap.manufacturer] || guessMfg(name);
 
-    allProducts.push({
+    products.push({
       id: 'sheet-' + name.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase(),
       name,
       partNumber,
@@ -217,10 +310,7 @@ async function fetchInventory() {
     });
   }
 
-  sheetCache = allProducts;
-  sheetCacheTime = Date.now();
-  console.log(`[Sheets] Loaded ${allProducts.length} products from Google Sheets`);
-  return allProducts;
+  return products;
 }
 
 /**
