@@ -7394,6 +7394,7 @@ app.get('/api/inventory/sheets-status', (req, res) => {
     sheetId: googleSheets.getSheetId(),
     cached: !!googleSheets.getCache(),
     productCount: googleSheets.getCache()?.length || 0,
+    lastError: googleSheets.getLastError ? googleSheets.getLastError() : null,
     sheetUrl: `https://docs.google.com/spreadsheets/d/${googleSheets.getSheetId()}/edit`
   });
 });

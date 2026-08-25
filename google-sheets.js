@@ -2,82 +2,58 @@
  * Google Sheets Inventory Reader
  * 
  * Reads iPad/iPhone inventory from a shared Google Sheet.
- * Uses raw HTTP fetch with service account JWT auth — no googleapis client.
- * 
- * Required env vars:
- *   GOOGLE_SERVICE_ACCOUNT_KEY — JSON key file contents (raw or base64)
+ * Uses googleapis Drive client with Promise.race timeout.
  */
 
 const { google } = require('googleapis');
 
 const SHEET_ID = process.env.GOOGLE_SHEETS_INVENTORY_ID || '1alke7dZUvO_273oklR3UKmWmdVi6_hYCOjf_W6OacJ0';
 const CACHE_TTL = 5 * 60 * 1000;
-let authClient = null;
+const API_TIMEOUT = 30000; // 30 seconds
+let driveClient = null;
 let sheetCache = null;
 let sheetCacheTime = null;
+let lastError = null;
 
-/**
- * Get an authenticated GoogleAuth client (for access tokens only)
- */
-function getAuth() {
-  if (authClient) return authClient;
-
+function getDriveClient() {
+  if (driveClient) return driveClient;
   const keyRaw = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
   if (!keyRaw) return null;
-
   try {
     let keyData;
     try { keyData = JSON.parse(keyRaw); } catch { keyData = JSON.parse(Buffer.from(keyRaw, 'base64').toString('utf8')); }
-
-    authClient = new google.auth.GoogleAuth({
+    const auth = new google.auth.GoogleAuth({
       credentials: keyData,
       scopes: ['https://www.googleapis.com/auth/drive.readonly'],
     });
-    console.log('[Sheets] Auth initialized');
-    return authClient;
+    driveClient = google.drive({ version: 'v3', auth });
+    console.log('[Sheets] Drive client ready');
+    return driveClient;
   } catch (err) {
-    console.error('[Sheets] Auth init error:', err.message);
+    lastError = err.message;
+    console.error('[Sheets] Init error:', err.message);
     return null;
   }
 }
 
-/**
- * Get access token string
- */
-async function getAccessToken() {
-  const auth = getAuth();
-  if (!auth) return null;
-  const client = await auth.getClient();
-  const token = await client.getAccessToken();
-  return token.token || token;
-}
-
-/**
- * Parse CSV text into 2D array
- */
 function parseCSV(csvText) {
   const rows = [];
-  let currentRow = [];
-  let field = '';
-  let inQuotes = false;
-
+  let currentRow = [], field = '', inQuotes = false;
   for (let i = 0; i < csvText.length; i++) {
-    const ch = csvText[i];
-    const next = csvText[i + 1];
-
+    const ch = csvText[i], next = csvText[i + 1];
     if (inQuotes) {
       if (ch === '"' && next === '"') { field += '"'; i++; }
-      else if (ch === '"') { inQuotes = false; }
-      else { field += ch; }
+      else if (ch === '"') inQuotes = false;
+      else field += ch;
     } else {
-      if (ch === '"') { inQuotes = true; }
+      if (ch === '"') inQuotes = true;
       else if (ch === ',') { currentRow.push(field.trim()); field = ''; }
       else if (ch === '\n' || (ch === '\r' && next === '\n')) {
         currentRow.push(field.trim());
         if (currentRow.some(f => f !== '')) rows.push(currentRow);
         currentRow = []; field = '';
         if (ch === '\r') i++;
-      } else { field += ch; }
+      } else field += ch;
     }
   }
   if (field || currentRow.length > 0) {
@@ -88,45 +64,41 @@ function parseCSV(csvText) {
 }
 
 /**
- * Export sheet as CSV via direct HTTP with timeout
+ * Export CSV with timeout using Promise.race
  */
 async function exportCSV() {
-  const token = await getAccessToken();
-  if (!token) { console.log('[Sheets] No access token'); return null; }
-
-  const url = `https://www.googleapis.com/drive/v3/files/${SHEET_ID}/export?mimeType=${encodeURIComponent('text/csv')}`;
+  const client = getDriveClient();
+  if (!client) { lastError = 'No drive client'; return null; }
 
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 45000);
-
-    const resp = await fetch(url, {
-      headers: { 'Authorization': `Bearer ${token}` },
-      signal: controller.signal
+    const exportPromise = client.files.export({
+      fileId: SHEET_ID,
+      mimeType: 'text/csv',
     });
-    clearTimeout(timeout);
 
-    if (!resp.ok) {
-      const errText = await resp.text();
-      console.error(`[Sheets] Export failed ${resp.status}: ${errText.slice(0, 200)}`);
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Drive export timed out after 30s')), API_TIMEOUT)
+    );
+
+    const response = await Promise.race([exportPromise, timeoutPromise]);
+    const csvText = response.data;
+
+    if (!csvText || typeof csvText !== 'string') {
+      lastError = 'Empty or non-string CSV response';
       return null;
     }
 
-    const csvText = await resp.text();
-    if (!csvText) { console.log('[Sheets] Empty CSV'); return null; }
-
     const rows = parseCSV(csvText);
+    lastError = null;
     console.log(`[Sheets] Exported ${rows.length} rows, ${rows[0]?.length || 0} cols`);
     return rows;
   } catch (err) {
+    lastError = err.message;
     console.error('[Sheets] Export error:', err.message);
     return null;
   }
 }
 
-/**
- * Main: fetch inventory
- */
 async function fetchInventory() {
   if (sheetCache && sheetCacheTime && (Date.now() - sheetCacheTime < CACHE_TTL)) {
     return sheetCache;
@@ -148,11 +120,6 @@ async function fetchInventory() {
   return products;
 }
 
-/**
- * Pivot table parser:
- * Headers: [blank], 5th Gen, 6th Gen, ..., Grand Total
- * Rows:    4G Active (has SIM), 4G Inactive (damaged), 4G Capable (no SIM)
- */
 function parsePivotFormat(rows) {
   const headers = rows[0];
   const models = [];
@@ -233,35 +200,15 @@ function clearCache() { sheetCache = null; sheetCacheTime = null; }
 
 async function debugRead() {
   try {
-    const token = await getAccessToken();
-    if (!token) return { error: 'No access token - check GOOGLE_SERVICE_ACCOUNT_KEY' };
-
-    const url = `https://www.googleapis.com/drive/v3/files/${SHEET_ID}/export?mimeType=${encodeURIComponent('text/csv')}`;
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 45000);
-
-    const resp = await fetch(url, {
-      headers: { 'Authorization': `Bearer ${token}` },
-      signal: controller.signal
-    });
-    clearTimeout(timeout);
-
-    if (!resp.ok) {
-      const errText = await resp.text();
-      return { error: `HTTP ${resp.status}`, detail: errText.slice(0, 500), url };
-    }
-
-    const csvText = await resp.text();
-    if (!csvText) return { error: 'Empty CSV body' };
-
-    const rows = parseCSV(csvText);
-    return { sheetId: SHEET_ID, rowCount: rows.length, headers: rows[0], rows: rows.slice(0, 6) };
+    const rows = await exportCSV();
+    if (!rows) return { error: lastError || 'Export failed', sheetId: SHEET_ID };
+    return { sheetId: SHEET_ID, success: true, rowCount: rows.length, headers: rows[0], rows: rows.slice(0, 6) };
   } catch (e) {
-    return { error: e.message, name: e.name };
+    return { error: e.message, sheetId: SHEET_ID };
   }
 }
 
 module.exports = {
   fetchInventory, isConfigured, clearCache, debugRead,
-  getCache: () => sheetCache, getSheetId: () => SHEET_ID
+  getCache: () => sheetCache, getSheetId: () => SHEET_ID, getLastError: () => lastError
 };
