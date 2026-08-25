@@ -221,9 +221,9 @@ function buildContext() {
           .map(p => ({
             name: p.name, total: p.totalStock, deployed: p.deployed,
             available: p.available, utilization: p.utilization + '%', status: p.status,
-            demand30: p.forecast?.demand30 || 0,
-            returns30: p.forecast?.returns30 || 0,
-            projected30: p.forecast?.projected30 ?? p.available,
+            demand: p.forecast?.demand || 0,
+            returns: p.forecast?.returns || 0,
+            projected: p.forecast?.projected ?? p.available,
             upcomingOrders: (p.forecast?.upcomingOrders || []).map(o => o.id + ' (' + o.customer + ', ' + o.qty + 'x, ' + o.start + ')')
           })),
         // Shortage forecasts

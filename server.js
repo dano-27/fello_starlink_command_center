@@ -7388,7 +7388,14 @@ const INVENTORY_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 app.get('/api/inventory/dashboard', async (req, res) => {
   try {
-    if (inventoryCache && inventoryCacheTime && (Date.now() - inventoryCacheTime < INVENTORY_CACHE_TTL)) {
+    // Forecast window: ?days=N or ?from=YYYY-MM-DD&to=YYYY-MM-DD
+    const forecastDays = Math.min(365, Math.max(1, parseInt(req.query.days) || 30));
+    const customFrom = req.query.from || null;
+    const customTo = req.query.to || null;
+    const cacheKey = customFrom ? `${customFrom}_${customTo}` : `d${forecastDays}`;
+
+    // Cache per window (5 min TTL)
+    if (inventoryCache && inventoryCache._cacheKey === cacheKey && inventoryCacheTime && (Date.now() - inventoryCacheTime < INVENTORY_CACHE_TTL)) {
       return res.json(inventoryCache);
     }
 
@@ -7406,9 +7413,10 @@ app.get('/api/inventory/dashboard', async (req, res) => {
 
     const now = new Date();
     const today = now.toISOString().slice(0, 10);
-    const in7 = new Date(now.getTime() + 7 * 86400000).toISOString().slice(0, 10);
-    const in14 = new Date(now.getTime() + 14 * 86400000).toISOString().slice(0, 10);
-    const in30 = new Date(now.getTime() + 30 * 86400000).toISOString().slice(0, 10);
+    // Build forecast window
+    const windowEnd = customTo || new Date(now.getTime() + forecastDays * 86400000).toISOString().slice(0, 10);
+    const windowStart = customFrom || today;
+    const windowLabel = customFrom ? `${customFrom} to ${customTo}` : `${forecastDays}d`;
 
     // All orders with dates (confirmed, quote, tentative)
     const actionableOrders = allOrders.filter(o =>
@@ -7470,22 +7478,20 @@ app.get('/api/inventory/dashboard', async (req, res) => {
           deployedByModelId[mid].out += co;
           deployedByModelId[mid].in += ci;
 
-          // Demand: future orders or active but not yet checked out
+          // Demand: orders starting within the forecast window that need equipment
           if (isFuture || (isActive && co === 0)) {
-            if (!demandByModelId[mid]) demandByModelId[mid] = { d7: 0, d14: 0, d30: 0, orders: [] };
-            if (oStart <= in7) demandByModelId[mid].d7 += qty;
-            if (oStart <= in14) demandByModelId[mid].d14 += qty;
-            if (oStart <= in30) demandByModelId[mid].d30 += qty;
-            demandByModelId[mid].orders.push({ id: oid, customer: cust, start: oStart, end: oEnd, qty, status: oStatus });
+            if (oStart <= windowEnd && oStart >= windowStart) {
+              if (!demandByModelId[mid]) demandByModelId[mid] = { total: 0, orders: [] };
+              demandByModelId[mid].total += qty;
+              demandByModelId[mid].orders.push({ id: oid, customer: cust, start: oStart, end: oEnd, qty, status: oStatus });
+            }
           }
 
-          // Returns: orders ending soon with equipment still out
-          if (oEnd >= today && co > ci) {
+          // Returns: orders ending within the window with equipment still out
+          if (oEnd >= today && oEnd <= windowEnd && co > ci) {
             const returning = co - ci;
-            if (!returnsByModelId[mid]) returnsByModelId[mid] = { r7: 0, r14: 0, r30: 0 };
-            if (oEnd <= in7) returnsByModelId[mid].r7 += returning;
-            if (oEnd <= in14) returnsByModelId[mid].r14 += returning;
-            if (oEnd <= in30) returnsByModelId[mid].r30 += returning;
+            if (!returnsByModelId[mid]) returnsByModelId[mid] = { total: 0 };
+            returnsByModelId[mid].total += returning;
           }
         }
       }
@@ -7512,15 +7518,15 @@ app.get('/api/inventory/dashboard', async (req, res) => {
       totalStock += total;
       totalDeployed += deployed;
 
-      const demand = demandByModelId[mid] || { d7: 0, d14: 0, d30: 0, orders: [] };
-      const returns = returnsByModelId[mid] || { r7: 0, r14: 0, r30: 0 };
-      const projected30 = available - demand.d30 + returns.r30;
+      const demand = demandByModelId[mid] || { total: 0, orders: [] };
+      const returns = returnsByModelId[mid] || { total: 0 };
+      const projected = available - demand.total + returns.total;
 
       let status = 'ok';
       if ((available < 5 && total > 0) || utilization > 90) status = 'low';
       else if (utilization > 70) status = 'watch';
-      if (projected30 < 0 && demand.d30 > 0) status = 'shortage';
-      else if (projected30 < 5 && demand.d30 > 0 && status === 'ok') status = 'watch';
+      if (projected < 0 && demand.total > 0) status = 'shortage';
+      else if (projected < 5 && demand.total > 0 && status === 'ok') status = 'watch';
 
       const product = {
         id: mid, name: item.model_name || '', partNumber: item.part_number || '',
@@ -7530,18 +7536,16 @@ app.get('/api/inventory/dashboard', async (req, res) => {
         totalStock: total, deployed, available, utilization, status,
         msrp: item.msrp || null,
         forecast: {
-          demand7: demand.d7, demand14: demand.d14, demand30: demand.d30,
-          returns7: returns.r7, returns14: returns.r14, returns30: returns.r30,
-          projected30,
+          demand: demand.total, returns: returns.total, projected,
           upcomingOrders: demand.orders.slice(0, 5)
         }
       };
       if (status === 'shortage') {
-        shortages.push({ name: item.model_name, available, demand30: demand.d30, projected30, orders: demand.orders.map(o => o.id + ' (' + o.customer + ')').slice(0, 3) });
+        shortages.push({ name: item.model_name, available, demand: demand.total, projected, orders: demand.orders.map(o => o.id + ' (' + o.customer + ')').slice(0, 3) });
       }
       return product;
     })
-    .filter(p => p.totalStock > 0 || p.deployed > 0 || p.forecast.demand30 > 0)
+    .filter(p => p.totalStock > 0 || p.deployed > 0 || p.forecast.demand > 0)
     .sort((a, b) => b.totalStock - a.totalStock);
 
     const categories = {};
@@ -7553,6 +7557,7 @@ app.get('/api/inventory/dashboard', async (req, res) => {
     }
 
     const result = {
+      _cacheKey: cacheKey,
       summary: {
         totalModels: products.length, totalUnits: totalStock, totalDeployed,
         totalAvailable: totalStock - totalDeployed,
@@ -7560,7 +7565,10 @@ app.get('/api/inventory/dashboard', async (req, res) => {
         totalOrders: actionableOrders.length, shortageCount: shortages.length,
         lastUpdated: new Date().toISOString()
       },
-      forecast: { windows: { '7d': in7, '14d': in14, '30d': in30 }, shortages },
+      forecast: {
+        window: { from: windowStart, to: windowEnd, days: forecastDays, label: windowLabel },
+        shortages
+      },
       categories, products
     };
 

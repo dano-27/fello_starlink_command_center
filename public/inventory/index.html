@@ -586,6 +586,30 @@
         </div>
       </div>
 
+      <!-- Forecast Window Controls -->
+      <div class="controls" style="margin-top: -8px; padding-top: 0; gap: 12px; flex-wrap: wrap; align-items: flex-end;">
+        <div class="control-group" style="flex: none;">
+          <label>Forecast Window</label>
+          <div style="display: flex; gap: 4px;">
+            <button class="window-btn" data-days="7" style="padding: 6px 12px; font-size: 11px; font-weight: 600; border: 1.5px solid var(--border); border-radius: 8px; background: var(--white); cursor: pointer; font-family: var(--font); color: var(--charcol);">7d</button>
+            <button class="window-btn" data-days="14" style="padding: 6px 12px; font-size: 11px; font-weight: 600; border: 1.5px solid var(--border); border-radius: 8px; background: var(--white); cursor: pointer; font-family: var(--font); color: var(--charcol);">14d</button>
+            <button class="window-btn active" data-days="30" style="padding: 6px 12px; font-size: 11px; font-weight: 600; border: 1.5px solid var(--blue); border-radius: 8px; background: var(--sky); cursor: pointer; font-family: var(--font); color: var(--blue);">30d</button>
+            <button class="window-btn" data-days="60" style="padding: 6px 12px; font-size: 11px; font-weight: 600; border: 1.5px solid var(--border); border-radius: 8px; background: var(--white); cursor: pointer; font-family: var(--font); color: var(--charcol);">60d</button>
+            <button class="window-btn" data-days="90" style="padding: 6px 12px; font-size: 11px; font-weight: 600; border: 1.5px solid var(--border); border-radius: 8px; background: var(--white); cursor: pointer; font-family: var(--font); color: var(--charcol);">90d</button>
+          </div>
+        </div>
+        <div class="control-group" style="flex: none;">
+          <label>Custom Range</label>
+          <div style="display: flex; gap: 6px; align-items: center;">
+            <input type="date" id="forecast-from" style="padding: 5px 8px; font-size: 11px; border: 1.5px solid var(--border); border-radius: 8px; font-family: var(--font);">
+            <span style="font-size: 11px; color: var(--charcol);">to</span>
+            <input type="date" id="forecast-to" style="padding: 5px 8px; font-size: 11px; border: 1.5px solid var(--border); border-radius: 8px; font-family: var(--font);">
+            <button id="apply-custom-range" style="padding: 5px 12px; font-size: 11px; font-weight: 600; border: none; border-radius: 8px; background: var(--blue); color: white; cursor: pointer; font-family: var(--font);">Apply</button>
+          </div>
+        </div>
+        <div style="font-size: 11px; color: var(--charcol); margin-left: auto;" id="forecast-label">Showing: 30-day forecast</div>
+      </div>
+
       <div class="table-container">
         <table>
           <thead id="table-head">
@@ -612,6 +636,9 @@
     let allProducts = [];
     let dashboardData = null;
     let expandedProductIds = new Set();
+    let currentDays = 30;
+    let currentFrom = null;
+    let currentTo = null;
     
     const elements = {
       loading: document.getElementById('loading-state'),
@@ -669,7 +696,13 @@
       elements.content.classList.add('hidden');
 
       try {
-        const response = await fetch('/api/inventory/dashboard', {
+        let url = '/api/inventory/dashboard';
+        if (currentFrom && currentTo) {
+          url += `?from=${currentFrom}&to=${currentTo}`;
+        } else {
+          url += `?days=${currentDays}`;
+        }
+        const response = await fetch(url, {
           credentials: 'same-origin'
         });
 
@@ -704,7 +737,7 @@
           <div class="shortage-banner-header">
             <span>⚠️</span>
             <span>Shortage Alerts (${shortages.length})</span>
-            <span style="font-size: 13px; font-weight: 500; color: var(--charcol); margin-left: auto;">30-Day Forecast</span>
+            <span style="font-size: 13px; font-weight: 500; color: var(--charcol); margin-left: auto;">${dashboardData && dashboardData.forecast && dashboardData.forecast.window ? dashboardData.forecast.window.label : ''} Forecast</span>
           </div>
           <div class="shortage-banner-list">
             ${shortages.map(item => `
@@ -719,8 +752,8 @@
                 </div>
                 <div class="shortage-item-stats">
                   <span>Available: <strong>${formatNumber(item.available)}</strong></span>
-                  <span>30d Demand: <strong style="color: var(--blue);">${formatNumber(item.demand30)}</strong></span>
-                  <span>Projected: <span class="shortage-deficit-badge">${formatNumber(item.projected30)}</span></span>
+                  <span>Demand: <strong style="color: var(--blue);">${formatNumber(item.demand)}</strong></span>
+                  <span>Projected: <span class="shortage-deficit-badge">${formatNumber(item.projected)}</span></span>
                 </div>
               </div>
             `).join('')}
@@ -788,7 +821,8 @@
       const categoryFilter = elements.categoryFilter.value;
       const sortBy = elements.sortSelect.value;
 
-      const hasForecast = allProducts.some(p => p.forecast && (p.forecast.demand30 !== undefined || p.forecast.projected30 !== undefined));
+      const hasForecast = allProducts.some(p => p.forecast && (p.forecast.demand !== undefined || p.forecast.projected !== undefined));
+      const windowLabel = dashboardData && dashboardData.forecast && dashboardData.forecast.window ? dashboardData.forecast.window.label : `${currentDays}d`;
 
       // Update Header
       if (hasForecast) {
@@ -800,8 +834,8 @@
             <th>Total Stock</th>
             <th>Deployed</th>
             <th>Available</th>
-            <th>30d Demand</th>
-            <th>30d Returns</th>
+            <th>${windowLabel} Demand</th>
+            <th>${windowLabel} Returns</th>
             <th>Projected</th>
             <th>Utilization</th>
             <th>Status</th>
@@ -839,8 +873,8 @@
           case 'available-asc': return a.available - b.available;
           case 'utilization-desc': return b.utilization - a.utilization;
           case 'name-asc': return (a.name || '').localeCompare(b.name || '');
-          case 'demand-desc': return ((b.forecast && b.forecast.demand30) || 0) - ((a.forecast && a.forecast.demand30) || 0);
-          case 'projected-asc': return ((a.forecast && a.forecast.projected30) ?? a.available ?? 0) - ((b.forecast && b.forecast.projected30) ?? b.available ?? 0);
+          case 'demand-desc': return ((b.forecast && b.forecast.demand) || 0) - ((a.forecast && a.forecast.demand) || 0);
+          case 'projected-asc': return ((a.forecast && a.forecast.projected) ?? a.available ?? 0) - ((b.forecast && b.forecast.projected) ?? b.available ?? 0);
           default: return 0;
         }
       });
@@ -863,15 +897,15 @@
         
         let forecastColumnsHtml = '';
         if (hasForecast) {
-          const demand30 = p.forecast ? (p.forecast.demand30 || 0) : 0;
-          const returns30 = p.forecast ? (p.forecast.returns30 || 0) : 0;
-          const projected30 = p.forecast && p.forecast.projected30 !== undefined ? p.forecast.projected30 : p.available;
-          const isNegative = projected30 < 0;
+          const demand = p.forecast ? (p.forecast.demand || 0) : 0;
+          const returns = p.forecast ? (p.forecast.returns || 0) : 0;
+          const projected = p.forecast && p.forecast.projected !== undefined ? p.forecast.projected : p.available;
+          const isNegative = projected < 0;
 
           forecastColumnsHtml = `
-            <td><span style="color: var(--blue); font-weight: 600;">${formatNumber(demand30)}</span></td>
-            <td><span style="color: var(--success-color); font-weight: 600;">${formatNumber(returns30)}</span></td>
-            <td><span style="color: ${isNegative ? '#c62828' : 'inherit'}; font-weight: 600;">${formatNumber(projected30)}</span></td>
+            <td><span style="color: var(--blue); font-weight: 600;">${formatNumber(demand)}</span></td>
+            <td><span style="color: var(--success-color); font-weight: 600;">${formatNumber(returns)}</span></td>
+            <td><span style="color: ${isNegative ? '#c62828' : 'inherit'}; font-weight: 600;">${formatNumber(projected)}</span></td>
           `;
         }
 
@@ -955,6 +989,46 @@
     elements.searchInput.addEventListener('input', renderTable);
     elements.categoryFilter.addEventListener('change', renderTable);
     elements.sortSelect.addEventListener('change', renderTable);
+
+    // Forecast window preset buttons
+    document.querySelectorAll('.window-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        currentDays = parseInt(btn.dataset.days);
+        currentFrom = null;
+        currentTo = null;
+        // Update active button styles
+        document.querySelectorAll('.window-btn').forEach(b => {
+          b.style.border = '1.5px solid var(--border)';
+          b.style.background = 'var(--white)';
+          b.style.color = 'var(--charcol)';
+        });
+        btn.style.border = '1.5px solid var(--blue)';
+        btn.style.background = 'var(--sky)';
+        btn.style.color = 'var(--blue)';
+        document.getElementById('forecast-label').textContent = `Showing: ${currentDays}-day forecast`;
+        document.getElementById('forecast-from').value = '';
+        document.getElementById('forecast-to').value = '';
+        fetchData();
+      });
+    });
+
+    // Custom date range
+    document.getElementById('apply-custom-range').addEventListener('click', () => {
+      const from = document.getElementById('forecast-from').value;
+      const to = document.getElementById('forecast-to').value;
+      if (!from || !to) { alert('Please select both From and To dates'); return; }
+      if (from > to) { alert('From date must be before To date'); return; }
+      currentFrom = from;
+      currentTo = to;
+      // Deactivate preset buttons
+      document.querySelectorAll('.window-btn').forEach(b => {
+        b.style.border = '1.5px solid var(--border)';
+        b.style.background = 'var(--white)';
+        b.style.color = 'var(--charcol)';
+      });
+      document.getElementById('forecast-label').textContent = `Showing: ${from} to ${to}`;
+      fetchData();
+    });
 
     // Initial fetch
     document.addEventListener('DOMContentLoaded', fetchData);
