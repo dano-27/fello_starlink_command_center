@@ -258,6 +258,8 @@ async function chat(userMessage, history = []) {
 
   // Build fresh context
   const context = buildContext();
+  const contextJson = JSON.stringify(context, null, 2);
+  console.log(`[AI] Context size: ${(contextJson.length / 1024).toFixed(1)}KB, orders: ${Object.keys(context.orderHealth || {}).length}`);
 
   // Convert history to Gemini format
   const geminiHistory = [];
@@ -265,7 +267,7 @@ async function chat(userMessage, history = []) {
   // First message includes context
   geminiHistory.push({
     role: 'user',
-    parts: [{ text: `Here is the current real-time operational data:\n\n\`\`\`json\n${JSON.stringify(context, null, 2)}\n\`\`\`\n\nUse this data to answer my questions. Acknowledge briefly.` }]
+    parts: [{ text: `Here is the current real-time operational data:\n\n\`\`\`json\n${contextJson}\n\`\`\`\n\nUse this data to answer my questions. Acknowledge briefly.` }]
   });
   geminiHistory.push({
     role: 'model',
@@ -281,7 +283,7 @@ async function chat(userMessage, history = []) {
   }
 
   // Retry with exponential backoff
-  const MAX_RETRIES = 3;
+  const MAX_RETRIES = 2;
   const MODELS = ['gemini-3.7-flash', 'gemini-3.6-flash'];
   let lastError = null;
 
@@ -297,7 +299,7 @@ async function chat(userMessage, history = []) {
         // 30-second timeout
         const result = await Promise.race([
           chatSession.sendMessage(userMessage),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('Request timed out after 30s')), 30000))
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Request timed out after 15s')), 15000))
         ]);
         return result.response.text();
       } catch (e) {
