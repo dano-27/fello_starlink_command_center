@@ -7397,7 +7397,7 @@ app.get('/api/inventory/dashboard', async (req, res) => {
     const imsBase = process.env.IMS_BASE_URL || process.env.IMS_NEXTGEN_URL || 'https://ims-v4-migration-prod-876702752852.us-east4.run.app';
     const headers = { 'Authorization': 'Bearer ' + imsToken, 'Accept': 'application/json' };
 
-    // Fetch inventory models and orders in parallel
+    // Fetch NextGen inventory models and NextGen orders in parallel
     const [invResp, ordersResp] = await Promise.all([
       fetch(imsBase + '/api/inventory', { headers }),
       fetch(imsBase + '/api/orders', { headers })
@@ -7407,18 +7407,33 @@ app.get('/api/inventory/dashboard', async (req, res) => {
     const inventory = await invResp.json();
     const orders = ordersResp.ok ? await ordersResp.json() : [];
 
-    // Get confirmed/active order IDs for detail lookup
+    // Get confirmed/active NextGen order IDs
     const activeOrders = orders.filter(o => o.status === 'confirmed' || o.status === 'active');
-    console.log('[Inventory] ' + inventory.length + ' products, ' + activeOrders.length + ' active orders');
 
-    // Fetch order details in batches to get checkout amounts
-    const deployedByModel = {}; // model_name -> { checkedOut, checkedIn }
-    const BATCH = 10;
-    for (let i = 0; i < activeOrders.length; i += BATCH) {
-      const batch = activeOrders.slice(i, i + BATCH);
-      const details = await Promise.all(batch.map(async (o) => {
+    // Discover legacy order IDs from Webbing branches (SQ, LE, etc.)
+    const webbingBranches = new Set();
+    for (const d of webbingDeviceCache) {
+      if (d.BranchName) webbingBranches.add(d.BranchName.toUpperCase());
+    }
+    const nextgenIds = new Set(orders.map(o => o.fly_order_id));
+    const legacyBranches = [...webbingBranches].filter(b => /^[A-Z]{2,4}\d+$/.test(b) && !nextgenIds.has(b));
+
+    // Combine all order IDs to scan
+    const allOrderIds = [
+      ...activeOrders.map(o => o.fly_order_id),
+      ...legacyBranches
+    ];
+    console.log('[Inventory] ' + inventory.length + ' NextGen products, ' + activeOrders.length + ' NextGen orders, ' + legacyBranches.length + ' legacy branches');
+
+    // Fetch order details in batches — discover legacy models + get checkout amounts
+    const modelsById = {};
+    const deployedByModelId = {};
+    const BATCH = 15;
+    for (let i = 0; i < allOrderIds.length; i += BATCH) {
+      const batch = allOrderIds.slice(i, i + BATCH);
+      const details = await Promise.all(batch.map(async (oid) => {
         try {
-          const resp = await fetch(imsBase + '/api/nextgen/v1/orders/' + o.fly_order_id, { headers });
+          const resp = await fetch(imsBase + '/api/nextgen/v1/orders/' + oid, { headers });
           return resp.ok ? await resp.json() : null;
         } catch { return null; }
       }));
@@ -7426,20 +7441,47 @@ app.get('/api/inventory/dashboard', async (req, res) => {
       for (const detail of details) {
         if (!detail || !detail.rentals) continue;
         for (const rental of detail.rentals) {
-          const modelName = (rental.model && rental.model.model_name) || '';
-          if (!modelName) continue;
-          if (!deployedByModel[modelName]) deployedByModel[modelName] = { out: 0, in: 0 };
-          deployedByModel[modelName].out += rental.checkout_amount || 0;
-          deployedByModel[modelName].in += rental.checkin_amount || 0;
+          const model = rental.model;
+          if (!model || !model.id) continue;
+          const mid = model.id;
+          if (!modelsById[mid]) {
+            modelsById[mid] = {
+              id: mid,
+              model_name: model.model_name || '',
+              item_total: model.item_total || 0,
+              model_category: model.model_category || 0,
+              manufacturer_name: model.manufacturer_name || '',
+              part_number: model.part_number || '',
+              msrp: model.msrp || null,
+              min_stock: model.min_stock || 0,
+              env: model.env || 'legacy'
+            };
+          }
+          if (!deployedByModelId[mid]) deployedByModelId[mid] = { out: 0, in: 0 };
+          deployedByModelId[mid].out += rental.checkout_amount || 0;
+          deployedByModelId[mid].in += rental.checkin_amount || 0;
         }
       }
     }
 
-    // Build dashboard data
+    // Build unified model list: NextGen inventory + any legacy models not already in NextGen
+    const nextgenModelIds = new Set(inventory.map(i => i.id));
+    const allModels = [...inventory];
+    let legacyCount = 0;
+    for (const mid of Object.keys(modelsById)) {
+      if (!nextgenModelIds.has(Number(mid))) {
+        allModels.push(modelsById[mid]);
+        legacyCount++;
+      }
+    }
+    console.log('[Inventory] Discovered ' + legacyCount + ' legacy models from order rental data');
+
+    // Build dashboard products — filter out items with no stock and no deployments
     let totalStock = 0, totalDeployed = 0;
-    const products = inventory.map(item => {
+    const products = allModels.map(item => {
+      const mid = item.id;
       const total = item.item_total || 0;
-      const dep = deployedByModel[item.model_name] || { out: 0, in: 0 };
+      const dep = deployedByModelId[mid] || { out: 0, in: 0 };
       const deployed = Math.max(0, dep.out - dep.in);
       const available = Math.max(0, total - deployed);
       const utilization = total > 0 ? Math.round((deployed / total) * 100) : 0;
@@ -7447,11 +7489,11 @@ app.get('/api/inventory/dashboard', async (req, res) => {
       totalDeployed += deployed;
 
       let status = 'ok';
-      if (available < 5 && total > 0 || utilization > 90) status = 'low';
+      if ((available < 5 && total > 0) || utilization > 90) status = 'low';
       else if (utilization > 70) status = 'watch';
 
       return {
-        id: item.id,
+        id: mid,
         name: item.model_name || '',
         partNumber: item.part_number || '',
         manufacturer: item.manufacturer_name || '',
@@ -7463,9 +7505,12 @@ app.get('/api/inventory/dashboard', async (req, res) => {
         utilization,
         status,
         msrp: item.msrp || null,
-        minStock: item.min_stock || 0
+        minStock: item.min_stock || 0,
+        source: item.env === 'nextgen' ? 'nextgen' : 'legacy'
       };
-    }).sort((a, b) => b.totalStock - a.totalStock);
+    })
+    .filter(p => p.totalStock > 0 || p.deployed > 0)
+    .sort((a, b) => b.totalStock - a.totalStock);
 
     const categories = {};
     for (const p of products) {
@@ -7483,6 +7528,7 @@ app.get('/api/inventory/dashboard', async (req, res) => {
         totalAvailable: totalStock - totalDeployed,
         utilization: totalStock > 0 ? Math.round((totalDeployed / totalStock) * 100) : 0,
         activeOrders: activeOrders.length,
+        legacyOrders: legacyBranches.length,
         lastUpdated: new Date().toISOString()
       },
       categories,
@@ -7491,7 +7537,7 @@ app.get('/api/inventory/dashboard', async (req, res) => {
 
     inventoryCache = result;
     inventoryCacheTime = Date.now();
-    console.log('[Inventory] Dashboard built: ' + products.length + ' products, ' + totalStock + ' units, ' + totalDeployed + ' deployed');
+    console.log('[Inventory] Dashboard: ' + products.length + ' products, ' + totalStock.toLocaleString() + ' units, ' + totalDeployed + ' deployed (' + legacyCount + ' legacy)');
     res.json(result);
   } catch (err) {
     console.error('[Inventory] Dashboard error:', err.message);
