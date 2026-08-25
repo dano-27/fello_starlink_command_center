@@ -45,6 +45,7 @@ function isConfigured() {
  */
 function buildContext() {
   const ctx = {};
+  const now = new Date();
 
   // Webbing device stats
   try {
@@ -53,27 +54,20 @@ function buildContext() {
     const suspended = cache.filter(d => d.StatusID === 4).length;
     const inactive = cache.filter(d => d.StatusID === 2).length;
 
-    // Branch breakdown (top 20 by device count)
+    // Branch breakdown — ALL branches with active devices
     const branchMap = {};
     for (const d of cache) {
       const name = d.BranchName || 'Unknown';
-      if (!branchMap[name]) branchMap[name] = { total: 0, active: 0, suspended: 0 };
+      if (!branchMap[name]) branchMap[name] = { total: 0, active: 0, suspended: 0, branchId: d.BranchID };
       branchMap[name].total++;
       if (d.StatusID === 3) branchMap[name].active++;
       if (d.StatusID === 4) branchMap[name].suspended++;
     }
-    const topBranches = Object.entries(branchMap)
-      .sort((a, b) => b[1].active - a[1].active)
-      .slice(0, 20)
-      .map(([name, stats]) => ({ name, ...stats }));
 
     ctx.webbingDevices = {
-      total: cache.length,
-      active,
-      suspended,
-      inactive,
+      total: cache.length, active, suspended, inactive,
       lastSync: dataSources.getWebbingCacheTime(),
-      topBranches
+      branches: branchMap
     };
   } catch (e) {
     ctx.webbingDevices = { error: e.message };
@@ -82,101 +76,157 @@ function buildContext() {
   // SimpleMDM stats
   try {
     const mdmCache = dataSources.getSimpleMdmCache();
-    const accounts = {};
+    const mdmGroups = {};
+    let totalMdm = 0;
     for (const [acctId, devices] of Object.entries(mdmCache)) {
-      accounts[acctId] = { deviceCount: devices.length };
+      for (const d of devices) {
+        // Extract order prefix from device name (e.g., "SQ14315 (1)" → "SQ14315")
+        const nameMatch = (d.name || '').match(/^([A-Z]{2,4}\d+)/i);
+        if (nameMatch) {
+          const order = nameMatch[1].toUpperCase();
+          if (!mdmGroups[order]) mdmGroups[order] = { count: 0, account: acctId };
+          mdmGroups[order].count++;
+        }
+        totalMdm++;
+      }
     }
-    ctx.simpleMdm = {
-      accounts,
-      totalDevices: Object.values(mdmCache).reduce((sum, devs) => sum + devs.length, 0),
-      lastSync: dataSources.getSimpleMdmCacheTime()
-    };
+    ctx.simpleMdm = { totalDevices: totalMdm, lastSync: dataSources.getSimpleMdmCacheTime(), orderGroups: mdmGroups };
   } catch (e) {
     ctx.simpleMdm = { error: e.message };
   }
 
-  // Active share tokens (Pulse links)
+  // Active share tokens (Pulse links) with usage data
   try {
     const tokens = dataSources.getShareTokens();
-    const activeTokens = Object.entries(tokens).map(([token, data]) => ({
-      orderId: data.orderId,
-      createdBy: data.createdBy,
-      expiresAt: data.expiresAt,
-      totalUsageGb: data.cachedUsage ? (data.cachedUsage.totalUsageBytes / (1024 * 1024 * 1024)).toFixed(2) : null,
-      totalAllocationGb: data.cachedUsage ? (data.cachedUsage.totalAllocationBytes / (1024 * 1024 * 1024)).toFixed(1) : null,
-      deviceCount: data.cachedUsage ? data.cachedUsage.deviceCount : null,
-      usagePercent: data.cachedUsage && data.cachedUsage.totalAllocationBytes > 0
-        ? ((data.cachedUsage.totalUsageBytes / data.cachedUsage.totalAllocationBytes) * 100).toFixed(1) + '%'
-        : null
-    }));
-    ctx.pulseLinks = {
-      count: activeTokens.length,
-      links: activeTokens
-    };
+    const pulseOrders = {};
+    for (const [token, data] of Object.entries(tokens)) {
+      const usage = data.cachedUsage || {};
+      const totalBytes = usage.totalUsageBytes || 0;
+      const allocBytes = usage.totalAllocationBytes || 0;
+      const pct = allocBytes > 0 ? (totalBytes / allocBytes * 100) : null;
+      pulseOrders[data.orderId] = {
+        createdBy: data.createdBy,
+        expiresAt: data.expiresAt,
+        daysUntilExpiry: data.expiresAt ? Math.round((new Date(data.expiresAt) - now) / 86400000) : null,
+        usageGb: (totalBytes / (1024 ** 3)).toFixed(2),
+        allocationGb: (allocBytes / (1024 ** 3)).toFixed(1),
+        usagePercent: pct !== null ? pct.toFixed(1) : null,
+        deviceCount: usage.deviceCount || null,
+        riskLevel: pct >= 95 ? 'CRITICAL' : pct >= 80 ? 'WARNING' : pct !== null ? 'OK' : 'NO_DATA'
+      };
+    }
+    ctx.pulseOrders = pulseOrders;
   } catch (e) {
-    ctx.pulseLinks = { error: e.message };
+    ctx.pulseOrders = { error: e.message };
   }
 
   // DCR submissions
   try {
     const subs = dataSources.getDcrSubmissions();
-    const pending = subs.filter(s => s.status === 'pending');
-    const inProgress = subs.filter(s => s.status === 'in_progress');
-    const completed = subs.filter(s => s.status === 'completed');
-    const recent = subs.slice(0, 10).map(s => ({
-      id: s.id,
-      orderNumber: s.orderNumber,
-      company: s.company,
-      eventName: s.eventName,
-      status: s.status,
-      timestamp: s.timestamp,
-      appCount: s.apps ? s.apps.length : 0,
-      fileCount: s.files ? s.files.length : 0
-    }));
-
-    ctx.dcrRequests = {
-      total: subs.length,
-      pending: pending.length,
-      inProgress: inProgress.length,
-      completed: completed.length,
-      recent
-    };
+    const dcrByOrder = {};
+    for (const s of subs) {
+      const order = s.orderNumber || 'UNKNOWN';
+      if (!dcrByOrder[order]) dcrByOrder[order] = { pending: 0, in_progress: 0, completed: 0, latest: null, company: s.company, eventName: s.eventName };
+      dcrByOrder[order][s.status || 'pending']++;
+      if (!dcrByOrder[order].latest || new Date(s.timestamp) > new Date(dcrByOrder[order].latest)) {
+        dcrByOrder[order].latest = s.timestamp;
+      }
+    }
+    ctx.dcrByOrder = dcrByOrder;
   } catch (e) {
-    ctx.dcrRequests = { error: e.message };
+    ctx.dcrByOrder = { error: e.message };
   }
 
-  ctx.currentTime = new Date().toISOString();
+  // ── Cross-Reference: Unified Order Health ──
+  // Build a per-order view combining Webbing, MDM, Pulse, and DCR data
+  try {
+    const allOrders = new Set();
+    if (ctx.pulseOrders && typeof ctx.pulseOrders === 'object') Object.keys(ctx.pulseOrders).forEach(o => allOrders.add(o));
+    if (ctx.dcrByOrder && typeof ctx.dcrByOrder === 'object') Object.keys(ctx.dcrByOrder).forEach(o => allOrders.add(o));
+
+    const orderHealth = {};
+    for (const orderId of allOrders) {
+      const pulse = ctx.pulseOrders?.[orderId] || null;
+      const dcr = ctx.dcrByOrder?.[orderId] || null;
+      const branch = ctx.webbingDevices?.branches?.[orderId] || null;
+      const mdm = ctx.simpleMdm?.orderGroups?.[orderId] || null;
+
+      const issues = [];
+      // Data usage warnings
+      if (pulse?.riskLevel === 'CRITICAL') issues.push('🚨 Data usage at ' + pulse.usagePercent + '% — approaching limit');
+      else if (pulse?.riskLevel === 'WARNING') issues.push('⚠️ Data usage at ' + pulse.usagePercent + '% — monitor closely');
+      // Expiring soon
+      if (pulse?.daysUntilExpiry !== null && pulse.daysUntilExpiry <= 2 && pulse.daysUntilExpiry >= 0) issues.push('⏰ Pulse link expires in ' + pulse.daysUntilExpiry + ' day(s)');
+      if (pulse?.daysUntilExpiry !== null && pulse.daysUntilExpiry < 0) issues.push('❌ Pulse link EXPIRED ' + Math.abs(pulse.daysUntilExpiry) + ' day(s) ago');
+      // Count mismatches
+      if (branch && mdm && branch.active !== mdm.count) issues.push('📊 Device mismatch: ' + branch.active + ' active SIMs vs ' + mdm.count + ' iPads in MDM');
+      // Pending DCRs
+      if (dcr && dcr.pending > 0) issues.push('📋 ' + dcr.pending + ' pending DCR(s) — customer waiting');
+
+      orderHealth[orderId] = {
+        company: dcr?.company || null,
+        eventName: dcr?.eventName || null,
+        webbingSims: branch ? { active: branch.active, suspended: branch.suspended, total: branch.total } : null,
+        mdmDevices: mdm?.count || null,
+        dataUsage: pulse ? { usageGb: pulse.usageGb, allocationGb: pulse.allocationGb, percent: pulse.usagePercent, risk: pulse.riskLevel } : null,
+        pulseExpiry: pulse?.expiresAt || null,
+        dcrStatus: dcr ? { pending: dcr.pending, inProgress: dcr.in_progress, completed: dcr.completed } : null,
+        issues
+      };
+    }
+    ctx.orderHealth = orderHealth;
+  } catch (e) {
+    ctx.orderHealthError = e.message;
+  }
+
+  // System health
+  ctx.systemHealth = {
+    webbingSynced: !!dataSources.getWebbingCacheTime(),
+    mdmSynced: !!dataSources.getSimpleMdmCacheTime(),
+    webbingLastSync: dataSources.getWebbingCacheTime(),
+    mdmLastSync: dataSources.getSimpleMdmCacheTime()
+  };
+  ctx.currentTime = now.toISOString();
   return ctx;
 }
 
-const SYSTEM_PROMPT = `You are Fello AI, an intelligent operations assistant for the Fello Command Center.
+const SYSTEM_PROMPT = `You are Fello AI — a senior operations analyst embedded in Fello's Command Center. You don't just list facts. You THINK like a veteran ops manager who's been running event tech logistics for years.
 
 ## About Fello
-Fello is an event technology company that rents iPads, hotspots, and connectivity solutions to businesses for events, conferences, trade shows, and more. Key systems:
+Fello rents iPads, hotspots, Starlink terminals, and cellular connectivity solutions for events. Every rental is an "order" (e.g., SQ14315, FE16443). The ops team needs to track device provisioning, data usage, customer configuration requests, and equipment readiness.
 
-- **Webbing IoT Platform**: Manages SIM cards and cellular lines. Devices have statuses: Active (StatusID 3), Suspended (4), Inactive (2). Organized into "branches" by order number.
-- **SimpleMDM**: Mobile device management for iPads. Devices are organized into groups named by order number (e.g., "FE12997 - Ali Forney Center").
-- **IMS (Inventory Management)**: Tracks orders, line items, customers, rental dates.
-- **Fello Pulse**: Customer-facing data usage dashboards shared via unique links (share tokens).
-- **DCR (Device Configuration Requests)**: Form submissions from customers specifying app installs, wallpapers, Wi-Fi configs, lockdown modes, etc.
+## Systems You Have Access To
+- **Webbing**: SIM management. Active (StatusID 3), Suspended (4), Inactive (2). Branches map to orders.
+- **SimpleMDM**: iPad management. Groups map to orders by name prefix.
+- **Pulse**: Customer-facing data dashboards with share links. Shows real-time usage vs allocation.
+- **DCR**: Device Configuration Requests from customers (apps, wallpapers, WiFi, kiosk mode, etc.)
 
-## Your Role
-- Answer questions about current operations using the real-time data provided
-- Identify issues proactively (data usage warnings, mismatched device counts, pending DCRs)
-- Provide actionable recommendations
-- Help draft customer communications
-- Summarize fleet status and order health
+## How to Think
 
-## Guidelines
-- Be concise and direct — this is an internal ops tool, not customer-facing
-- Keep responses SHORT — you are in a small chat bubble, not a full page
-- Use bullet points and bold text for readability
-- Use small tables only when comparing 3+ items, otherwise use bullet lists
-- Use ### for section headers (not #)
-- When citing numbers, always specify the source (e.g., "from Webbing cache", "from Pulse data")
-- Flag any data usage over 80% as a warning, over 95% as critical
-- If data is unavailable, say so clearly — don't guess
-- Current time is provided in the context data`;
+**Always cross-reference.** The \`orderHealth\` object already connects data across all systems for each order. Use it to find:
+- Orders where SIM count ≠ iPad count → provisioning gap
+- Orders with high data usage AND pending DCRs → customer may be having issues
+- Pulse links expiring soon → customer will lose visibility
+- Orders with devices but no Pulse link → customer hasn't been set up yet
+
+**Prioritize by urgency:**
+1. 🚨 CRITICAL: Data > 95%, expired Pulse links, device mismatches on active events
+2. ⚠️ WARNING: Data > 80%, Pulse expiring within 2 days, pending DCRs > 48hrs old
+3. ℹ️ INFO: Normal operations, completed DCRs, healthy usage
+
+**Be opinionated.** Don't just say "SQ14315 has 24 SIMs." Say "SQ14315 has 24 active SIMs but only 18 iPads in MDM — 6 SIMs may be unassigned. Check if they need more iPads or if 6 SIMs should be suspended to save cost."
+
+**Connect the dots.** If an order has high data usage AND a pending DCR, maybe the customer is trying to install a streaming app. Flag it. If Webbing and MDM haven't synced recently, warn that the data may be stale.
+
+**Give actionable next steps.** End every report with specific things the ops team should DO, not just what they should know.
+
+## Formatting Rules
+- Lead with the most urgent finding, not a generic summary
+- Use ### for sections, **bold** for emphasis, bullet points for lists
+- Tables are great for comparing orders side-by-side
+- Keep it tight — an ops manager doesn't have time for essays
+- If something is null/unavailable, explain WHY and what it means ("Pulse usage data is null — this usually means the Webbing sync hasn't completed yet. Wait 10 minutes and re-check.")
+- Never say "Based on the data provided" or similar filler — just get to the point`;
 
 /**
  * Chat with the AI assistant
