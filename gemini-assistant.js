@@ -204,7 +204,7 @@ function buildContext() {
   delete ctx.pulseOrders;
   delete ctx.dcrByOrder;
 
-  // Inventory summary (if cached)
+  // Inventory + forecast summary (if cached)
   try {
     const invCache = dataSources.getInventoryCache?.();
     if (invCache) {
@@ -214,10 +214,20 @@ function buildContext() {
         totalDeployed: invCache.summary.totalDeployed,
         totalAvailable: invCache.summary.totalAvailable,
         utilization: invCache.summary.utilization + '%',
-        // Only include low/watch items to keep context small
-        lowStock: invCache.products
-          .filter(p => p.status === 'low' || p.status === 'watch')
-          .map(p => ({ name: p.name, total: p.totalStock, deployed: p.deployed, available: p.available, utilization: p.utilization + '%', status: p.status }))
+        shortageCount: invCache.summary.shortageCount || 0,
+        // Items needing attention
+        alerts: invCache.products
+          .filter(p => p.status === 'low' || p.status === 'watch' || p.status === 'shortage')
+          .map(p => ({
+            name: p.name, total: p.totalStock, deployed: p.deployed,
+            available: p.available, utilization: p.utilization + '%', status: p.status,
+            demand30: p.forecast?.demand30 || 0,
+            returns30: p.forecast?.returns30 || 0,
+            projected30: p.forecast?.projected30 ?? p.available,
+            upcomingOrders: (p.forecast?.upcomingOrders || []).map(o => o.id + ' (' + o.customer + ', ' + o.qty + 'x, ' + o.start + ')')
+          })),
+        // Shortage forecasts
+        shortages: (invCache.forecast?.shortages || [])
       };
     }
   } catch (e) {
@@ -239,7 +249,7 @@ You are talking to the **ops team** — they manage orders, contact customers, c
 - **fleetSummary**: High-level counts (total SIMs, active SIMs, total iPads, Pulse links, DCR orders)
 - **orderHealth**: Per-order cross-reference combining Webbing SIMs, MDM iPads, Pulse usage data, DCR status, and pre-computed issues
 - **systemHealth**: Whether Webbing and MDM caches have synced
-- **inventory**: Equipment stock levels — totalUnits, totalDeployed, totalAvailable, utilization%, and a list of low/watch stock items with names and counts
+- **inventory**: Equipment stock levels — totalUnits, totalDeployed, totalAvailable, utilization%. Includes alerts (low/watch/shortage items) with 30-day demand forecasts, return pipeline, projected availability, and the specific upcoming orders driving demand. Shortage items have negative projected30 meaning demand exceeds supply.
 
 ## Understanding Null Data
 Null usage data is **normal and common** — it does NOT mean something is broken. Common reasons:
