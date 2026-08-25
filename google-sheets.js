@@ -4,6 +4,9 @@
  * Reads iPad/iPhone inventory from a shared Google Sheet and provides
  * the data for merging into the Command Center inventory dashboard.
  * 
+ * Uses the DRIVE API (already enabled) to export sheets as CSV.
+ * No need for the separate Sheets API to be enabled.
+ * 
  * Uses the same service account as google-drive.js:
  *   fello-dcr-uploads@fello-verify.iam.gserviceaccount.com
  * 
@@ -11,7 +14,6 @@
  * 
  * Required env vars:
  *   GOOGLE_SERVICE_ACCOUNT_KEY — JSON key file contents (raw or base64)
- *   GOOGLE_SHEETS_INVENTORY_ID — Sheet ID (from the URL)
  */
 
 const { google } = require('googleapis');
@@ -19,15 +21,15 @@ const { google } = require('googleapis');
 // Sheet ID and cache
 const SHEET_ID = process.env.GOOGLE_SHEETS_INVENTORY_ID || '1alke7dZUvO_273oklR3UKmWmdVi6_hYCOjf_W6OacJ0';
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
-let sheetsClient = null;
+let driveClient = null;
 let sheetCache = null;
 let sheetCacheTime = null;
 
 /**
- * Initialize the Google Sheets client
+ * Initialize the Google Drive client (reuses same auth as google-drive.js)
  */
-function getSheetsClient() {
-  if (sheetsClient) return sheetsClient;
+function getDriveClient() {
+  if (driveClient) return driveClient;
 
   const keyRaw = process.env.GOOGLE_SERVICE_ACCOUNT_KEY;
   if (!keyRaw) {
@@ -45,12 +47,12 @@ function getSheetsClient() {
 
     const auth = new google.auth.GoogleAuth({
       credentials: keyData,
-      scopes: ['https://www.googleapis.com/auth/spreadsheets.readonly'],
+      scopes: ['https://www.googleapis.com/auth/drive.readonly'],
     });
 
-    sheetsClient = google.sheets({ version: 'v4', auth });
-    console.log(`[Sheets] Initialized — reading from sheet ${SHEET_ID}`);
-    return sheetsClient;
+    driveClient = google.drive({ version: 'v3', auth });
+    console.log(`[Sheets] Drive client initialized for sheet reading`);
+    return driveClient;
   } catch (err) {
     console.error('[Sheets] Init error:', err.message);
     return null;
@@ -58,22 +60,76 @@ function getSheetsClient() {
 }
 
 /**
- * Read all data from the first sheet tab
- * Returns an array of row objects keyed by header names
+ * Parse CSV string into rows (handles quoted fields with commas)
  */
-async function readSheet(range) {
-  const client = getSheetsClient();
+function parseCSV(csvText) {
+  const rows = [];
+  let currentRow = [];
+  let currentField = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < csvText.length; i++) {
+    const ch = csvText[i];
+    const next = csvText[i + 1];
+
+    if (inQuotes) {
+      if (ch === '"' && next === '"') {
+        currentField += '"';
+        i++; // skip escaped quote
+      } else if (ch === '"') {
+        inQuotes = false;
+      } else {
+        currentField += ch;
+      }
+    } else {
+      if (ch === '"') {
+        inQuotes = true;
+      } else if (ch === ',') {
+        currentRow.push(currentField.trim());
+        currentField = '';
+      } else if (ch === '\n' || (ch === '\r' && next === '\n')) {
+        currentRow.push(currentField.trim());
+        if (currentRow.some(f => f !== '')) rows.push(currentRow);
+        currentRow = [];
+        currentField = '';
+        if (ch === '\r') i++; // skip \n after \r
+      } else {
+        currentField += ch;
+      }
+    }
+  }
+  // Last field/row
+  if (currentField || currentRow.length > 0) {
+    currentRow.push(currentField.trim());
+    if (currentRow.some(f => f !== '')) rows.push(currentRow);
+  }
+
+  return rows;
+}
+
+/**
+ * Export a Google Sheet as CSV via Drive API and parse into row objects
+ */
+async function readSheetAsCSV() {
+  const client = getDriveClient();
   if (!client) return null;
 
   try {
-    const response = await client.spreadsheets.values.get({
-      spreadsheetId: SHEET_ID,
-      range: range || 'Sheet1',
+    // Export the spreadsheet as CSV (exports first visible sheet)
+    const response = await client.files.export({
+      fileId: SHEET_ID,
+      mimeType: 'text/csv',
     });
 
-    const rows = response.data.values;
-    if (!rows || rows.length < 2) {
-      console.log('[Sheets] No data found in sheet');
+    const csvText = response.data;
+    if (!csvText || typeof csvText !== 'string') {
+      console.log('[Sheets] Empty CSV response');
+      return [];
+    }
+
+    const rows = parseCSV(csvText);
+    if (rows.length < 2) {
+      console.log('[Sheets] No data rows found in CSV');
       return [];
     }
 
@@ -84,16 +140,15 @@ async function readSheet(range) {
     for (let i = 1; i < rows.length; i++) {
       const row = {};
       for (let j = 0; j < headers.length; j++) {
-        row[headers[j]] = rows[i][j] !== undefined ? rows[i][j].toString().trim() : '';
+        row[headers[j]] = (rows[i][j] !== undefined) ? rows[i][j].toString().trim() : '';
       }
-      // Skip completely empty rows
-      if (Object.values(row).every(v => !v)) continue;
       data.push(row);
     }
 
+    console.log(`[Sheets] Parsed ${data.length} rows with headers: ${headers.join(', ')}`);
     return data;
   } catch (err) {
-    console.error('[Sheets] Read error:', err.message);
+    console.error('[Sheets] CSV export error:', err.message);
     return null;
   }
 }
@@ -107,7 +162,6 @@ async function readSheet(range) {
  *   deployed/out/rented → deployed count
  *   available/in/remaining → available count
  *   category/type → category
- *   serial/sn → serial numbers
  *   notes/comments → notes
  * 
  * Returns normalized product objects compatible with the inventory dashboard.
@@ -118,65 +172,49 @@ async function fetchInventory() {
     return sheetCache;
   }
 
-  // Try to get sheet tab names first
-  const client = getSheetsClient();
-  if (!client) return null;
-
-  let tabNames = [];
-  try {
-    const meta = await client.spreadsheets.get({
-      spreadsheetId: SHEET_ID,
-      fields: 'sheets.properties.title',
-    });
-    tabNames = meta.data.sheets.map(s => s.properties.title);
-    console.log('[Sheets] Tabs found:', tabNames.join(', '));
-  } catch (err) {
-    console.error('[Sheets] Meta error:', err.message);
-    tabNames = ['Sheet1'];
+  const rows = await readSheetAsCSV();
+  if (!rows || rows.length === 0) {
+    console.log('[Sheets] No data from sheet');
+    sheetCache = [];
+    sheetCacheTime = Date.now();
+    return [];
   }
 
-  // Read all tabs and combine
+  // Auto-detect columns from headers
+  const headers = Object.keys(rows[0]);
+  const colMap = detectColumns(headers);
+  console.log(`[Sheets] Column mapping: ${JSON.stringify(colMap)}`);
+
   const allProducts = [];
 
-  for (const tab of tabNames) {
-    const rows = await readSheet(tab);
-    if (!rows || rows.length === 0) continue;
+  for (const row of rows) {
+    const name = row[colMap.name] || '';
+    if (!name) continue;
 
-    // Auto-detect columns from headers
-    const headers = Object.keys(rows[0]);
-    const colMap = detectColumns(headers);
-    console.log(`[Sheets] Tab "${tab}": ${rows.length} rows, columns: ${JSON.stringify(colMap)}`);
+    const total = parseInt(row[colMap.total] || '0') || 0;
+    const deployed = parseInt(row[colMap.deployed] || '0') || 0;
+    const available = colMap.available ? (parseInt(row[colMap.available] || '0') || 0) : Math.max(0, total - deployed);
+    const category = row[colMap.category] || guessCategory(name);
+    const notes = row[colMap.notes] || '';
+    const partNumber = row[colMap.partNumber] || '';
+    const manufacturer = row[colMap.manufacturer] || guessMfg(name);
 
-    for (const row of rows) {
-      const name = row[colMap.name] || '';
-      if (!name) continue;
-
-      const total = parseInt(row[colMap.total] || '0') || 0;
-      const deployed = parseInt(row[colMap.deployed] || '0') || 0;
-      const available = colMap.available ? (parseInt(row[colMap.available] || '0') || 0) : Math.max(0, total - deployed);
-      const category = row[colMap.category] || guessCategory(name);
-      const notes = row[colMap.notes] || '';
-      const partNumber = row[colMap.partNumber] || '';
-      const manufacturer = row[colMap.manufacturer] || guessMfg(name);
-
-      allProducts.push({
-        id: 'sheet-' + name.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase(),
-        name,
-        partNumber,
-        manufacturer,
-        category,
-        totalStock: total,
-        deployed,
-        available,
-        utilization: total > 0 ? Math.round((deployed / total) * 100) : 0,
-        status: available < 3 && total > 0 ? 'low' : available < 10 && total > 0 ? 'watch' : 'ok',
-        msrp: null,
-        source: 'google-sheet',
-        sheetTab: tab,
-        notes,
-        forecast: { demand: 0, returns: 0, projected: available, upcomingOrders: [] }
-      });
-    }
+    allProducts.push({
+      id: 'sheet-' + name.replace(/[^a-zA-Z0-9]/g, '-').toLowerCase(),
+      name,
+      partNumber,
+      manufacturer,
+      category,
+      totalStock: total,
+      deployed,
+      available,
+      utilization: total > 0 ? Math.round((deployed / total) * 100) : 0,
+      status: available < 3 && total > 0 ? 'low' : available < 10 && total > 0 ? 'watch' : 'ok',
+      msrp: null,
+      source: 'google-sheet',
+      notes,
+      forecast: { demand: 0, returns: 0, projected: available, upcomingOrders: [] }
+    });
   }
 
   sheetCache = allProducts;
@@ -252,10 +290,27 @@ function clearCache() {
   sheetCacheTime = null;
 }
 
+/**
+ * Debug: get raw CSV from sheet
+ */
+async function debugRead() {
+  const client = getDriveClient();
+  if (!client) return { error: 'No drive client' };
+  try {
+    const response = await client.files.export({ fileId: SHEET_ID, mimeType: 'text/csv' });
+    const csvText = response.data || '';
+    const lines = csvText.split('\n').slice(0, 10);
+    return { sheetId: SHEET_ID, firstLines: lines, totalLength: csvText.length };
+  } catch (err) {
+    return { error: err.message };
+  }
+}
+
 module.exports = {
   fetchInventory,
   isConfigured,
   clearCache,
+  debugRead,
   getCache: () => sheetCache,
   getSheetId: () => SHEET_ID
 };
