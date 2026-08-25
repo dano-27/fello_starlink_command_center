@@ -265,7 +265,7 @@ async function chat(userMessage, history = []) {
 
   // Retry with exponential backoff
   const MAX_RETRIES = 3;
-  const MODELS = ['gemini-2.1-pro-preview', 'gemini-2.5-flash', 'gemini-3.6-flash'];
+  const MODELS = ['gemini-3.1-pro', 'gemini-3.7-flash', 'gemini-3.6-flash'];
   let lastError = null;
 
   for (const modelName of MODELS) {
