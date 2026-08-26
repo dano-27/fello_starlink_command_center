@@ -788,6 +788,15 @@
 
           ${data.crmOrder ? renderCompactOrderBar(data.crmOrder) : ''}
 
+          <!-- AI Order Brief -->
+          <div id="ai-order-brief" style="display:none;margin-bottom:16px;padding:14px 18px;background:linear-gradient(135deg,rgba(49,102,174,0.04),rgba(49,102,174,0.08));border:1px solid rgba(49,102,174,0.15);border-radius:12px;font-size:13px;line-height:1.7;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+              <span style="font-size:11px;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:0.5px;">✨ AI Order Brief</span>
+              <button onclick="loadOrderBrief()" style="background:none;border:none;cursor:pointer;font-size:11px;color:var(--muted);">↻ Refresh</button>
+            </div>
+            <div id="ai-brief-content">Analyzing order...</div>
+          </div>
+
           ${slFleet && slTerminals.length > 0 ? renderStarlinkFleetSection(slFleet) : ''}
 
           ${(mdm.length === 0 && web.length === 0 && data.crmOrder) ? `
@@ -1123,7 +1132,48 @@
         window.calculateUsage();
       }, 1500);
     }
+
+    // Auto-generate AI Order Brief
+    window._lastOrderData = data;
+    if (data.crmOrder || mdm.length > 0 || web.length > 0) {
+      setTimeout(() => window.loadOrderBrief(), 2000);
+    }
   }
+
+  // AI Order Brief — generates instant situational awareness
+  window.loadOrderBrief = async function() {
+    const data = window._lastOrderData;
+    if (!data) return;
+    const briefDiv = document.getElementById('ai-order-brief');
+    const contentDiv = document.getElementById('ai-brief-content');
+    if (!briefDiv || !contentDiv) return;
+
+    briefDiv.style.display = 'block';
+    contentDiv.innerHTML = '<span style="color:var(--muted);font-style:italic;">✨ Analyzing order data...</span>';
+
+    // Compact the data to send to AI
+    const crm = data.crmOrder || {};
+    const stats = data.stats || {};
+    const slFleet = data.starlinkFleet || {};
+    const orderPayload = {
+      orderId: crm.flyOrderId || crm.id || window._currentBranchName || '',
+      customer: crm.customerName || '', event: crm.eventName || '',
+      status: crm.status || '', startDate: crm.startDate || '', endDate: crm.endDate || '',
+      totalGb: crm.totalGbAmount || 0, shippingAddress: crm.shipping ? [crm.shipping.city, crm.shipping.state].filter(Boolean).join(', ') : '',
+      devices: { mdmCount: stats.mdmCount || 0, simCount: stats.webbingCount || 0, matched: stats.matchedCount || 0, unmatched: stats.unmatchedCount || 0 },
+      starlink: { terminalCount: (slFleet.terminals || []).length, online: (slFleet.terminals || []).filter(t => t.online || t.state === 'ONLINE').length },
+    };
+
+    try {
+      const res = await fetch('/api/ai/order-brief', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(orderPayload) });
+      const result = await res.json();
+      if (result.error) throw new Error(result.error);
+      const briefText = (result.brief || '').replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>').replace(/\n/g, '<br>');
+      contentDiv.innerHTML = briefText;
+    } catch (e) {
+      contentDiv.innerHTML = '<span style="color:var(--muted);">Could not generate brief: ' + e.message + '</span>';
+    }
+  };
 
   window.runSiteCheck = async function() {
     const address = document.getElementById('site-check-address').value.trim();
@@ -2058,6 +2108,7 @@
           <button class="action-btn" style="flex:1;" onclick="window.mdmAction(${did}, 'lock', this)">🔒 Lock</button>
           <button class="action-btn" style="flex:1;" onclick="window.mdmAction(${did}, 'restart', this)">🔄 Restart</button>
           <button class="action-btn" style="flex:1;" onclick="window.mdmAction(${did}, 'shutdown', this)">⏻ Off</button>
+          <button class="action-btn" style="flex:1;background:linear-gradient(135deg,rgba(49,102,174,0.1),rgba(49,102,174,0.15));color:var(--primary);font-weight:600;" onclick="window.diagnoseDevice(${idx}, this)">🔧 AI Diagnose</button>
         </div>
       `;
     }
@@ -2453,6 +2504,49 @@
   };
 
   // ── MDM Device Actions ──
+  // AI Device Troubleshooter
+  window.diagnoseDevice = async function(idx, btn) {
+    const row = window._fleetRows[idx];
+    if (!row) return;
+    btn.disabled = true;
+    btn.textContent = '⏳ Diagnosing...';
+
+    const payload = {
+      name: row.name || '', serial: row.ipadSerial || row.simSerial || '',
+      model: row.model || '', os: row.os || '', battery: row.battery || '',
+      lastSeen: row.lastSeen || '', carrier: row.carrier || '',
+      simStatus: row.simStatus || '', iccid: row.iccid || '',
+      plan: row.plan || '', dataUsageMb: row.usageMb || 0,
+      orderId: window._currentBranchName || '',
+      coverage: window._lastSiteCheck || null
+    };
+
+    // Insert or update diagnosis div in drawer
+    let diagDiv = document.getElementById('ai-device-diagnosis');
+    if (!diagDiv) {
+      diagDiv = document.createElement('div');
+      diagDiv.id = 'ai-device-diagnosis';
+      diagDiv.style.cssText = 'padding:14px 18px;margin:0 16px 12px;background:linear-gradient(135deg,rgba(49,102,174,0.04),rgba(49,102,174,0.08));border:1px solid rgba(49,102,174,0.15);border-radius:12px;font-size:13px;line-height:1.7;';
+      const drawerBody = document.getElementById('device-drawer');
+      if (drawerBody) drawerBody.querySelector('div')?.after(diagDiv);
+    }
+    diagDiv.innerHTML = '<div style="font-size:11px;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">🔧 AI Diagnosis</div><span style="color:var(--muted);font-style:italic;">Analyzing device...</span>';
+
+    try {
+      const res = await fetch('/api/ai/diagnose-device', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      const rendered = (data.diagnosis || '').replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>').replace(/\n(\d+)\./g, '<br><strong>$1.</strong>').replace(/\n/g, '<br>');
+      diagDiv.innerHTML = '<div style="font-size:11px;font-weight:700;color:var(--primary);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px;">🔧 AI Diagnosis</div>' + rendered;
+      btn.textContent = '🔧 AI Diagnose';
+      btn.disabled = false;
+    } catch (e) {
+      diagDiv.innerHTML = '<div style="color:var(--red);">Diagnosis failed: ' + e.message + '</div>';
+      btn.textContent = '🔧 Retry';
+      btn.disabled = false;
+    }
+  };
+
   window.mdmAction = async function(deviceId, action, btn, account) {
     if (!confirm(`Are you sure you want to ${action} this device?`)) return;
     btn.classList.add('loading');

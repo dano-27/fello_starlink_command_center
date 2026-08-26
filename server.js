@@ -10128,6 +10128,170 @@ app.post('/api/ai/chat', async (req, res) => {
   }
 });
 
+// POST /api/ai/order-brief — AI-generated order situational summary
+app.post('/api/ai/order-brief', async (req, res) => {
+  if (!geminiAssistant.isConfigured()) return res.status(503).json({ error: 'AI not configured' });
+  try {
+    const orderData = req.body;
+    if (!orderData) return res.status(400).json({ error: 'Order data required' });
+    const brief = await geminiAssistant.generateOrderBrief(orderData);
+    res.json({ brief });
+  } catch (e) {
+    console.error('[AI] Order brief error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/alerts/proactive — AI-powered cross-system health check
+app.get('/api/alerts/proactive', async (req, res) => {
+  if (!geminiAssistant.isConfigured()) return res.status(503).json({ error: 'AI not configured' });
+  try {
+    // Build cross-system snapshot from all available caches
+    const snapshot = {};
+
+    // Inventory shortages
+    if (inventoryCache && inventoryCache.products) {
+      const shortages = inventoryCache.products.filter(p => {
+        const available = (p.available !== undefined ? p.available : p.totalUsable) || 0;
+        return available < 10;
+      }).map(p => ({ name: p.model || p.name, available: p.available || p.totalUsable || 0, status: p.status }));
+      snapshot.inventoryShortages = shortages;
+      snapshot.inventoryTotal = inventoryCache.products.length;
+    }
+
+    // Pending DCRs
+    if (dcrSubmissions && dcrSubmissions.length > 0) {
+      const now = Date.now();
+      const pending = dcrSubmissions.filter(d => d.status === 'pending' || !d.completedAt).map(d => ({
+        orderId: d.orderId || d.flyOrderId, customer: d.company || d.customerName,
+        submittedAt: d.timestamp || d.submittedAt,
+        ageHours: d.timestamp ? Math.round((now - new Date(d.timestamp).getTime()) / 3600000) : 0
+      }));
+      snapshot.pendingDcrs = pending;
+    }
+
+    // Webbing SIM summary
+    if (webbingDeviceCache && webbingDeviceCache.length > 0) {
+      const active = webbingDeviceCache.filter(d => d.status === 'active' || d.state === 'active').length;
+      const suspended = webbingDeviceCache.filter(d => d.status === 'suspended' || d.state === 'suspended').length;
+      const total = webbingDeviceCache.length;
+      snapshot.simSummary = { total, active, suspended, inactive: total - active - suspended };
+    }
+
+    // SimpleMDM device summary
+    if (simpleMdmDeviceCache) {
+      let enrolled = 0, lowBattery = 0;
+      for (const accountId in simpleMdmDeviceCache) {
+        const devices = simpleMdmDeviceCache[accountId];
+        if (Array.isArray(devices)) {
+          enrolled += devices.length;
+          lowBattery += devices.filter(d => d.attributes && d.attributes.battery_level !== null && d.attributes.battery_level < 20).length;
+        }
+      }
+      snapshot.mdmSummary = { enrolled, lowBattery };
+    }
+
+    // Active share tokens (Pulse links)
+    if (shareTokens) {
+      snapshot.activeShareLinks = Object.keys(shareTokens).length;
+    }
+
+    // Recent audit errors (last 24h)
+    if (fs.existsSync(AUDIT_LOG)) {
+      const raw = fs.readFileSync(AUDIT_LOG, 'utf-8');
+      const lines = raw.trim().split('\n').filter(Boolean);
+      const cutoff = new Date(Date.now() - 86400000).toISOString();
+      let recentErrors = 0, recentActions = 0;
+      for (let i = lines.length - 1; i >= 0 && i > lines.length - 2000; i--) {
+        try {
+          const e = JSON.parse(lines[i]);
+          if (e.timestamp < cutoff) break;
+          recentActions++;
+          if (e.status && e.status >= 400) recentErrors++;
+        } catch {}
+      }
+      snapshot.last24h = { actions: recentActions, errors: recentErrors };
+    }
+
+    const alerts = await geminiAssistant.generateProactiveAlerts(snapshot);
+    res.json({ alerts, snapshotTime: new Date().toISOString() });
+  } catch (e) {
+    console.error('[AI] Proactive alerts error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/ai/diagnose-device — AI troubleshooter for device issues
+app.post('/api/ai/diagnose-device', async (req, res) => {
+  if (!geminiAssistant.isConfigured()) return res.status(503).json({ error: 'AI not configured' });
+  try {
+    const deviceData = req.body;
+    if (!deviceData) return res.status(400).json({ error: 'Device data required' });
+    const diagnosis = await geminiAssistant.diagnoseDevice(deviceData);
+    res.json({ diagnosis });
+  } catch (e) {
+    console.error('[AI] Diagnose error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/training/ai-tips — AI training tips from audit patterns
+app.get('/api/training/ai-tips', async (req, res) => {
+  if (!req.user || req.user.role !== 'admin') return res.status(403).json({ error: 'Admin access required' });
+  if (!geminiAssistant.isConfigured()) return res.status(503).json({ error: 'AI not configured' });
+  try {
+    if (!fs.existsSync(AUDIT_LOG)) return res.json({ tips: 'No audit data available yet.' });
+    const raw = fs.readFileSync(AUDIT_LOG, 'utf-8');
+    const lines = raw.trim().split('\n').filter(Boolean);
+    const cutoff = new Date(Date.now() - 7 * 86400000).toISOString();
+
+    // Build audit summary for the last 7 days
+    const summary = { agents: {}, errorsByPath: {}, totalActions: 0, totalErrors: 0, retries: 0, actionCounts: {} };
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-/i;
+
+    for (let i = lines.length - 1; i >= 0; i--) {
+      try {
+        const e = JSON.parse(lines[i]);
+        if (e.timestamp < cutoff) break;
+        if (!e.user || e.user === 'system' || UUID_RE.test(e.user)) continue;
+        summary.totalActions++;
+
+        // Track per-agent stats
+        if (!summary.agents[e.user]) summary.agents[e.user] = { name: e.name || e.user, actions: 0, errors: 0, topPaths: {} };
+        summary.agents[e.user].actions++;
+
+        // Track action types
+        const actionKey = describeAction(e).replace(/\*\*/g, '').substring(0, 50);
+        summary.actionCounts[actionKey] = (summary.actionCounts[actionKey] || 0) + 1;
+
+        // Track errors
+        if (e.status && e.status >= 400) {
+          summary.totalErrors++;
+          summary.agents[e.user].errors++;
+          const errPath = (e.path || '').replace(/\/\d+/g, '/:id');
+          summary.errorsByPath[errPath] = (summary.errorsByPath[errPath] || 0) + 1;
+        }
+      } catch {}
+    }
+
+    // Calculate error rates per agent
+    for (const user in summary.agents) {
+      const a = summary.agents[user];
+      a.errorRate = a.actions > 0 ? Math.round((a.errors / a.actions) * 100) + '%' : '0%';
+    }
+
+    // Keep top 10 error paths and action types
+    summary.errorsByPath = Object.fromEntries(Object.entries(summary.errorsByPath).sort(([,a],[,b]) => b - a).slice(0, 10));
+    summary.actionCounts = Object.fromEntries(Object.entries(summary.actionCounts).sort(([,a],[,b]) => b - a).slice(0, 15));
+
+    const tips = await geminiAssistant.generateTrainingTips(summary);
+    res.json({ tips, period: '7 days', totalActions: summary.totalActions, totalErrors: summary.totalErrors });
+  } catch (e) {
+    console.error('[AI] Training tips error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Hub landing page
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));

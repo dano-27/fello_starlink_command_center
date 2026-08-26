@@ -564,7 +564,17 @@
         <div class="control-group">
           <label for="search-input">Search</label>
           <input type="text" id="search-input" placeholder="Search products or part #...">
+          <div id="ai-answer-inventory" class="ai-answer"></div>
         </div>
+        <style>
+        .ai-answer { display:none; margin:12px 0; padding:14px 18px; background:linear-gradient(135deg,rgba(49,102,174,0.04),rgba(49,102,174,0.08)); border:1px solid rgba(49,102,174,0.15); border-radius:12px; font-size:13px; line-height:1.7; font-family:'Montserrat',sans-serif; }
+        .ai-answer .ai-label { font-size:11px; font-weight:700; color:#3166ae; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px; }
+        .ai-answer.loading { display:block; color:#636363; font-style:italic; }
+        .ai-answer.loaded { display:block; }
+        </style>
+        <script>
+        function renderMd(t){return t.replace(/### (.+)/g,'<h4 style="margin:8px 0 4px;font-size:13px;color:#3166ae">$1</h4>').replace(/## (.+)/g,'<h3 style="margin:10px 0 4px;font-size:14px">$1</h3>').replace(/\\*\\*([^*]+)\\*\\*/g,'<strong>$1</strong>').replace(/\\*([^*]+)\\*/g,'<em>$1</em>').replace(/`([^`]+)`/g,'<code style="font-size:11px;background:#f5f5f5;padding:1px 4px;border-radius:3px">$1</code>').replace(/\\n- /g,'\\n• ').replace(/\\n\\n/g,'<br><br>').replace(/\\n/g,'<br>');}
+        </script>
         <div class="control-group">
           <label for="category-filter">Category</label>
           <select id="category-filter">
@@ -997,7 +1007,32 @@
     }
 
     // Event Listeners
-    elements.searchInput.addEventListener('input', renderTable);
+    let aiTimeout;
+    elements.searchInput.addEventListener('input', (e) => {
+      const val = e.target.value.trim();
+      var isNL = val.length > 5 && val.includes(' ') && !/^(FE|SQ|SH|CB|EB|AR|MEAL|RN)\d+/i.test(val) && !/^\d{10,}$/.test(val) && !/^[A-Z0-9]{10,14}$/i.test(val);
+      const aiDiv = document.getElementById('ai-answer-inventory');
+      if (isNL) {
+        aiDiv.className = 'ai-answer loading';
+        aiDiv.innerHTML = '<div class="ai-label">✦ Smart Search</div>Thinking...';
+        clearTimeout(aiTimeout);
+        aiTimeout = setTimeout(() => {
+          fetch('/api/ai/chat', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:'[Inventory Context] '+val})})
+          .then(r=>r.json())
+          .then(d=>{
+            aiDiv.className = 'ai-answer loaded';
+            aiDiv.innerHTML = '<div class="ai-label">✦ Smart Search</div>' + (window.renderMd ? window.renderMd(d.answer||d.response||d.message||d) : d.answer||d.response||d.message||d);
+          }).catch(err=>{
+            aiDiv.className = 'ai-answer loaded';
+            aiDiv.innerHTML = '<div class="ai-label">✦ Smart Search</div>Error reaching AI.';
+          });
+        }, 800);
+      } else {
+        if(aiDiv) aiDiv.className = 'ai-answer';
+        clearTimeout(aiTimeout);
+        renderTable();
+      }
+    });
     elements.categoryFilter.addEventListener('change', renderTable);
     elements.sortSelect.addEventListener('change', renderTable);
 

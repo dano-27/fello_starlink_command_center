@@ -127,6 +127,18 @@
       <!-- Main Content -->
       <div class="main-content">
 
+        <!-- AI Training Insights (admin only) -->
+        <div class="section" id="ai-tips">
+          <div class="section-card" id="ai-tips-card" style="display:none;background:linear-gradient(135deg,rgba(49,102,174,0.04),rgba(49,102,174,0.08));border:1px solid rgba(49,102,174,0.15);">
+            <div class="section-header" style="cursor:pointer;" onclick="loadTrainingTips()">
+              <span class="section-icon">💡</span>
+              <span class="section-title">AI Training Insights</span>
+              <span style="font-size:11px;color:var(--charcol);margin-left:auto;">Based on last 7 days of audit data • Click to refresh</span>
+            </div>
+            <div id="ai-tips-content" style="font-size:13px;line-height:1.7;"></div>
+          </div>
+        </div>
+
         <!-- OVERVIEW -->
         <div class="section" id="overview">
           <div class="section-card">
@@ -775,5 +787,39 @@
     updateToc();
   </script>
 <script src="/ai-assistant.js"></script>
+<script>
+  // AI Training Tips
+  async function loadTrainingTips() {
+    var card = document.getElementById('ai-tips-card');
+    var content = document.getElementById('ai-tips-content');
+    content.innerHTML = '<div style="color:var(--charcol);font-style:italic;padding:8px 0;">✨ Analyzing audit patterns...</div>';
+    try {
+      var res = await fetch('/api/training/ai-tips');
+      if (res.status === 403) { card.style.display = 'none'; return; }
+      var data = await res.json();
+      if (data.error) throw new Error(data.error);
+      var tips = data.tips || '';
+      var rendered = tips
+        .replace(/### (.+)/g, '<h4 style="margin:14px 0 4px;font-size:13px;color:var(--blue)">$1</h4>')
+        .replace(/## (.+)/g, '<h3 style="margin:16px 0 6px;font-size:14px">$1</h3>')
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+        .replace(/`([^`]+)`/g, '<code style="font-size:11px;background:var(--light-blue);padding:1px 4px;border-radius:3px">$1</code>')
+        .replace(/\n- /g, '\n• ')
+        .replace(/\n\n/g, '<br><br>')
+        .replace(/\n/g, '<br>');
+      content.innerHTML = rendered + '<div style="margin-top:12px;font-size:11px;color:var(--charcol);">📊 Period: ' + (data.period || '7 days') + ' • ' + (data.totalActions || 0) + ' total actions • ' + (data.totalErrors || 0) + ' errors</div>';
+    } catch(e) {
+      content.innerHTML = '<div style="color:var(--light-red);">Could not load tips: ' + e.message + '</div>';
+    }
+  }
+  // Auto-load for admins
+  fetch('/api/auth/me').then(function(r){return r.json()}).then(function(u){
+    if(u.role==='admin'){
+      document.getElementById('ai-tips-card').style.display='block';
+      loadTrainingTips();
+    }
+  }).catch(function(){});
+</script>
 </body>
 </html>

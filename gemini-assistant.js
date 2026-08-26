@@ -415,7 +415,7 @@ async function chat(userMessage, history = []) {
   throw new Error('AI service is temporarily busy. Please try again in a few seconds.');
 }
 
-module.exports = { init, isConfigured, chat, buildContext, summarizeSession, askAudit, analyzeAgentStats };
+module.exports = { init, isConfigured, chat, buildContext, summarizeSession, askAudit, analyzeAgentStats, generateOrderBrief, generateProactiveAlerts, diagnoseDevice, generateTrainingTips };
 
 /**
  * Generate an AI-powered summary of a user session
@@ -534,6 +534,139 @@ RULES:
 - Keep it under 300 words`;
 
   return await callGemini(prompt, 2048);
+}
+
+/**
+ * Smart Order Brief — instant AI-generated situational awareness when looking up an order
+ */
+async function generateOrderBrief(orderData) {
+  if (!configured || !genAI) throw new Error('AI not configured.');
+
+  const prompt = `You are an operations analyst at Fello, a rental equipment company. An agent just looked up an order. Generate a brief, actionable summary.
+
+Order Data:
+\`\`\`json
+${JSON.stringify(orderData, null, 1)}
+\`\`\`
+
+Write a 2-4 sentence brief covering:
+1. **Equipment status**: How many iPads/devices deployed vs matched vs active SIMs. Flag any unmatched.
+2. **Data usage**: If usage data exists, current consumption vs cap, burn rate, days until cap hit.
+3. **Issues**: Pending DCRs, offline Starlinks, unmatched devices, missing SIMs, upcoming deadlines.
+4. **Action needed**: One specific thing the agent should do right now.
+
+RULES:
+- Write in present tense, concise prose, no bullets
+- Bold the most critical numbers and order IDs
+- If data is missing, don't make it up — just skip that aspect
+- End with a specific actionable recommendation if any issues exist
+- Keep it to 2-4 sentences max`;
+
+  return await callGemini(prompt, 512);
+}
+
+/**
+ * Proactive Alerts — cross-system health check surfacing urgent issues
+ */
+async function generateProactiveAlerts(snapshot) {
+  if (!configured || !genAI) throw new Error('AI not configured.');
+
+  const prompt = `You are an operations alert system for Fello, a rental equipment company. Analyze this cross-system snapshot and identify urgent issues that need attention RIGHT NOW.
+
+System Snapshot:
+\`\`\`json
+${JSON.stringify(snapshot, null, 1)}
+\`\`\`
+
+Generate a JSON array of alerts. Each alert has:
+- "level": "critical" (action needed today) | "warning" (action needed this week) | "info" (FYI)
+- "icon": appropriate emoji
+- "title": short 1-line summary (include order IDs, counts, dates)
+- "detail": 1 sentence explanation of why this matters and what to do
+- "link": the best Command Center URL to address this (e.g. "/lookup/?q=SQ14315", "/inventory/", "/orders/")
+
+Focus on:
+- Orders starting soon with incomplete equipment checkout
+- Data usage approaching caps (>80%)
+- Pending DCRs older than 24 hours
+- Inventory shortages for upcoming orders
+- Starlink terminals offline
+- Equipment returns overdue
+
+Return ONLY valid JSON array, no markdown. Sort by priority (critical first). Max 8 alerts. If nothing is urgent, return an empty array [].`;
+
+  const raw = await callGemini(prompt, 2048);
+  try {
+    const cleaned = raw.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    return JSON.parse(cleaned);
+  } catch {
+    return [{ level: 'info', icon: '✅', title: 'All systems operational', detail: raw.substring(0, 200), link: '/' }];
+  }
+}
+
+/**
+ * Device Troubleshooter — cross-reference MDM, SIM, coverage, and usage to diagnose issues
+ */
+async function diagnoseDevice(deviceData) {
+  if (!configured || !genAI) throw new Error('AI not configured.');
+
+  const prompt = `You are a senior tech support engineer at Fello. Diagnose this device issue using all available data.
+
+Device Data:
+\`\`\`json
+${JSON.stringify(deviceData, null, 1)}
+\`\`\`
+
+Analyze:
+1. **MDM Status**: Is the device checking in? When was it last seen? Battery level? OS up to date?
+2. **SIM/Connectivity**: Is the SIM active? What carrier? Signal strength at the location?
+3. **Coverage**: Compare signal strengths across carriers at the event location. Is the current carrier the best option?
+4. **Usage**: Is the device consuming data? Has it gone dark recently?
+5. **Root Cause**: What's most likely wrong?
+
+Provide:
+1. A 1-sentence diagnosis (bold the key finding)
+2. Numbered action steps from most likely to fix the issue to least likely (max 4 steps)
+3. If the device needs replacement, say so clearly
+
+RULES:
+- Be specific: name carriers, signal dBm values, dates, device IDs
+- Think like a technician — specific steps, not vague advice
+- If data is missing for some aspect, skip it
+- Keep total response under 150 words`;
+
+  return await callGemini(prompt, 768);
+}
+
+/**
+ * Training Tips — analyze audit patterns to generate actionable training recommendations
+ */
+async function generateTrainingTips(auditSummary) {
+  if (!configured || !genAI) throw new Error('AI not configured.');
+
+  const prompt = `You are a training manager at Fello. Analyze these audit log patterns from the past 7 days and generate specific, actionable training tips for the ops team.
+
+Audit Summary:
+\`\`\`json
+${JSON.stringify(auditSummary, null, 1)}
+\`\`\`
+
+Generate 3-5 training tips. Each tip should:
+1. Reference a SPECIFIC pattern from the data (e.g. "SIM activations fail 18% of the time")
+2. Explain WHY it happens (e.g. "usually because the wrong branch is selected")
+3. Give a SPECIFIC fix (e.g. "always verify branch name matches order ID before activating")
+
+Format as markdown with:
+### 💡 Tip Title
+The specific insight with **bold numbers** and a clear recommendation.
+
+RULES:
+- Only reference patterns that actually appear in the data — don't invent problems
+- Include specific percentages, counts, and agent names where relevant
+- Focus on the 3-5 most impactful improvements
+- If the data shows no issues, say the team is performing well and highlight what's working`;
+
+  return await callGemini(prompt, 1536);
 }
 
 /**

@@ -66,6 +66,18 @@
         </div>
       </div>
 
+      <!-- Proactive Alerts Panel -->
+      <div id="proactive-alerts" style="margin-bottom:20px;display:none;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+          <span style="font-size:14px;font-weight:700;color:#1e293b;">🚨 Operations Alerts</span>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <span id="alerts-time" style="font-size:11px;color:#94a3b8;"></span>
+            <button onclick="loadProactiveAlerts()" style="background:none;border:none;cursor:pointer;font-size:12px;color:#3166ae;font-weight:600;font-family:'Montserrat',sans-serif;">↻ Refresh</button>
+          </div>
+        </div>
+        <div id="alerts-container"></div>
+      </div>
+
       <!-- Tool Grid -->
       <div class="hub-grid">
 
@@ -407,5 +419,40 @@ fetch("/api/auth/me").then(function(r){return r.json()}).then(function(u){
 })();
 </script>
 <script src="/ai-assistant.js"></script>
+<script>
+  // Proactive Alerts
+  async function loadProactiveAlerts() {
+    var panel = document.getElementById('proactive-alerts');
+    var container = document.getElementById('alerts-container');
+    var timeSpan = document.getElementById('alerts-time');
+    container.innerHTML = '<div style="padding:12px;color:#94a3b8;font-style:italic;font-size:13px;">🔍 Scanning systems...</div>';
+    panel.style.display = 'block';
+    try {
+      var res = await fetch('/api/alerts/proactive');
+      var data = await res.json();
+      if (data.error) throw new Error(data.error);
+      var alerts = data.alerts || [];
+      if (alerts.length === 0) {
+        container.innerHTML = '<div style="padding:12px 16px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;font-size:13px;color:#166534;">✅ All systems operational — no issues detected</div>';
+      } else {
+        container.innerHTML = alerts.map(function(a) {
+          var bg = a.level === 'critical' ? 'rgba(239,68,68,0.06)' : a.level === 'warning' ? 'rgba(245,158,11,0.06)' : 'rgba(59,130,246,0.04)';
+          var border = a.level === 'critical' ? 'rgba(239,68,68,0.2)' : a.level === 'warning' ? 'rgba(245,158,11,0.2)' : 'rgba(59,130,246,0.12)';
+          var dot = a.level === 'critical' ? '🔴' : a.level === 'warning' ? '🟡' : '🟢';
+          return '<a href="' + (a.link || '#') + '" style="display:block;text-decoration:none;padding:10px 16px;background:' + bg + ';border:1px solid ' + border + ';border-radius:10px;margin-bottom:6px;transition:transform 0.1s;" onmouseover="this.style.transform=\'scale(1.005)\'" onmouseout="this.style.transform=\'scale(1)\'">' +
+            '<div style="font-size:13px;font-weight:600;color:#1e293b;">' + dot + ' ' + (a.icon || '') + ' ' + (a.title || '') + '</div>' +
+            (a.detail ? '<div style="font-size:12px;color:#64748b;margin-top:3px;">' + a.detail + '</div>' : '') +
+          '</a>';
+        }).join('');
+      }
+      timeSpan.textContent = 'Updated ' + new Date().toLocaleTimeString();
+    } catch(e) {
+      container.innerHTML = '<div style="padding:12px;color:#dc2626;font-size:13px;">Error loading alerts: ' + e.message + '</div>';
+    }
+  }
+  // Auto-load after 3s, refresh every 10 min
+  setTimeout(loadProactiveAlerts, 3000);
+  setInterval(loadProactiveAlerts, 600000);
+</script>
 </body>
 </html>

@@ -140,6 +140,16 @@
             <span class="search-icon">⌕</span>
             <input type="text" id="terminal-search" class="form-input form-input-sm search-input" placeholder="Search terminals..." aria-label="Search terminals">
           </div>
+          <div id="ai-answer-starlink" class="ai-answer"></div>
+          <style>
+          .ai-answer { display:none; margin:12px 0; padding:14px 18px; background:linear-gradient(135deg,rgba(49,102,174,0.04),rgba(49,102,174,0.08)); border:1px solid rgba(49,102,174,0.15); border-radius:12px; font-size:13px; line-height:1.7; font-family:'Montserrat',sans-serif; }
+          .ai-answer .ai-label { font-size:11px; font-weight:700; color:#3166ae; text-transform:uppercase; letter-spacing:0.5px; margin-bottom:6px; }
+          .ai-answer.loading { display:block; color:#636363; font-style:italic; }
+          .ai-answer.loaded { display:block; }
+          </style>
+          <script>
+          function renderMd(t){return t.replace(/### (.+)/g,'<h4 style="margin:8px 0 4px;font-size:13px;color:#3166ae">$1</h4>').replace(/## (.+)/g,'<h3 style="margin:10px 0 4px;font-size:14px">$1</h3>').replace(/\\*\\*([^*]+)\\*\\*/g,'<strong>$1</strong>').replace(/\\*([^*]+)\\*/g,'<em>$1</em>').replace(/`([^`]+)`/g,'<code style="font-size:11px;background:#f5f5f5;padding:1px 4px;border-radius:3px">$1</code>').replace(/\\n- /g,'\\n• ').replace(/\\n\\n/g,'<br><br>').replace(/\\n/g,'<br>');}
+          </script>
           <label class="toggle-label" for="include-inactive">
             <span class="toggle-switch">
               <input type="checkbox" id="include-inactive">

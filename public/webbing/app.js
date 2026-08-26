@@ -433,9 +433,33 @@
 
   function initDevices() {
     let searchTimer;
-    document.getElementById('device-search').addEventListener('input', () => {
-      clearTimeout(searchTimer);
-      searchTimer = setTimeout(() => { devicePage = 1; loadAllDevices(); }, 300);
+    let aiTimeout;
+    document.getElementById('device-search').addEventListener('input', (e) => {
+      const val = e.target.value.trim();
+      var isNL = val.length > 5 && val.includes(' ') && !/^(FE|SQ|SH|CB|EB|AR|MEAL|RN)\d+/i.test(val) && !/^\d{10,}$/.test(val) && !/^[A-Z0-9]{10,14}$/i.test(val);
+      const aiDiv = document.getElementById('ai-answer-webbing');
+      if (isNL) {
+        aiDiv.className = 'ai-answer loading';
+        aiDiv.innerHTML = '<div class="ai-label">✦ Smart Search</div>Thinking...';
+        clearTimeout(aiTimeout);
+        clearTimeout(searchTimer);
+        aiTimeout = setTimeout(() => {
+          fetch('/api/ai/chat', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({message:'[Webbing/SIM Context] '+val})})
+          .then(r=>r.json())
+          .then(d=>{
+            aiDiv.className = 'ai-answer loaded';
+            aiDiv.innerHTML = '<div class="ai-label">✦ Smart Search</div>' + (window.renderMd ? window.renderMd(d.answer||d.response||d.message||d) : d.answer||d.response||d.message||d);
+          }).catch(err=>{
+            aiDiv.className = 'ai-answer loaded';
+            aiDiv.innerHTML = '<div class="ai-label">✦ Smart Search</div>Error reaching AI.';
+          });
+        }, 800);
+      } else {
+        if(aiDiv) aiDiv.className = 'ai-answer';
+        clearTimeout(aiTimeout);
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => { devicePage = 1; loadAllDevices(); }, 300);
+      }
     });
     document.getElementById('filter-status').addEventListener('change', () => { devicePage = 1; loadAllDevices(); });
     document.getElementById('filter-branch').addEventListener('change', () => { devicePage = 1; loadAllDevices(); });
