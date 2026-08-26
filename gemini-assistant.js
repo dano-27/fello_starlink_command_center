@@ -415,46 +415,43 @@ async function chat(userMessage, history = []) {
   throw new Error('AI service is temporarily busy. Please try again in a few seconds.');
 }
 
-module.exports = { init, isConfigured, chat, buildContext, summarizeSession };
+module.exports = { init, isConfigured, chat, buildContext, summarizeSession, askAudit, analyzeAgentStats };
 
 /**
  * Generate an AI-powered summary of a user session
- * @param {Object} session - Session data with tasks and actions
- * @returns {Promise<string>} Natural language summary
  */
 async function summarizeSession(session) {
-  if (!configured || !genAI) {
-    throw new Error('AI assistant not configured.');
-  }
+  if (!configured || !genAI) throw new Error('AI assistant not configured.');
 
-  // Build a compact description of the session
   const taskDescriptions = (session.tasks || []).map(t => {
     const actions = (t.actions || []).map(a => {
-      const endpoint = (a.path || '').replace('/api/', '');
-      return `${a.method} ${endpoint}` + (a.status && a.status >= 400 ? ` (${a.status} error)` : '');
+      const desc = a.description || `${a.method} ${(a.path || '').replace('/api/', '')}`;
+      let line = desc;
+      if (a.isError) line += ' ❌ ERROR';
+      if (a.isRetry) line += ' 🔁 RETRY';
+      if (a.idleGapFormatted) line = `⏸️ ${a.idleGapFormatted} idle → ${line}`;
+      return line;
     });
     return {
       target: t.orderId || 'General',
       duration: t.durationFormatted || '-',
       actionCount: t.actionCount || actions.length,
-      actions: actions.slice(0, 20) // cap to avoid token overflow
+      errorCount: t.errorCount || 0,
+      actions: actions.slice(0, 25)
     };
   });
 
   const sessionDesc = {
-    agent: session.name || session.user,
-    username: session.user,
-    role: session.role || 'agent',
-    loginTime: session.loginTime,
+    agent: session.name || session.user, username: session.user,
+    role: session.role || 'agent', loginTime: session.loginTime,
     logoutTime: session.logoutTime || '(still active)',
-    duration: session.durationFormatted,
-    totalActions: session.totalActions,
-    taskCount: session.taskCount,
-    ip: session.ip,
+    duration: session.durationFormatted, totalActions: session.totalActions,
+    taskCount: session.taskCount, errorCount: session.errorCount || 0,
+    retryCount: session.retryCount || 0, ip: session.ip,
     tasks: taskDescriptions
   };
 
-  const prompt = `Analyze this Command Center session and write a concise, insightful 2-4 sentence summary of what the user did. Be specific about orders they worked on, what actions they performed (lookups, SIM changes, device management, DCR submissions, etc.), and note anything unusual (errors, repeated actions, long idle times).
+  const prompt = `Analyze this Command Center session and write a concise, insightful 2-4 sentence summary of what the user did. Be specific about orders they worked on, what actions they performed (lookups, SIM changes, device management, DCR submissions, etc.), and note anything unusual (errors, repeated actions, long idle times, retries).
 
 Session data:
 \`\`\`json
@@ -465,10 +462,84 @@ IMPORTANT:
 - Write in past tense, refer to the agent by first name
 - Be specific: name order IDs, action types, and counts  
 - Note workflow patterns: "looked up X then configured Y"
-- Flag anything unusual: errors, repeated lookups (could mean trouble), very short/long sessions
+- Flag mistakes/issues: errors, retries (agent had to redo something), idle gaps (agent got stuck)
 - Keep it to 2-4 sentences max
 - Do NOT use bullet points — write flowing prose`;
 
+  return await callGemini(prompt, 512);
+}
+
+/**
+ * Natural language audit search — answer questions about the audit log
+ */
+async function askAudit(question, entries) {
+  if (!configured || !genAI) throw new Error('AI assistant not configured.');
+
+  const prompt = `You are an audit log analyst for Fello's Command Center. Answer the admin's question based on the audit data below.
+
+The data shows recent actions by agents (employees) in the system. Each entry has:
+- time: when it happened
+- user: who did it
+- action: what type (VIEW=read, POST=create, PUT/PATCH=update, DELETE=remove, LOGIN/LOGOUT)
+- path: which API endpoint
+- order: related order ID (if any)
+- status: HTTP status (200=ok, 4xx/5xx=error)
+- ms: how long it took
+- detail: human-readable description
+
+Audit entries (${entries.length} most recent):
+\`\`\`json
+${JSON.stringify(entries, null, 1)}
+\`\`\`
+
+Admin's question: "${question}"
+
+RULES:
+- Be specific: name agents, order IDs, timestamps, and counts
+- If the question is about mistakes/errors, focus on status >= 400 entries
+- If about performance, analyze timing (ms) and action counts
+- If about a specific order, filter entries mentioning that order
+- Format with markdown: headers, bold, tables where helpful
+- Keep the answer concise but thorough
+- If you can't find the answer in the data, say so clearly`;
+
+  return await callGemini(prompt, 2048);
+}
+
+/**
+ * AI-powered agent performance insights
+ */
+async function analyzeAgentStats(agents) {
+  if (!configured || !genAI) throw new Error('AI assistant not configured.');
+
+  const prompt = `Analyze these agent performance stats from Fello's Command Center and provide actionable insights for the operations manager.
+
+Agent stats:
+\`\`\`json
+${JSON.stringify(agents, null, 2)}
+\`\`\`
+
+Provide analysis covering:
+1. **Top Performers**: Who is most productive? What makes them stand out?
+2. **Efficiency**: Compare avg action times. Who's fastest? Who might need help?
+3. **Error Patterns**: High error rates could indicate training needs or system issues
+4. **Task Mix**: Breakdown of what each agent focuses on (SIM changes, DCRs, device pushes, AI usage). Is the workload balanced?
+5. **Recommendations**: Specific, actionable suggestions for the manager
+
+RULES:
+- Refer to agents by name (not username) when available
+- Quantify everything — don't just say "good" or "slow", say "40% faster" or "3x more errors"
+- Focus on insights the manager can ACT on
+- Use markdown formatting: headers, bold, short paragraphs
+- Keep it under 300 words`;
+
+  return await callGemini(prompt, 2048);
+}
+
+/**
+ * Shared Gemini call with model fallback and timeout
+ */
+async function callGemini(prompt, maxTokens = 1024) {
   const MODELS = ['gemini-3.7-flash', 'gemini-3.6-flash'];
   let lastError = null;
 
@@ -476,11 +547,11 @@ IMPORTANT:
     try {
       const model = genAI.getGenerativeModel({
         model: modelName,
-        generationConfig: { maxOutputTokens: 512 }
+        generationConfig: { maxOutputTokens: maxTokens }
       });
       const result = await Promise.race([
         model.generateContent(prompt),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Timed out')), 12000))
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Timed out')), 15000))
       ]);
       return result.response.text();
     } catch (e) {
@@ -490,6 +561,5 @@ IMPORTANT:
       throw e;
     }
   }
-
   throw new Error('AI service unavailable: ' + (lastError?.message || 'unknown'));
 }

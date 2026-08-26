@@ -123,7 +123,42 @@
     }
     .ai-summary-box .ai-label { font-size: 11px; font-weight: 700; color: var(--primary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
     .ai-summary-loading { color: var(--muted); font-style: italic; }
-    
+
+    /* Step-by-step timeline */
+    .step-timeline { padding: 0; margin: 8px 0 0 0; list-style: none; }
+    .step-item { display: flex; gap: 12px; padding: 6px 0; position: relative; font-size: 13px; }
+    .step-item:not(:last-child) { border-left: 2px solid var(--border); margin-left: 5px; padding-left: 18px; }
+    .step-item:last-child { border-left: 2px solid transparent; margin-left: 5px; padding-left: 18px; }
+    .step-item::before { content: ''; position: absolute; left: 0; top: 10px; width: 10px; height: 10px; border-radius: 50%; background: var(--primary); border: 2px solid var(--bg); }
+    .step-item.step-error::before { background: var(--red); }
+    .step-item.step-retry::before { background: var(--amber); }
+    .step-time { font-size: 11px; color: var(--muted); white-space: nowrap; min-width: 70px; }
+    .step-desc { flex: 1; line-height: 1.4; }
+    .step-desc strong { font-weight: 700; }
+    .step-meta { font-size: 11px; color: var(--muted); white-space: nowrap; text-align: right; min-width: 60px; }
+    .step-error-tag { font-size: 10px; font-weight: 700; color: var(--red); background: rgba(255,77,65,0.1); padding: 1px 6px; border-radius: 4px; margin-left: 6px; }
+    .step-retry-tag { font-size: 10px; font-weight: 700; color: var(--amber); background: rgba(245,146,49,0.1); padding: 1px 6px; border-radius: 4px; margin-left: 6px; }
+    .step-idle-gap { display: flex; align-items: center; gap: 8px; padding: 4px 0 4px 24px; font-size: 11px; color: var(--amber); font-weight: 600; }
+    .step-idle-gap::before { content: '⏸️'; }
+    .error-badge { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; font-weight: 700; color: var(--red); background: rgba(255,77,65,0.1); padding: 2px 8px; border-radius: 6px; margin-left: 12px; }
+
+    /* Ask the Audit */
+    .ask-bar { display: flex; gap: 8px; margin-bottom: 20px; }
+    .ask-input { flex: 1; padding: 12px 16px; border: 2px solid var(--border); border-radius: 12px; font-family: var(--font); font-size: 14px; outline: none; background: var(--bg); transition: border-color 0.2s; }
+    .ask-input:focus { border-color: var(--primary); }
+    .ask-input::placeholder { color: #aaa; }
+    .ask-btn { padding: 12px 24px; border-radius: 12px; font-size: 14px; font-weight: 600; cursor: pointer; border: none; font-family: var(--font); background: var(--primary); color: white; white-space: nowrap; }
+    .ask-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .ask-result { margin-bottom: 20px; padding: 16px 20px; background: linear-gradient(135deg, rgba(49,102,174,0.03), rgba(49,102,174,0.07)); border: 1px solid rgba(49,102,174,0.15); border-radius: 12px; font-size: 13px; line-height: 1.7; }
+    .ask-result h3 { margin: 0 0 8px; font-size: 14px; color: var(--primary); }
+    .ask-result table { width: 100%; border-collapse: collapse; margin: 8px 0; }
+    .ask-result th, .ask-result td { padding: 6px 10px; border: 1px solid var(--border); font-size: 12px; text-align: left; }
+    .ask-result th { background: var(--surface); font-weight: 600; }
+
+    /* Insights panel */
+    .insights-panel { margin-top: 24px; padding: 20px; background: linear-gradient(135deg, rgba(49,102,174,0.03), rgba(49,102,174,0.07)); border: 1px solid rgba(49,102,174,0.15); border-radius: 12px; font-size: 13px; line-height: 1.7; }
+    .insights-panel h3 { margin: 0 0 4px; font-size: 13px; color: var(--primary); }
+
     .empty-state { padding: 48px; text-align: center; color: var(--muted); font-size: 14px; }
     
     .footer-bar { display: flex; justify-content: space-between; align-items: center; margin-top: 16px; }
@@ -136,6 +171,13 @@
   <script src="/shared-header.js"></script>
 
   <div class="container">
+    <!-- Ask the Audit -->
+    <div class="ask-bar">
+      <input type="text" id="ask-input" class="ask-input" placeholder="🔍 Ask the Audit... &quot;What did Dan do today?&quot; &quot;Who last worked on SQ14315?&quot;" onkeydown="if(event.key==='Enter')askAudit()">
+      <button class="ask-btn" onclick="askAudit()" id="ask-btn">Ask AI</button>
+    </div>
+    <div id="ask-result" style="display:none"></div>
+
     <div class="tabs">
       <button class="tab active" onclick="switchTab('log')">📋 Audit Log</button>
       <button class="tab" onclick="switchTab('sessions')">🕐 Sessions</button>
@@ -368,27 +410,56 @@
 
           var tasksHtml = '';
           (session.tasks || []).forEach(function(task) {
-            var actionBadges = (task.actions || []).slice(0, 8).map(function(a) {
-              return '<span class="badge ' + getBadgeClass(a.method) + '" style="font-size:10px;padding:2px 5px;">' + a.method + ' ' + (a.path || '').split('/').pop() + '</span>';
-            }).join('');
-            if (task.actions && task.actions.length > 8) actionBadges += '<span style="font-size:10px;color:var(--muted)">+' + (task.actions.length - 8) + ' more</span>';
+            // Build step-by-step timeline
+            var stepsHtml = '';
+            (task.actions || []).forEach(function(a) {
+              // Idle gap marker
+              if (a.idleGapFormatted) {
+                stepsHtml += '<div class="step-idle-gap">' + a.idleGapFormatted + ' idle</div>';
+              }
+              var stepClass = 'step-item';
+              if (a.isError) stepClass += ' step-error';
+              else if (a.isRetry) stepClass += ' step-retry';
+
+              var desc = (a.description || a.method + ' ' + (a.path || '').split('/').pop())
+                .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+                .replace(/`([^`]+)`/g, '<code style="font-size:11px;background:var(--surface);padding:1px 4px;border-radius:3px">$1</code>');
+
+              var tags = '';
+              if (a.isError) tags += '<span class="step-error-tag">' + (a.status || 'ERROR') + '</span>';
+              if (a.isRetry) tags += '<span class="step-retry-tag">RETRY</span>';
+
+              var metaText = a.durationMs ? (a.durationMs > 1000 ? (a.durationMs / 1000).toFixed(1) + 's' : a.durationMs + 'ms') : '';
+
+              stepsHtml +=
+                '<div class="' + stepClass + '">' +
+                  '<span class="step-time">' + formatTime(a.timestamp) + '</span>' +
+                  '<span class="step-desc">' + desc + tags + '</span>' +
+                  '<span class="step-meta">' + metaText + '</span>' +
+                '</div>';
+            });
+
+            var errorInfo = (task.errorCount > 0) ? '<span class="error-badge">⚠️ ' + task.errorCount + ' error' + (task.errorCount > 1 ? 's' : '') + '</span>' : '';
 
             tasksHtml +=
-              '<div class="task-item">' +
-                '<div class="task-dot"></div>' +
-                '<div class="task-info">' +
-                  '<div class="task-order">' + (task.orderId || 'General') + '</div>' +
-                  '<div class="task-time">' + formatTime(task.startTime) + ' → ' + formatTime(task.endTime) + ' &bull; ' + (task.actionCount || 0) + ' actions</div>' +
-                  '<div class="task-actions">' + actionBadges + '</div>' +
+              '<div class="task-item" style="display:block;padding:12px 0;border-bottom:1px solid var(--border)">' +
+                '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">' +
+                  '<div><span class="task-order">' + (task.orderId || 'General') + '</span>' + errorInfo + '</div>' +
+                  '<div style="display:flex;align-items:center;gap:12px">' +
+                    '<span style="font-size:12px;color:var(--muted)">' + formatTime(task.startTime) + ' → ' + formatTime(task.endTime) + ' • ' + (task.actionCount || 0) + ' steps</span>' +
+                    '<span class="task-duration">' + (task.durationFormatted || '-') + '</span>' +
+                  '</div>' +
                 '</div>' +
-                '<div class="task-duration">' + (task.durationFormatted || '-') + '</div>' +
+                '<div class="step-timeline">' + stepsHtml + '</div>' +
               '</div>';
           });
+
+          var errorBadge = (session.errorCount > 0) ? '<span class="error-badge">🔴 ' + session.errorCount + ' error' + (session.errorCount > 1 ? 's' : '') + '</span>' : '';
 
           card.innerHTML =
             '<div class="session-header">' +
               '<div>' +
-                '<div class="session-user">' + (session.name || session.user) + ' <span style="font-weight:400;font-size:12px;color:var(--muted)">(' + session.user + ')</span></div>' +
+                '<div class="session-user">' + (session.name || session.user) + ' <span style="font-weight:400;font-size:12px;color:var(--muted)">(' + session.user + ')</span>' + errorBadge + '</div>' +
                 '<div class="session-meta">' +
                   formatDate(session.loginTime || '') + (session.logoutTime ? ' → ' + formatTime(session.logoutTime) : ' (active)') +
                   ' &bull; ' + session.durationFormatted +
@@ -408,8 +479,6 @@
 
           card.querySelector('.session-header').addEventListener('click', function() { card.classList.toggle('expanded'); });
           container.appendChild(card);
-
-          // Store session data for AI summarization
           card._sessionData = session;
         });
       } catch(e) {
@@ -460,10 +529,12 @@
     }
 
     // ── Agent Stats Tab ──
+    var cachedAgentStats = null;
     async function loadStats() {
       try {
         var res = await fetch('/api/audit/agent-stats');
         var data = await res.json();
+        cachedAgentStats = data;
         var grid = document.getElementById('stats-grid');
         var tableContainer = document.getElementById('stats-table-container');
 
@@ -472,24 +543,26 @@
           return;
         }
 
-        var totalActions = 0, totalLogins = 0, totalLookups = 0;
-        data.agents.forEach(function(a) { totalActions += a.totalActions; totalLogins += a.logins; totalLookups += a.lookups; });
+        var totalActions = 0, totalLogins = 0, totalLookups = 0, totalErrors = 0;
+        data.agents.forEach(function(a) { totalActions += a.totalActions; totalLogins += a.logins; totalLookups += a.lookups; totalErrors += a.errors; });
 
         grid.innerHTML =
           '<div class="stat-card"><div class="stat-card-value">' + data.agents.length + '</div><div class="stat-card-label">Active Agents</div></div>' +
           '<div class="stat-card"><div class="stat-card-value">' + totalActions + '</div><div class="stat-card-label">Total Actions</div></div>' +
-          '<div class="stat-card"><div class="stat-card-value">' + totalLogins + '</div><div class="stat-card-label">Total Logins</div></div>' +
-          '<div class="stat-card"><div class="stat-card-value">' + totalLookups + '</div><div class="stat-card-label">Order Lookups</div></div>';
+          '<div class="stat-card"><div class="stat-card-value">' + totalLookups + '</div><div class="stat-card-label">Order Lookups</div></div>' +
+          '<div class="stat-card"><div class="stat-card-value" style="color:' + (totalErrors > 0 ? 'var(--red)' : 'var(--green)') + '">' + totalErrors + '</div><div class="stat-card-label">Total Errors</div></div>';
 
         var rows = data.agents.map(function(a) {
+          var tb = a.taskBreakdown || {};
           return '<tr>' +
             '<td style="font-weight:600">' + a.user + '</td>' +
             '<td>' + (a.name || '-') + '</td>' +
-            '<td>' + (a.role || '-') + '</td>' +
             '<td style="font-weight:700;color:var(--primary)">' + a.totalActions + '</td>' +
-            '<td>' + a.logins + '</td>' +
             '<td>' + a.lookups + '</td>' +
             '<td>' + a.writes + '</td>' +
+            '<td style="color:' + (a.errors > 0 ? 'var(--red)' : 'var(--muted)') + ';font-weight:' + (a.errors > 0 ? '700' : '400') + '">' + a.errors + ' (' + a.errorRate + '%)</td>' +
+            '<td>' + (a.avgActionMs || 0) + 'ms</td>' +
+            '<td style="font-size:11px;color:var(--muted)">' + (tb.simChanges || 0) + ' SIM / ' + (tb.dcrSubmissions || 0) + ' DCR / ' + (tb.devicePushes || 0) + ' Push</td>' +
             '<td>' + a.activeDays + '</td>' +
             '<td>' + a.avgActionsPerDay + '</td>' +
             '<td style="font-size:11px;color:var(--muted)">' + formatDate(a.lastSeen) + '</td>' +
@@ -497,15 +570,90 @@
         }).join('');
 
         tableContainer.innerHTML =
+          '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">' +
+            '<span style="font-size:14px;font-weight:600">Agent Performance</span>' +
+            '<button class="ai-summary-btn" onclick="getStatsInsights(this)">✨ AI Performance Insights</button>' +
+          '</div>' +
           '<div class="table-container"><table>' +
             '<thead><tr>' +
-              '<th>Username</th><th>Name</th><th>Role</th><th>Total Actions</th><th>Logins</th><th>Lookups</th><th>Writes</th><th>Active Days</th><th>Avg/Day</th><th>Last Seen</th>' +
+              '<th>Username</th><th>Name</th><th>Actions</th><th>Lookups</th><th>Writes</th><th>Errors</th><th>Avg Speed</th><th>Task Breakdown</th><th>Days</th><th>Avg/Day</th><th>Last Seen</th>' +
             '</tr></thead>' +
             '<tbody>' + rows + '</tbody>' +
-          '</table></div>';
+          '</table></div>' +
+          '<div id="stats-insights"></div>';
       } catch(e) {
         document.getElementById('stats-grid').innerHTML = '<div class="empty-state" style="color:var(--red);grid-column:1/-1">Error: ' + e.message + '</div>';
       }
+    }
+
+    // ── AI Stats Insights ──
+    async function getStatsInsights(btn) {
+      if (!cachedAgentStats) { alert('Load stats first'); return; }
+      var container = document.getElementById('stats-insights');
+      btn.disabled = true;
+      btn.textContent = '⏳ Analyzing...';
+      container.innerHTML = '<div class="insights-panel"><div class="ai-label">✨ AI Analysis</div><div class="ai-summary-loading">Analyzing agent performance...</div></div>';
+      try {
+        var res = await fetch('/api/audit/agent-stats/insights', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(cachedAgentStats)
+        });
+        var data = await res.json();
+        if (data.error) throw new Error(data.error);
+        container.innerHTML = '<div class="insights-panel"><div class="ai-label" style="margin-bottom:8px">✨ AI Performance Insights</div>' + renderMd(data.insights || '') + '</div>';
+        btn.textContent = '✨ AI Performance Insights';
+        btn.disabled = false;
+      } catch(e) {
+        container.innerHTML = '<div class="insights-panel" style="border-color:var(--red)"><div class="ai-label" style="color:var(--red)">Error</div>' + e.message + '</div>';
+        btn.textContent = '✨ Retry';
+        btn.disabled = false;
+      }
+    }
+
+    // ── Ask the Audit ──
+    async function askAudit() {
+      var input = document.getElementById('ask-input');
+      var question = input.value.trim();
+      if (!question) return;
+      var btn = document.getElementById('ask-btn');
+      var resultDiv = document.getElementById('ask-result');
+      btn.disabled = true;
+      btn.textContent = '⏳ Thinking...';
+      resultDiv.style.display = 'block';
+      resultDiv.className = 'ask-result';
+      resultDiv.innerHTML = '<div class="ai-summary-loading">Searching audit data...</div>';
+
+      try {
+        var res = await fetch('/api/audit/ask', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ question: question })
+        });
+        var data = await res.json();
+        if (data.error) throw new Error(data.error);
+        resultDiv.innerHTML = '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px"><span class="ai-label">✨ AI Answer</span><button onclick="document.getElementById(\'ask-result\').style.display=\'none\'" style="background:none;border:none;cursor:pointer;font-size:16px;color:var(--muted)">✕</button></div>' + renderMd(data.answer || 'No answer generated');
+        btn.textContent = 'Ask AI';
+        btn.disabled = false;
+      } catch(e) {
+        resultDiv.innerHTML = '<div style="color:var(--red)">Error: ' + e.message + '</div>';
+        btn.textContent = 'Ask AI';
+        btn.disabled = false;
+      }
+    }
+
+    // Simple markdown → HTML renderer
+    function renderMd(text) {
+      return text
+        .replace(/### (.+)/g, '<h4 style="margin:12px 0 4px;font-size:13px;color:var(--primary)">$1</h4>')
+        .replace(/## (.+)/g, '<h3 style="margin:14px 0 6px;font-size:14px">$1</h3>')
+        .replace(/# (.+)/g, '<h3 style="margin:14px 0 6px;font-size:15px">$1</h3>')
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*([^*]+)\*/g, '<em>$1</em>')
+        .replace(/`([^`]+)`/g, '<code style="font-size:11px;background:var(--surface);padding:1px 4px;border-radius:3px">$1</code>')
+        .replace(/\n- /g, '\n• ')
+        .replace(/\n\n/g, '<br><br>')
+        .replace(/\n/g, '<br>');
     }
 
     // Initial load

@@ -146,6 +146,77 @@ function extractTaskContext(req) {
   return Object.keys(ctx).length > 0 ? ctx : undefined;
 }
 
+// Translate raw API action into human-readable description
+function describeAction(action) {
+  const p = action.path || '';
+  const m = action.method || '';
+  const tc = action.taskContext || {};
+  const body = action.body || {};
+  const id = tc.branchId || tc.terminalId || tc.resourceId || tc.deviceId || tc.groupId || tc.orderId || '';
+
+  // Lookups
+  if (m === 'VIEW' && p.startsWith('/api/lookup')) return `🔍 Looked up order **${tc.query || body.q || 'unknown'}**`;
+  if (m === 'VIEW' && p.includes('/webbing/branches')) return id ? `📊 Loaded branch **${id}** details` : '📊 Loaded branch list';
+  if (m === 'VIEW' && p.includes('/reports/overage')) return '📈 Checked overage report';
+
+  // Webbing SIM management
+  if (p.includes('/activate')) return `✅ Activated SIM on branch **${id}**`;
+  if (p.includes('/suspend')) return `⏸️ Suspended SIM on branch **${id}**`;
+  if (p.includes('/deactivate')) return `🔴 Deactivated SIM on branch **${id}**`;
+  if (p.includes('/resume')) return `▶️ Resumed SIM on branch **${id}**`;
+  if (m === 'POST' && p.includes('/webbing/branches') && body.name) return `📝 Renamed branch to **${body.name}**`;
+  if (m === 'POST' && p.includes('/webbing/')) return `🔧 Modified Webbing resource **${id}**`;
+
+  // SimpleMDM / Device management
+  if (p.includes('/simplemdm') && p.includes('/push')) return `📱 Pushed config to iPad **${id}**`;
+  if (p.includes('/simplemdm') && p.includes('/restart')) return `🔄 Restarted iPad **${id}**`;
+  if (p.includes('/simplemdm') && p.includes('/lock')) return `🔒 Locked iPad **${id}**`;
+  if (p.includes('/simplemdm') && p.includes('/wipe')) return `⚠️ Wiped iPad **${id}**`;
+  if (p.includes('/simplemdm') && p.includes('/assign')) return `📲 Assigned iPad to group **${id}**`;
+  if (p.includes('/simplemdm') && p.includes('/install')) return `📦 Installed app on iPad **${id}**`;
+  if (m === 'POST' && p.includes('/simplemdm')) return `📱 SimpleMDM action on **${id || 'device'}**`;
+
+  // DCR
+  if (p.includes('/dcr/submit') || p.includes('/dcr-submit')) return `📋 Submitted DCR${tc.orderId ? ' for order **' + tc.orderId + '**' : ''}`;
+  if (p.includes('/dcr')) return `📋 DCR action${tc.orderId ? ' for **' + tc.orderId + '**' : ''}`;
+
+  // Starlink
+  if (p.includes('/starlink') && p.includes('/reboot')) return `🔄 Rebooted Starlink terminal **${id}**`;
+  if (p.includes('/starlink') && p.includes('/speed')) return `🏎️ Ran speed test on Starlink **${id}**`;
+  if (p.includes('/starlink')) return `📡 Starlink action on **${id || 'terminal'}**`;
+
+  // AI
+  if (p.includes('/ai/chat')) return '🤖 Asked AI assistant a question';
+
+  // Hexnode
+  if (p.includes('/hexnode')) return `🖥️ Hexnode MDM action **${id}**`;
+
+  // Cobrowse
+  if (p.includes('/cobrowse')) return `👁️ Started remote view session`;
+
+  // Auth
+  if (m === 'LOGIN') return '🔑 Logged in';
+  if (m === 'LOGOUT') return '🚪 Logged out';
+
+  // Coverage / Checker
+  if (p.includes('/coverage') || p.includes('/checker')) return '🗺️ Checked coverage/carrier info';
+
+  // Inventory
+  if (p.includes('/inventory')) return '📦 Inventory action';
+
+  // Share/Pulse
+  if (p.includes('/share') || p.includes('/pulse')) return '📊 Pulse/share link action';
+
+  // Generic fallback
+  if (m === 'VIEW') return `👁️ Viewed \`${p.split('/').slice(-2).join('/')}\``;
+  if (m === 'POST') return `✏️ Created/updated \`${p.split('/').slice(-2).join('/')}\`${id ? ' **' + id + '**' : ''}`;
+  if (m === 'PUT') return `✏️ Updated \`${p.split('/').slice(-2).join('/')}\`${id ? ' **' + id + '**' : ''}`;
+  if (m === 'DELETE') return `🗑️ Deleted \`${p.split('/').slice(-2).join('/')}\`${id ? ' **' + id + '**' : ''}`;
+  if (m === 'PATCH') return `🔧 Patched \`${p.split('/').slice(-2).join('/')}\`${id ? ' **' + id + '**' : ''}`;
+
+  return `${m} ${p}`;
+}
+
 // Cookie parser helper
 function parseCookies(req) {
   const cookies = {};
@@ -642,6 +713,14 @@ app.get('/api/audit/sessions', (req, res) => {
         const query = action.taskContext?.query || action.body?.q;
         const isLookup = action.method === 'VIEW' && action.path === '/api/lookup' && query;
 
+        const enrichedAction = {
+          method: action.method, path: action.path, timestamp: action.timestamp,
+          status: action.status, durationMs: action.durationMs,
+          description: describeAction(action),
+          isError: action.status && action.status >= 400,
+          taskContext: action.taskContext, body: action.body
+        };
+
         if (isLookup) {
           if (currentTask) {
             currentTask.endTime = currentTask.actions.length > 0
@@ -653,16 +732,16 @@ app.get('/api/audit/sessions', (req, res) => {
             orderId: query,
             startTime: action.timestamp,
             endTime: action.timestamp,
-            actions: [{ method: action.method, path: action.path, timestamp: action.timestamp, status: action.status }]
+            actions: [enrichedAction]
           };
         } else if (currentTask) {
-          currentTask.actions.push({ method: action.method, path: action.path, timestamp: action.timestamp, status: action.status, durationMs: action.durationMs });
+          currentTask.actions.push(enrichedAction);
         } else {
           currentTask = {
             orderId: action.taskContext?.query || action.taskContext?.branchId || 'General',
             startTime: action.timestamp,
             endTime: action.timestamp,
-            actions: [{ method: action.method, path: action.path, timestamp: action.timestamp, status: action.status }]
+            actions: [enrichedAction]
           };
         }
       }
@@ -673,17 +752,38 @@ app.get('/api/audit/sessions', (req, res) => {
         tasks.push(currentTask);
       }
 
+      // Compute per-task metrics: duration, errors, idle gaps
       for (const task of tasks) {
         const start = new Date(task.startTime).getTime();
         const end = new Date(task.endTime).getTime();
         task.durationMs = end - start;
         task.durationFormatted = formatDuration(end - start);
         task.actionCount = task.actions.length;
+        task.errorCount = task.actions.filter(a => a.isError).length;
+
+        // Detect idle gaps > 5 min and retries
+        for (let i = 1; i < task.actions.length; i++) {
+          const prev = new Date(task.actions[i - 1].timestamp).getTime();
+          const curr = new Date(task.actions[i].timestamp).getTime();
+          const gapMs = curr - prev;
+          if (gapMs > 300000) { // 5 minutes
+            task.actions[i].idleGapMs = gapMs;
+            task.actions[i].idleGapFormatted = formatDuration(gapMs);
+          }
+          // Detect retries: same path within 60s
+          if (task.actions[i].path === task.actions[i - 1].path && gapMs < 60000 && task.actions[i - 1].isError) {
+            task.actions[i].isRetry = true;
+          }
+        }
       }
 
+      // Session-level metrics
       const firstTime = session.loginTime || (session.actions[0] && session.actions[0].timestamp);
       const lastTime = session.logoutTime || (session.actions.length > 0 ? session.actions[session.actions.length - 1].timestamp : firstTime);
       const sessionDurationMs = firstTime && lastTime ? new Date(lastTime).getTime() - new Date(firstTime).getTime() : 0;
+
+      const totalErrors = tasks.reduce((sum, t) => sum + (t.errorCount || 0), 0);
+      const totalRetries = tasks.reduce((sum, t) => sum + t.actions.filter(a => a.isRetry).length, 0);
 
       results.push({
         sessionId: session.sessionId,
@@ -697,6 +797,8 @@ app.get('/api/audit/sessions', (req, res) => {
         durationFormatted: formatDuration(sessionDurationMs),
         totalActions: session.actions.length,
         taskCount: tasks.length,
+        errorCount: totalErrors,
+        retryCount: totalRetries,
         tasks: tasks
       });
     }
@@ -766,20 +868,14 @@ app.get('/api/audit/agent-stats', (req, res) => {
     const agentMap = new Map();
     const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-/i;
     for (const e of filtered) {
-      // Skip non-human entries (system, API tokens, UUIDs)
       if (!e.user || e.user === 'system' || UUID_RE.test(e.user)) continue;
       if (!agentMap.has(e.user)) {
         agentMap.set(e.user, {
-          user: e.user,
-          name: e.name || '',
-          role: e.role || '',
-          totalActions: 0,
-          logins: 0,
-          lookups: 0,
-          writes: 0,
-          activeDays: new Set(),
-          firstSeen: e.timestamp,
-          lastSeen: e.timestamp
+          user: e.user, name: e.name || '', role: e.role || '',
+          totalActions: 0, logins: 0, lookups: 0, writes: 0, errors: 0,
+          simChanges: 0, dcrSubmissions: 0, devicePushes: 0, aiChats: 0,
+          totalDurationMs: 0, lookupDurationMs: 0, lookupCount: 0,
+          activeDays: new Set(), firstSeen: e.timestamp, lastSeen: e.timestamp
         });
       }
       const agent = agentMap.get(e.user);
@@ -787,8 +883,16 @@ app.get('/api/audit/agent-stats', (req, res) => {
       if (e.timestamp > agent.lastSeen) agent.lastSeen = e.timestamp;
       if (e.timestamp < agent.firstSeen) agent.firstSeen = e.timestamp;
       if (e.method === 'LOGIN') agent.logins++;
-      if (e.method === 'VIEW') agent.lookups++;
+      if (e.method === 'VIEW') { agent.lookups++; if (e.durationMs) { agent.lookupDurationMs += e.durationMs; agent.lookupCount++; } }
       if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(e.method)) agent.writes++;
+      if (e.status && e.status >= 400) agent.errors++;
+      if (e.durationMs) agent.totalDurationMs += e.durationMs;
+      // Task breakdown
+      const p = e.path || '';
+      if (p.includes('/activate') || p.includes('/suspend') || p.includes('/deactivate') || p.includes('/resume')) agent.simChanges++;
+      if (p.includes('/dcr')) agent.dcrSubmissions++;
+      if (p.includes('/simplemdm') && p.includes('/push')) agent.devicePushes++;
+      if (p.includes('/ai/chat')) agent.aiChats++;
       const day = e.timestamp ? e.timestamp.split('T')[0] : '';
       if (day) agent.activeDays.add(day);
     }
@@ -796,12 +900,75 @@ app.get('/api/audit/agent-stats', (req, res) => {
     const agents = Array.from(agentMap.values()).map(a => ({
       ...a,
       activeDays: a.activeDays.size,
-      avgActionsPerDay: a.activeDays.size > 0 ? Math.round(a.totalActions / a.activeDays.size) : 0
+      avgActionsPerDay: a.activeDays.size > 0 ? Math.round(a.totalActions / a.activeDays.size) : 0,
+      errorRate: a.totalActions > 0 ? Math.round((a.errors / a.totalActions) * 100) : 0,
+      avgLookupMs: a.lookupCount > 0 ? Math.round(a.lookupDurationMs / a.lookupCount) : 0,
+      avgActionMs: a.totalActions > 0 ? Math.round(a.totalDurationMs / a.totalActions) : 0,
+      taskBreakdown: { simChanges: a.simChanges, dcrSubmissions: a.dcrSubmissions, devicePushes: a.devicePushes, aiChats: a.aiChats }
     }));
 
     agents.sort((a, b) => b.totalActions - a.totalActions);
     res.json({ agents });
   } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/audit/ask — Natural language audit search
+app.post('/api/audit/ask', async (req, res) => {
+  if (!req.user || req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+  try {
+    const { question, from, to } = req.body;
+    if (!question) return res.status(400).json({ error: 'Question required' });
+
+    const geminiAssistant = require('./gemini-assistant');
+    if (!geminiAssistant.isConfigured()) {
+      return res.status(503).json({ error: 'AI not configured' });
+    }
+
+    // Load audit entries
+    if (!fs.existsSync(AUDIT_LOG)) return res.json({ answer: 'No audit data available yet.' });
+    const raw = fs.readFileSync(AUDIT_LOG, 'utf-8');
+    const lines = raw.trim().split('\n').filter(Boolean);
+    let entries = lines.map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+
+    if (from) entries = entries.filter(e => e.timestamp >= from);
+    if (to) entries = entries.filter(e => e.timestamp <= to + 'T23:59:59Z');
+
+    // Take last 500 entries and compress
+    const recent = entries.slice(-500).map(e => ({
+      time: e.timestamp, user: e.user, action: e.method, path: e.path,
+      order: e.taskContext?.query || e.taskContext?.orderId || e.body?.orderId || '',
+      status: e.status, ms: e.durationMs,
+      detail: describeAction(e)
+    }));
+
+    const answer = await geminiAssistant.askAudit(question, recent);
+    res.json({ answer });
+  } catch (err) {
+    console.error('[Audit] Ask error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/audit/agent-stats/insights — AI performance analysis
+app.post('/api/audit/agent-stats/insights', async (req, res) => {
+  if (!req.user || req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+  try {
+    const geminiAssistant = require('./gemini-assistant');
+    if (!geminiAssistant.isConfigured()) {
+      return res.status(503).json({ error: 'AI not configured' });
+    }
+    const stats = req.body;
+    if (!stats || !stats.agents) return res.status(400).json({ error: 'Agent stats required' });
+    const insights = await geminiAssistant.analyzeAgentStats(stats.agents);
+    res.json({ insights });
+  } catch (err) {
+    console.error('[Audit] Insights error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
