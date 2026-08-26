@@ -415,4 +415,81 @@ async function chat(userMessage, history = []) {
   throw new Error('AI service is temporarily busy. Please try again in a few seconds.');
 }
 
-module.exports = { init, isConfigured, chat, buildContext };
+module.exports = { init, isConfigured, chat, buildContext, summarizeSession };
+
+/**
+ * Generate an AI-powered summary of a user session
+ * @param {Object} session - Session data with tasks and actions
+ * @returns {Promise<string>} Natural language summary
+ */
+async function summarizeSession(session) {
+  if (!configured || !genAI) {
+    throw new Error('AI assistant not configured.');
+  }
+
+  // Build a compact description of the session
+  const taskDescriptions = (session.tasks || []).map(t => {
+    const actions = (t.actions || []).map(a => {
+      const endpoint = (a.path || '').replace('/api/', '');
+      return `${a.method} ${endpoint}` + (a.status && a.status >= 400 ? ` (${a.status} error)` : '');
+    });
+    return {
+      target: t.orderId || 'General',
+      duration: t.durationFormatted || '-',
+      actionCount: t.actionCount || actions.length,
+      actions: actions.slice(0, 20) // cap to avoid token overflow
+    };
+  });
+
+  const sessionDesc = {
+    agent: session.name || session.user,
+    username: session.user,
+    role: session.role || 'agent',
+    loginTime: session.loginTime,
+    logoutTime: session.logoutTime || '(still active)',
+    duration: session.durationFormatted,
+    totalActions: session.totalActions,
+    taskCount: session.taskCount,
+    ip: session.ip,
+    tasks: taskDescriptions
+  };
+
+  const prompt = `Analyze this Command Center session and write a concise, insightful 2-4 sentence summary of what the user did. Be specific about orders they worked on, what actions they performed (lookups, SIM changes, device management, DCR submissions, etc.), and note anything unusual (errors, repeated actions, long idle times).
+
+Session data:
+\`\`\`json
+${JSON.stringify(sessionDesc, null, 2)}
+\`\`\`
+
+IMPORTANT: 
+- Write in past tense, refer to the agent by first name
+- Be specific: name order IDs, action types, and counts  
+- Note workflow patterns: "looked up X then configured Y"
+- Flag anything unusual: errors, repeated lookups (could mean trouble), very short/long sessions
+- Keep it to 2-4 sentences max
+- Do NOT use bullet points — write flowing prose`;
+
+  const MODELS = ['gemini-3.7-flash', 'gemini-3.6-flash'];
+  let lastError = null;
+
+  for (const modelName of MODELS) {
+    try {
+      const model = genAI.getGenerativeModel({
+        model: modelName,
+        generationConfig: { maxOutputTokens: 512 }
+      });
+      const result = await Promise.race([
+        model.generateContent(prompt),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Timed out')), 12000))
+      ]);
+      return result.response.text();
+    } catch (e) {
+      lastError = e;
+      if (e.message.includes('404') || e.message.includes('not found')) continue;
+      if (e.message.includes('503') || e.message.includes('429') || e.message.includes('timed out')) continue;
+      throw e;
+    }
+  }
+
+  throw new Error('AI service unavailable: ' + (lastError?.message || 'unknown'));
+}

@@ -723,6 +723,28 @@ function formatDuration(ms) {
   return hours + 'h ' + remMins + 'm';
 }
 
+// POST /api/audit/sessions/summarize — AI-powered session summary
+app.post('/api/audit/sessions/summarize', async (req, res) => {
+  if (!req.user || req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Admin access required' });
+  }
+  try {
+    const session = req.body;
+    if (!session || !session.tasks) {
+      return res.status(400).json({ error: 'Session data with tasks required' });
+    }
+    const geminiAssistant = require('./gemini-assistant');
+    if (!geminiAssistant.isConfigured()) {
+      return res.status(503).json({ error: 'AI assistant not configured' });
+    }
+    const summary = await geminiAssistant.summarizeSession(session);
+    res.json({ summary });
+  } catch (err) {
+    console.error('[Audit] AI summary error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET /api/audit/agent-stats — aggregate performance stats per agent
 app.get('/api/audit/agent-stats', (req, res) => {
   if (!req.user || req.user.role !== 'admin') {

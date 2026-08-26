@@ -110,6 +110,20 @@
     }
     .details.expanded { white-space: pre-wrap; word-break: break-all; background: var(--surface); padding: 8px; border-radius: 6px; }
     
+    .ai-summary-btn {
+      padding: 6px 14px; border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer;
+      border: 1px solid rgba(49,102,174,0.3); background: rgba(49,102,174,0.06); color: var(--primary);
+      font-family: var(--font); transition: all 0.2s; white-space: nowrap;
+    }
+    .ai-summary-btn:hover { background: rgba(49,102,174,0.12); border-color: var(--primary); }
+    .ai-summary-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .ai-summary-box {
+      margin-top: 12px; padding: 14px 18px; background: linear-gradient(135deg, rgba(49,102,174,0.04), rgba(49,102,174,0.08));
+      border: 1px solid rgba(49,102,174,0.15); border-radius: 10px; font-size: 13px; line-height: 1.6; color: var(--text);
+    }
+    .ai-summary-box .ai-label { font-size: 11px; font-weight: 700; color: var(--primary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+    .ai-summary-loading { color: var(--muted); font-style: italic; }
+    
     .empty-state { padding: 48px; text-align: center; color: var(--muted); font-size: 14px; }
     
     .footer-bar { display: flex; justify-content: space-between; align-items: center; margin-top: 16px; }
@@ -347,9 +361,10 @@
           }
         });
 
-        data.sessions.forEach(function(session) {
+        data.sessions.forEach(function(session, idx) {
           var card = document.createElement('div');
           card.className = 'session-card';
+          card.dataset.sessionIdx = idx;
 
           var tasksHtml = '';
           (session.tasks || []).forEach(function(task) {
@@ -383,15 +398,64 @@
               '<div class="session-stats">' +
                 '<div class="session-stat"><div class="session-stat-value">' + (session.taskCount || 0) + '</div><div class="session-stat-label">Tasks</div></div>' +
                 '<div class="session-stat"><div class="session-stat-value">' + (session.totalActions || 0) + '</div><div class="session-stat-label">Actions</div></div>' +
+                '<button class="ai-summary-btn" onclick="event.stopPropagation(); getAiSummary(this, ' + idx + ')" title="Get AI-powered session summary">✨ AI Summary</button>' +
               '</div>' +
             '</div>' +
-            '<div class="session-body">' + (tasksHtml || '<div class="empty-state" style="padding:16px">No task activity recorded</div>') + '</div>';
+            '<div class="session-body">' +
+              '<div class="ai-summary-container" id="ai-summary-' + idx + '"></div>' +
+              (tasksHtml || '<div class="empty-state" style="padding:16px">No task activity recorded</div>') +
+            '</div>';
 
           card.querySelector('.session-header').addEventListener('click', function() { card.classList.toggle('expanded'); });
           container.appendChild(card);
+
+          // Store session data for AI summarization
+          card._sessionData = session;
         });
       } catch(e) {
         container.innerHTML = '<div class="empty-state" style="color:var(--red)">Error loading sessions: ' + e.message + '</div>';
+      }
+    }
+
+    // ── AI Session Summary ──
+    async function getAiSummary(btn, idx) {
+      var card = btn.closest('.session-card');
+      var session = card._sessionData;
+      var container = document.getElementById('ai-summary-' + idx);
+
+      if (!session) { alert('No session data available'); return; }
+
+      // Expand the card to show the summary
+      card.classList.add('expanded');
+
+      // If already summarized, toggle visibility
+      if (container.dataset.loaded === 'true') {
+        container.style.display = container.style.display === 'none' ? 'block' : 'none';
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = '⏳ Analyzing...';
+      container.innerHTML = '<div class="ai-summary-box"><div class="ai-label">✨ AI Analysis</div><div class="ai-summary-loading">Analyzing session activity...</div></div>';
+
+      try {
+        var res = await fetch('/api/audit/sessions/summarize', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(session)
+        });
+        var data = await res.json();
+
+        if (data.error) throw new Error(data.error);
+
+        container.innerHTML = '<div class="ai-summary-box"><div class="ai-label">✨ AI Analysis</div><div>' + (data.summary || 'No summary generated').replace(/\n/g, '<br>') + '</div></div>';
+        container.dataset.loaded = 'true';
+        btn.textContent = '✨ AI Summary';
+        btn.disabled = false;
+      } catch(e) {
+        container.innerHTML = '<div class="ai-summary-box" style="border-color:var(--red)"><div class="ai-label" style="color:var(--red)">Error</div>' + e.message + '</div>';
+        btn.textContent = '✨ Retry';
+        btn.disabled = false;
       }
     }
 
