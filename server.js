@@ -147,6 +147,7 @@ function extractTaskContext(req) {
 }
 
 // Translate raw API action into human-readable description
+// Pulls specific details from body/taskContext for maximum insight
 function describeAction(action) {
   const p = action.path || '';
   const m = action.method || '';
@@ -154,65 +155,124 @@ function describeAction(action) {
   const body = action.body || {};
   const id = tc.branchId || tc.terminalId || tc.resourceId || tc.deviceId || tc.groupId || tc.orderId || '';
 
-  // Lookups
-  if (m === 'VIEW' && p.startsWith('/api/lookup')) return `🔍 Looked up order **${tc.query || body.q || 'unknown'}**`;
-  if (m === 'VIEW' && p.includes('/webbing/branches')) return id ? `📊 Loaded branch **${id}** details` : '📊 Loaded branch list';
-  if (m === 'VIEW' && p.includes('/reports/overage')) return '📈 Checked overage report';
+  // Helper: format date nicely
+  const fmtDate = (d) => { if (!d) return ''; try { return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }); } catch { return d; } };
+  // Helper: extract order from body or path
+  const orderFromBody = body.orderId || body.flyOrderId || body.orderNumber || body.order_id || tc.orderId || tc.query || '';
+  // Helper: extract path param ID
+  const pathId = p.match(/\/(\d+)(?:\/|$)/)?.[1] || '';
 
-  // Webbing SIM management
-  if (p.includes('/activate')) return `✅ Activated SIM on branch **${id}**`;
-  if (p.includes('/suspend')) return `⏸️ Suspended SIM on branch **${id}**`;
+  // ── Lookups ──
+  if (m === 'VIEW' && p.startsWith('/api/lookup')) {
+    const q = tc.query || body.q || '';
+    return `🔍 Searched for **${q}** in order lookup`;
+  }
+  if (m === 'VIEW' && p.includes('/webbing/branches') && id) return `📊 Opened branch **${id}** — viewing SIM details`;
+  if (m === 'VIEW' && p.includes('/webbing/branches')) return '📊 Loaded full branch/SIM list';
+
+  // ── Overage Report ──
+  if (m === 'VIEW' && p.includes('/reports/overage')) {
+    const date = body.date || '';
+    return `📈 Ran overage report${date ? ' for **' + fmtDate(date) + '**' : ''} — checking orders nearing data caps`;
+  }
+
+  // ── Starlink Data Usage ──
+  if (p === '/api/data-usage' || p.includes('/data-usage')) {
+    const slCount = Array.isArray(body.serviceLineIds) ? body.serviceLineIds.length : (body.serviceLineId ? 1 : 0);
+    const startDate = body.startDate || body.start || '';
+    const endDate = body.endDate || body.end || '';
+    const dateRange = startDate && endDate ? ` — **${fmtDate(startDate)}** to **${fmtDate(endDate)}**` : '';
+    if (slCount > 0) return `📡 Queried Starlink data usage for **${slCount} service line${slCount > 1 ? 's' : ''}**${dateRange}`;
+    return `📡 Queried Starlink data usage${dateRange}`;
+  }
+
+  // ── Webbing SIM management ──
+  if (p.includes('/activate')) return `✅ Activated SIM on branch **${id}**${body.iccid ? ' (ICCID: ' + body.iccid.slice(-6) + ')' : ''}`;
+  if (p.includes('/suspend')) return `⏸️ Suspended SIM on branch **${id}**${body.reason ? ' — reason: ' + body.reason : ''}`;
   if (p.includes('/deactivate')) return `🔴 Deactivated SIM on branch **${id}**`;
   if (p.includes('/resume')) return `▶️ Resumed SIM on branch **${id}**`;
-  if (m === 'POST' && p.includes('/webbing/branches') && body.name) return `📝 Renamed branch to **${body.name}**`;
-  if (m === 'POST' && p.includes('/webbing/')) return `🔧 Modified Webbing resource **${id}**`;
+  if (m === 'POST' && p.includes('/webbing/branches') && body.name) return `📝 Renamed branch **${id || pathId}** to **${body.name}**`;
+  if (m === 'PUT' && p.includes('/webbing/branches') && body.name) return `📝 Renamed branch **${id || pathId}** to **${body.name}**`;
+  if (m === 'POST' && p.includes('/webbing/') && p.includes('/move')) return `🔀 Moved SIM to branch **${body.targetBranchId || id}**`;
+  if (m === 'POST' && p.includes('/webbing/')) return `🔧 Updated Webbing SIM **${id || pathId}**`;
 
-  // SimpleMDM / Device management
-  if (p.includes('/simplemdm') && p.includes('/push')) return `📱 Pushed config to iPad **${id}**`;
-  if (p.includes('/simplemdm') && p.includes('/restart')) return `🔄 Restarted iPad **${id}**`;
-  if (p.includes('/simplemdm') && p.includes('/lock')) return `🔒 Locked iPad **${id}**`;
-  if (p.includes('/simplemdm') && p.includes('/wipe')) return `⚠️ Wiped iPad **${id}**`;
-  if (p.includes('/simplemdm') && p.includes('/assign')) return `📲 Assigned iPad to group **${id}**`;
-  if (p.includes('/simplemdm') && p.includes('/install')) return `📦 Installed app on iPad **${id}**`;
-  if (m === 'POST' && p.includes('/simplemdm')) return `📱 SimpleMDM action on **${id || 'device'}**`;
+  // ── SimpleMDM / Device management ──
+  const deviceName = body.deviceName || body.name || id || pathId;
+  if (p.includes('/simplemdm') && p.includes('/push')) return `📱 Pushed config update to iPad **${deviceName}**`;
+  if (p.includes('/simplemdm') && p.includes('/restart')) return `🔄 Restarted iPad **${deviceName}**`;
+  if (p.includes('/simplemdm') && p.includes('/lock')) return `🔒 Remotely locked iPad **${deviceName}**`;
+  if (p.includes('/simplemdm') && p.includes('/wipe')) return `⚠️ Remote wiped iPad **${deviceName}** — all data erased`;
+  if (p.includes('/simplemdm') && p.includes('/assign')) return `📲 Assigned iPad **${deviceName}** to group **${body.groupName || body.groupId || id}**`;
+  if (p.includes('/simplemdm') && p.includes('/install')) return `📦 Pushed app install to iPad **${deviceName}**`;
+  if (p.includes('/simplemdm') && p.includes('/group')) return `📁 ${m === 'POST' ? 'Created' : 'Updated'} device group **${body.name || id}**`;
+  if (m === 'POST' && p.includes('/simplemdm')) return `📱 SimpleMDM command on device **${deviceName}**`;
 
-  // DCR
-  if (p.includes('/dcr/submit') || p.includes('/dcr-submit')) return `📋 Submitted DCR${tc.orderId ? ' for order **' + tc.orderId + '**' : ''}`;
-  if (p.includes('/dcr')) return `📋 DCR action${tc.orderId ? ' for **' + tc.orderId + '**' : ''}`;
+  // ── DCR ──
+  if (p.includes('/dcr/submit') || p.includes('/dcr-submit')) {
+    const order = orderFromBody;
+    const company = body.company || body.customerName || '';
+    const event = body.eventName || '';
+    let desc = '📋 Submitted DCR';
+    if (order) desc += ` for order **${order}**`;
+    if (company) desc += ` (${company}${event ? ' — ' + event : ''})`;
+    return desc;
+  }
+  if (p.includes('/dcr') && p.includes('/status')) return `📋 Updated DCR status to **${body.status || 'unknown'}**${orderFromBody ? ' for order **' + orderFromBody + '**' : ''}`;
+  if (p.includes('/dcr')) return `📋 DCR action${orderFromBody ? ' for order **' + orderFromBody + '**' : ''}`;
 
-  // Starlink
-  if (p.includes('/starlink') && p.includes('/reboot')) return `🔄 Rebooted Starlink terminal **${id}**`;
-  if (p.includes('/starlink') && p.includes('/speed')) return `🏎️ Ran speed test on Starlink **${id}**`;
-  if (p.includes('/starlink')) return `📡 Starlink action on **${id || 'terminal'}**`;
+  // ── Starlink terminal management ──
+  if (p.includes('/starlink') && p.includes('/reboot')) return `🔄 Rebooted Starlink terminal **${id || pathId}**`;
+  if (p.includes('/starlink') && p.includes('/speed')) return `🏎️ Ran speed test on Starlink **${id || pathId}**`;
+  if (p.includes('/starlink') && p.includes('/stow')) return `📦 Stowed Starlink terminal **${id || pathId}**`;
+  if (p.includes('/starlink') && p.includes('/unstow')) return `📡 Unstowed Starlink terminal **${id || pathId}**`;
+  if (p.includes('/starlink')) return `📡 Starlink action on terminal **${id || pathId || 'unknown'}**`;
 
-  // AI
-  if (p.includes('/ai/chat')) return '🤖 Asked AI assistant a question';
+  // ── AI Assistant ──
+  if (p.includes('/ai/chat')) {
+    const msgPreview = (body.message || '').substring(0, 60);
+    return `🤖 Asked AI: "${msgPreview}${(body.message || '').length > 60 ? '...' : ''}"`;
+  }
 
-  // Hexnode
-  if (p.includes('/hexnode')) return `🖥️ Hexnode MDM action **${id}**`;
+  // ── Hexnode ──
+  if (p.includes('/hexnode') && p.includes('/enroll')) return `🖥️ Enrolled device in Hexnode MDM`;
+  if (p.includes('/hexnode')) return `🖥️ Hexnode MDM action on **${deviceName}**`;
 
-  // Cobrowse
-  if (p.includes('/cobrowse')) return `👁️ Started remote view session`;
+  // ── Cobrowse ──
+  if (p.includes('/cobrowse')) return `👁️ Started remote screen viewing session`;
 
-  // Auth
-  if (m === 'LOGIN') return '🔑 Logged in';
-  if (m === 'LOGOUT') return '🚪 Logged out';
+  // ── Auth ──
+  if (m === 'LOGIN') return '🔑 Logged into Command Center';
+  if (m === 'LOGOUT') return '🚪 Logged out of Command Center';
 
-  // Coverage / Checker
-  if (p.includes('/coverage') || p.includes('/checker')) return '🗺️ Checked coverage/carrier info';
+  // ── Coverage / Checker ──
+  if (p.includes('/coveragemap')) return `🗺️ Checked carrier coverage for coordinates${body.lat ? ' (' + body.lat + ', ' + body.lng + ')' : ''}`;
+  if (p.includes('/checker') && p.includes('/override')) return `🗺️ Manually set carrier to **${body.carrier || 'unknown'}**`;
+  if (p.includes('/checker')) return '🗺️ Ran carrier/coverage check';
 
-  // Inventory
-  if (p.includes('/inventory')) return '📦 Inventory action';
+  // ── Inventory ──
+  if (p.includes('/inventory/sheets-import')) return '📦 Manually imported iPad/iPhone inventory from CSV';
+  if (p.includes('/inventory/sheets-refresh')) return '📦 Refreshed Google Sheets inventory sync';
+  if (p.includes('/inventory')) return '📦 Accessed inventory dashboard';
 
-  // Share/Pulse
+  // ── Share/Pulse ──
+  if (p.includes('/share/create') || (m === 'POST' && p.includes('/share'))) return `📊 Created Pulse data share link${orderFromBody ? ' for order **' + orderFromBody + '**' : ''}`;
+  if (p.includes('/share/revoke') || (m === 'DELETE' && p.includes('/share'))) return `🔴 Revoked Pulse share link${orderFromBody ? ' for order **' + orderFromBody + '**' : ''}`;
   if (p.includes('/share') || p.includes('/pulse')) return '📊 Pulse/share link action';
 
-  // Generic fallback
-  if (m === 'VIEW') return `👁️ Viewed \`${p.split('/').slice(-2).join('/')}\``;
-  if (m === 'POST') return `✏️ Created/updated \`${p.split('/').slice(-2).join('/')}\`${id ? ' **' + id + '**' : ''}`;
-  if (m === 'PUT') return `✏️ Updated \`${p.split('/').slice(-2).join('/')}\`${id ? ' **' + id + '**' : ''}`;
-  if (m === 'DELETE') return `🗑️ Deleted \`${p.split('/').slice(-2).join('/')}\`${id ? ' **' + id + '**' : ''}`;
-  if (m === 'PATCH') return `🔧 Patched \`${p.split('/').slice(-2).join('/')}\`${id ? ' **' + id + '**' : ''}`;
+  // ── Orders ──
+  if (p.includes('/orders') && p.includes('/checkout')) return `📤 Checked out equipment for order **${orderFromBody || pathId}**`;
+  if (p.includes('/orders') && p.includes('/checkin')) return `📥 Checked in returned equipment for order **${orderFromBody || pathId}**`;
+  if (p.includes('/orders')) return `📋 Accessed order **${orderFromBody || pathId || 'list'}**`;
+
+  // ── Google Drive / uploads ──
+  if (p.includes('/drive') || p.includes('/upload')) return `📁 Uploaded file${body.filename ? ': **' + body.filename + '**' : ''}`;
+
+  // ── Generic fallback with more context ──
+  const lastSegments = p.split('/').filter(Boolean).slice(-2).join('/');
+  if (m === 'VIEW') return `👁️ Viewed \`${lastSegments}\`${id ? ' — resource **' + id + '**' : ''}`;
+  if (m === 'POST') return `✏️ Created \`${lastSegments}\`${id ? ' — **' + id + '**' : ''}${orderFromBody ? ' (order ' + orderFromBody + ')' : ''}`;
+  if (m === 'PUT' || m === 'PATCH') return `✏️ Updated \`${lastSegments}\`${id ? ' — **' + id + '**' : ''}${orderFromBody ? ' (order ' + orderFromBody + ')' : ''}`;
+  if (m === 'DELETE') return `🗑️ Deleted \`${lastSegments}\`${id ? ' — **' + id + '**' : ''}`;
 
   return `${m} ${p}`;
 }

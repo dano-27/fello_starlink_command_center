@@ -544,21 +544,26 @@ async function callGemini(prompt, maxTokens = 1024) {
   let lastError = null;
 
   for (const modelName of MODELS) {
-    try {
-      const model = genAI.getGenerativeModel({
-        model: modelName,
-        generationConfig: { maxOutputTokens: maxTokens }
-      });
-      const result = await Promise.race([
-        model.generateContent(prompt),
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Timed out')), 15000))
-      ]);
-      return result.response.text();
-    } catch (e) {
-      lastError = e;
-      if (e.message.includes('404') || e.message.includes('not found')) continue;
-      if (e.message.includes('503') || e.message.includes('429') || e.message.includes('timed out')) continue;
-      throw e;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const model = genAI.getGenerativeModel({
+          model: modelName,
+          generationConfig: { maxOutputTokens: maxTokens }
+        });
+        const result = await Promise.race([
+          model.generateContent(prompt),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Timed out')), 25000))
+        ]);
+        return result.response.text();
+      } catch (e) {
+        lastError = e;
+        if (e.message.includes('404') || e.message.includes('not found')) { attempt = 99; break; }
+        if (attempt < 1 && (e.message.includes('503') || e.message.includes('429') || e.message.includes('timed out') || e.message.includes('Timed out'))) {
+          await new Promise(r => setTimeout(r, 2000));
+          continue;
+        }
+        break;
+      }
     }
   }
   throw new Error('AI service unavailable: ' + (lastError?.message || 'unknown'));
