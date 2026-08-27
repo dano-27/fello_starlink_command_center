@@ -647,26 +647,28 @@ async function generateTrainingTips(auditSummary) {
   const prompt = `You are a training manager at Fello. Analyze these audit log patterns from the past 7 days and generate specific, actionable training tips for the ops team.
 
 Audit Summary:
-\`\`\`json
 ${JSON.stringify(auditSummary, null, 1)}
-\`\`\`
 
 Generate 3-5 training tips. Each tip should:
 1. Reference a SPECIFIC pattern from the data (e.g. "SIM activations fail 18% of the time")
 2. Explain WHY it happens (e.g. "usually because the wrong branch is selected")
 3. Give a SPECIFIC fix (e.g. "always verify branch name matches order ID before activating")
 
-Format as markdown with:
-### 💡 Tip Title
-The specific insight with **bold numbers** and a clear recommendation.
+Format each tip EXACTLY like this (use ### for title, plain text for body, use backticks for numbers like \`18%\` instead of asterisks):
+
+### 💡 Tip Title Here
+Data Pattern: Describe the specific data pattern with numbers in backticks like \`18%\` or \`42 errors\`.
+Why: Explain what is likely causing this.
+Fix: Give the specific actionable recommendation.
 
 RULES:
-- Only reference patterns that actually appear in the data — don't invent problems
+- Only reference patterns that actually appear in the data — do NOT invent problems
 - Include specific percentages, counts, and agent names where relevant
 - Focus on the 3-5 most impactful improvements
-- If the data shows no issues, say the team is performing well and highlight what's working`;
+- Do NOT use ** for bold — use backticks for emphasis instead
+- If the data shows no issues, say the team is performing well and highlight what is working`;
 
-  return await callGemini(prompt, 1536);
+  return await callGemini(prompt, 2048);
 }
 
 /**

@@ -800,11 +800,12 @@
       if (data.error) throw new Error(data.error);
       var tips = data.tips || '';
       var rendered = tips
-        .replace(/### (.+)/g, '<h4 style="margin:14px 0 4px;font-size:13px;color:var(--blue)">$1</h4>')
+        .replace(/### (.+)/g, '<h4 style="margin:14px 0 4px;font-size:13px;color:var(--blue);text-transform:uppercase;letter-spacing:0.5px">$1</h4>')
         .replace(/## (.+)/g, '<h3 style="margin:16px 0 6px;font-size:14px">$1</h3>')
+        .replace(/---/g, '<hr style="border:none;border-top:1px solid var(--border);margin:12px 0">')
+        .replace(/`([^`]+)`/g, '<code style="font-size:11px;background:var(--light-blue);padding:1px 5px;border-radius:3px;font-weight:600;color:var(--blue)">$1</code>')
         .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
         .replace(/\*([^*]+)\*/g, '<em>$1</em>')
-        .replace(/`([^`]+)`/g, '<code style="font-size:11px;background:var(--light-blue);padding:1px 4px;border-radius:3px">$1</code>')
         .replace(/\n- /g, '\n• ')
         .replace(/\n\n/g, '<br><br>')
         .replace(/\n/g, '<br>');
