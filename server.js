@@ -267,6 +267,17 @@ function describeAction(action) {
   // ── Google Drive / uploads ──
   if (p.includes('/drive') || p.includes('/upload')) return `📁 Uploaded file${body.filename ? ': **' + body.filename + '**' : ''}`;
 
+  // ── Peplink ──
+  if (p.includes('/peplink/webhook')) return `🔌 Peplink event: ${tc || 'webhook received'}`;
+  if (p.includes('/peplink') && p.includes('/reboot')) return `🔌 Rebooted Peplink router${tc ? ' — ' + tc : ''}`;
+  if (p.includes('/peplink') && p.includes('/clients')) return `🔌 Viewed connected clients on Peplink router **${pathId || ''}**`;
+  if (p.includes('/peplink') && p.includes('/bandwidth')) return `🔌 Checked bandwidth on Peplink router **${pathId || ''}**`;
+  if (p.includes('/peplink') && p.includes('/location')) return `🔌 Checked GPS location of Peplink router **${pathId || ''}**`;
+  if (p.includes('/peplink') && p.includes('/events')) return `🔌 Viewed event log for Peplink router **${pathId || ''}**`;
+  if (p.includes('/peplink/fleet')) return '🔌 Viewed Peplink fleet overview';
+  if (p.includes('/peplink/devices')) return `🔌 Viewed Peplink device **${pathId || 'details'}**`;
+  if (p.includes('/peplink/groups')) return '🔌 Viewed Peplink groups';
+
   // ── Generic fallback with more context ──
   const lastSegments = p.split('/').filter(Boolean).slice(-2).join('/');
   if (m === 'VIEW') return `👁️ Viewed \`${lastSegments}\`${id ? ' — resource **' + id + '**' : ''}`;
@@ -1951,6 +1962,335 @@ app.get('/api/cradlepoint/routers/:id/history', async (req, res) => {
     console.error('[Cradlepoint] GPS history error:', err.message);
     res.status(500).json({ error: err.message });
   }
+});
+// ═══════════════════════════════════════════════════════════════════════
+// ── Peplink InControl 2 API ──────────────────────────────────────────
+// ═══════════════════════════════════════════════════════════════════════
+
+const PL_CLIENT_ID = process.env.PEPLINK_CLIENT_ID || '';
+const PL_CLIENT_SECRET = process.env.PEPLINK_CLIENT_SECRET || '';
+const PL_ORG_ID = process.env.PEPLINK_ORG_ID || '';
+const PL_BASE_URL = process.env.PEPLINK_BASE_URL || 'https://api.ic.peplink.com';
+
+let plToken = null;
+let plTokenExpiry = 0;
+
+if (PL_CLIENT_ID && PL_ORG_ID) {
+  console.log('[Peplink] API configured — Org: ' + PL_ORG_ID);
+} else {
+  console.log('[Peplink] Not configured — set PEPLINK_CLIENT_ID, PEPLINK_CLIENT_SECRET, PEPLINK_ORG_ID');
+}
+
+async function plEnsureToken() {
+  if (plToken && Date.now() < plTokenExpiry - 60000) return plToken;
+  const params = new URLSearchParams({
+    client_id: PL_CLIENT_ID,
+    client_secret: PL_CLIENT_SECRET,
+    grant_type: 'client_credentials'
+  });
+  const resp = await fetch(PL_BASE_URL + '/api/oauth2/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: params.toString()
+  });
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error('Peplink OAuth failed ' + resp.status + ': ' + text.substring(0, 200));
+  }
+  const data = await resp.json();
+  plToken = data.access_token;
+  plTokenExpiry = Date.now() + (data.expires_in || 172800) * 1000;
+  console.log('[Peplink] Token refreshed, expires in ' + data.expires_in + 's');
+  return plToken;
+}
+
+async function plFetch(endpoint, options = {}) {
+  const token = await plEnsureToken();
+  const url = endpoint.startsWith('http') ? endpoint : PL_BASE_URL + endpoint;
+  const resp = await fetch(url, {
+    ...options,
+    headers: {
+      'Authorization': 'Bearer ' + token,
+      'Content-Type': 'application/json',
+      ...(options.headers || {})
+    }
+  });
+  if (!resp.ok) {
+    const text = await resp.text();
+    throw new Error('Peplink API ' + resp.status + ': ' + text.substring(0, 200));
+  }
+  return resp.json();
+}
+
+// Config check
+app.get('/api/peplink/config', (req, res) => {
+  res.json({
+    configured: !!(PL_CLIENT_ID && PL_ORG_ID),
+    orgId: PL_ORG_ID || null
+  });
+});
+
+// Fleet overview with enrichment
+app.get('/api/peplink/fleet', async (req, res) => {
+  if (!PL_CLIENT_ID) return res.status(503).json({ error: 'Peplink not configured', configured: false });
+  try {
+    const [devicesResp, groupsResp] = await Promise.all([
+      plFetch('/rest/o/' + PL_ORG_ID + '/d?has_status=true'),
+      plFetch('/rest/o/' + PL_ORG_ID + '/g')
+    ]);
+
+    const devices = devicesResp.data || [];
+    const groups = groupsResp.data || [];
+
+    // Build group lookup
+    const groupMap = {};
+    for (const g of groups) groupMap[g.id] = g;
+
+    // Build Webbing ICCID lookup
+    const wbByIccid = {};
+    for (const d of webbingDeviceCache) {
+      const iccid = String(d.ICCID || '').trim();
+      if (iccid) wbByIccid[iccid] = d;
+    }
+
+    let totalClients = 0;
+    const enriched = devices.map(dev => {
+      const group = groupMap[dev.group_id] || {};
+      totalClients += dev.client_count || 0;
+
+      // Extract cellular interfaces
+      const cellulars = (dev.interfaces || []).filter(i => i.type === 'gobi' || i.virtualType === 'cellular');
+      const primaryCell = cellulars.find(c => c.status && c.status !== 'Disabled' && c.status !== 'No Device Detected') || cellulars[0] || null;
+
+      // Get ICCID from cellular interface for Webbing matching
+      const iccid = primaryCell ? (primaryCell.iccid || '') : '';
+      const webbingSim = iccid ? (wbByIccid[iccid] || null) : null;
+
+      // Parse all interfaces
+      const interfaces = (dev.interfaces || []).map(i => ({
+        id: i.id,
+        name: i.name || '',
+        type: i.type || '',
+        virtualType: i.virtualType || '',
+        status: i.status || '',
+        statusLed: i.status_led || '',
+        ip: i.ip || '',
+        gateway: i.gateway || '',
+        connMode: i.conn_mode || '',
+        mtu: i.mtu || 0,
+        enable: i.enable !== false,
+        carrier: i.carrier || '',
+        signalBar: i.signal_bar || 0,
+        signals: i.cellular_signals || null,
+        cellId: i.cell_id || null,
+        bandName: i.band_name || '',
+        iccid: i.iccid || '',
+        imei: i.imei || '',
+        connConfigMethod: i.conn_config_method || '',
+        updatedAt: i.updated_at || ''
+      }));
+
+      return {
+        id: dev.id,
+        groupId: dev.group_id,
+        groupName: dev.group_name || group.name || '',
+        sn: dev.sn || '',
+        name: dev.name || '',
+        status: dev.status || 'offline',
+        productId: dev.product_id || 0,
+        clientCount: dev.client_count || 0,
+        fwVer: dev.fw_ver || '',
+        lastOnline: dev.last_online || '',
+        offlineAt: dev.offline_at || '',
+        firstAppear: dev.first_appear || '',
+        lanMac: dev.lan_mac || '',
+        starlinkWanList: dev.starlink_wan_list || [],
+        // Cellular summary
+        cellular: primaryCell ? {
+          name: primaryCell.name || '',
+          status: primaryCell.status || '',
+          ip: primaryCell.ip || '',
+          carrier: primaryCell.carrier || '',
+          signalBar: primaryCell.signal_bar || 0,
+          signals: primaryCell.cellular_signals || null,
+          cellId: primaryCell.cell_id || null,
+          bandName: primaryCell.band_name || '',
+          iccid: primaryCell.iccid || '',
+          imei: primaryCell.imei || ''
+        } : null,
+        interfaces: interfaces,
+        // Webbing match
+        webbing: webbingSim ? {
+          matched: true,
+          iccid: String(webbingSim.ICCID || ''),
+          product: webbingSim.ProductName || '',
+          status: webbingSim.StatusName || '',
+          branch: webbingSim.BranchName || '',
+          msisdn: webbingSim.MSISDN || '',
+          serial: webbingSim.Serial || ''
+        } : { matched: false }
+      };
+    });
+
+    const online = enriched.filter(d => d.status === 'online').length;
+    const wbMatched = enriched.filter(d => d.webbing && d.webbing.matched).length;
+
+    console.log('[Peplink] Fleet: ' + devices.length + ' devices (' + online + ' online), ' + totalClients + ' clients, ' + wbMatched + ' Webbing matches');
+
+    res.json({
+      configured: true,
+      devices: enriched,
+      groups: groups.map(g => ({ id: g.id, name: g.name, address: g.address || '', lat: g.latitude, lng: g.longitude, timezone: g.timezone || '' })),
+      stats: {
+        total: devices.length,
+        online: online,
+        offline: devices.length - online,
+        clientCount: totalClients,
+        webbingMatched: wbMatched
+      }
+    });
+  } catch (err) {
+    console.error('[Peplink] Fleet error:', err.message);
+    res.status(500).json({ error: err.message, configured: true });
+  }
+});
+
+// Device detail
+app.get('/api/peplink/devices/:id', async (req, res) => {
+  if (!PL_CLIENT_ID) return res.status(503).json({ error: 'Peplink not configured' });
+  try {
+    // First get the device to find its group
+    const allDevices = await plFetch('/rest/o/' + PL_ORG_ID + '/d?has_status=true');
+    const dev = (allDevices.data || []).find(d => String(d.id) === String(req.params.id));
+    if (!dev) return res.status(404).json({ error: 'Device not found' });
+    
+    // Get detail from group path
+    const detail = await plFetch('/rest/o/' + PL_ORG_ID + '/g/' + dev.group_id + '/d/' + dev.id);
+    res.json(detail);
+  } catch (err) {
+    console.error('[Peplink] Device detail error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Connected clients
+app.get('/api/peplink/devices/:id/clients', async (req, res) => {
+  if (!PL_CLIENT_ID) return res.status(503).json({ error: 'Peplink not configured' });
+  try {
+    const allDevices = await plFetch('/rest/o/' + PL_ORG_ID + '/d?has_status=true');
+    const dev = (allDevices.data || []).find(d => String(d.id) === String(req.params.id));
+    if (!dev) return res.status(404).json({ error: 'Device not found' });
+    
+    const clients = await plFetch('/rest/o/' + PL_ORG_ID + '/g/' + dev.group_id + '/d/' + dev.id + '/client');
+    res.json(clients);
+  } catch (err) {
+    console.error('[Peplink] Clients error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Bandwidth usage
+app.get('/api/peplink/devices/:id/bandwidth', async (req, res) => {
+  if (!PL_CLIENT_ID) return res.status(503).json({ error: 'Peplink not configured' });
+  try {
+    const allDevices = await plFetch('/rest/o/' + PL_ORG_ID + '/d?has_status=true');
+    const dev = (allDevices.data || []).find(d => String(d.id) === String(req.params.id));
+    if (!dev) return res.status(404).json({ error: 'Device not found' });
+    
+    const type = req.query.type || 'daily';
+    const bw = await plFetch('/rest/o/' + PL_ORG_ID + '/g/' + dev.group_id + '/d/' + dev.id + '/bandwidth?type=' + type);
+    res.json(bw);
+  } catch (err) {
+    console.error('[Peplink] Bandwidth error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GPS location
+app.get('/api/peplink/devices/:id/location', async (req, res) => {
+  if (!PL_CLIENT_ID) return res.status(503).json({ error: 'Peplink not configured' });
+  try {
+    const allDevices = await plFetch('/rest/o/' + PL_ORG_ID + '/d?has_status=true');
+    const dev = (allDevices.data || []).find(d => String(d.id) === String(req.params.id));
+    if (!dev) return res.status(404).json({ error: 'Device not found' });
+    
+    const loc = await plFetch('/rest/o/' + PL_ORG_ID + '/g/' + dev.group_id + '/d/' + dev.id + '/loc');
+    res.json(loc);
+  } catch (err) {
+    console.error('[Peplink] Location error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Event log
+app.get('/api/peplink/devices/:id/events', async (req, res) => {
+  if (!PL_CLIENT_ID) return res.status(503).json({ error: 'Peplink not configured' });
+  try {
+    const allDevices = await plFetch('/rest/o/' + PL_ORG_ID + '/d?has_status=true');
+    const dev = (allDevices.data || []).find(d => String(d.id) === String(req.params.id));
+    if (!dev) return res.status(404).json({ error: 'Device not found' });
+    
+    const events = await plFetch('/rest/o/' + PL_ORG_ID + '/g/' + dev.group_id + '/event_log');
+    res.json(events);
+  } catch (err) {
+    console.error('[Peplink] Events error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Reboot device
+app.post('/api/peplink/devices/:id/reboot', async (req, res) => {
+  if (!req.user || req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  if (!PL_CLIENT_ID) return res.status(503).json({ error: 'Peplink not configured' });
+  try {
+    const allDevices = await plFetch('/rest/o/' + PL_ORG_ID + '/d?has_status=true');
+    const dev = (allDevices.data || []).find(d => String(d.id) === String(req.params.id));
+    if (!dev) return res.status(404).json({ error: 'Device not found' });
+
+    const result = await plFetch('/rest/o/' + PL_ORG_ID + '/g/' + dev.group_id + '/d/' + dev.id + '/devapi/cmd.system.reboot', {
+      method: 'POST'
+    });
+
+    auditLog(req, {
+      path: '/api/peplink/devices/' + req.params.id + '/reboot',
+      taskContext: 'Rebooted Peplink router: ' + dev.name + ' (SN: ' + dev.sn + ')'
+    });
+
+    console.log('[Peplink] Reboot initiated for device ' + dev.name + ' by ' + req.user.username);
+    res.json({ ok: true, device: dev.name, result });
+  } catch (err) {
+    console.error('[Peplink] Reboot error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Groups list
+app.get('/api/peplink/groups', async (req, res) => {
+  if (!PL_CLIENT_ID) return res.status(503).json({ error: 'Peplink not configured' });
+  try {
+    const groups = await plFetch('/rest/o/' + PL_ORG_ID + '/g');
+    res.json(groups);
+  } catch (err) {
+    console.error('[Peplink] Groups error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Webhook receiver for InControl 2 push events
+app.post('/api/peplink/webhook', (req, res) => {
+  const event = req.body || {};
+  console.log('[Peplink] Webhook received:', event.eventType || 'unknown', '-', event.detail || '');
+  
+  // Log to audit
+  if (event.eventType) {
+    auditLog(req, {
+      path: '/api/peplink/webhook',
+      body: event,
+      taskContext: 'Peplink event: ' + (event.eventType || '') + ' - ' + (event.detail || '')
+    });
+  }
+  
+  res.json({ ok: true });
 });
 
 // ═══════════════════════════════════════════════════════════════════════

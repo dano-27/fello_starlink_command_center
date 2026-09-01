@@ -1,0 +1,844 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Peplink Dashboard - Fello Command Center</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/shared-header.css">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin=""/>
+  <style>
+    :root {
+      --orange: #f59231;
+      --yellow: #fcd230;
+      --blue: #3166ae;
+      --black: #232428;
+      --charcoal: #3e3e40;
+      --white: #fff;
+      --gray: #fafafa;
+      --border: #cfccca;
+      --dark-gray: #4c4c4c;
+      --dark-gray-shade: #636363;
+      --off-white: #fffcf9;
+      --success-color: #05ac3f;
+      --light-red: #ff4d41;
+      --light-blue: #f4f6fa;
+      --input-border: #dedddc;
+      --input-off-white: #fdfdfd;
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+      --radius-xl: 20px;
+      --radius-full: 9999px;
+      --radius-pill: 40px;
+      --shadow-card: 0 2px 12px rgba(35, 36, 40, 0.06);
+      --shadow-hover: 0 6px 24px rgba(35, 36, 40, 0.10);
+      --transition-fast: 0.15s ease;
+      --transition-normal: 0.3s ease;
+      --nav-height: 64px;
+      --glass-blur: blur(16px);
+      --glass-bg: rgba(255, 255, 255, 0.82);
+    }
+
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    html { -webkit-font-smoothing: antialiased; }
+    body {
+      font-family: 'Montserrat', sans-serif;
+      background: var(--white);
+      color: var(--black);
+      font-weight: 500;
+      line-height: 1.6;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: var(--radius-full); }
+
+    /* Nav Bar */
+    .nav-bar {
+      position: fixed; top: 0; left: 0; right: 0; height: var(--nav-height);
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 24px; background: var(--glass-bg); backdrop-filter: var(--glass-blur);
+      border-bottom: 1px solid var(--border); z-index: 100; margin-top: 48px;
+    }
+    .nav-left { display: flex; align-items: center; gap: 12px; }
+    .nav-title { font-size: 16px; font-weight: 600; color: var(--black); }
+    .nav-right { display: flex; align-items: center; gap: 8px; }
+    
+    .refresh-indicator {
+      display: flex; align-items: center; gap: 6px; padding: 4px 12px;
+      border-radius: var(--radius-full); background: rgba(5, 172, 63, 0.08);
+      border: 1px solid rgba(5, 172, 63, 0.2); font-size: 12px;
+      color: var(--success-color); font-weight: 600;
+    }
+    .refresh-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--success-color); animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse { 0% { opacity: 0.5; transform: scale(0.8); } 50% { opacity: 1; transform: scale(1.2); } 100% { opacity: 0.5; transform: scale(0.8); } }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      padding: 10px 20px; border: none; border-radius: var(--radius-pill);
+      font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+      transition: all var(--transition-normal); white-space: nowrap;
+    }
+    .btn-primary { background: var(--yellow); color: var(--black); box-shadow: 0 2px 8px rgba(252, 210, 48, 0.25); }
+    .btn-primary:hover { background: #f3c100; transform: translateY(-1px); }
+    .btn-secondary { background: transparent; color: var(--charcoal); border: 1px solid var(--border); }
+    .btn-secondary:hover { background: var(--gray); color: var(--black); border-color: var(--dark-gray-shade); }
+    .btn-danger { background: rgba(255, 77, 65, 0.08); color: var(--light-red); border: 1px solid rgba(255, 77, 65, 0.25); }
+    .btn-danger:hover { background: rgba(255, 77, 65, 0.15); }
+    .btn-sm { padding: 6px 12px; font-size: 13px; border-radius: var(--radius-pill); }
+    .btn-full { width: 100%; }
+
+    /* App Container & Tabs */
+    #app { padding-top: calc(var(--nav-height) + 48px); max-width: 1400px; margin: 0 auto; }
+    
+    .tab-bar {
+      display: flex; gap: 8px; justify-content: center; padding: 16px;
+      background: var(--white); border-bottom: 1px solid var(--border);
+      position: sticky; top: calc(var(--nav-height) + 48px); z-index: 90;
+      flex-wrap: wrap;
+    }
+    .tab-btn {
+      padding: 10px 20px; border-radius: var(--radius-pill); border: none;
+      background: transparent; font-size: 14px; font-weight: 600; cursor: pointer;
+      color: var(--charcoal); transition: all 0.2s; font-family: inherit; display: flex; align-items: center; gap: 6px;
+    }
+    .tab-btn:hover { color: var(--black); background: var(--gray); }
+    .tab-btn.active { background: var(--black); color: var(--white); }
+    .tab-panel { display: none; padding: 24px; }
+    .tab-panel.active { display: block; animation: fadeIn 0.3s ease; }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+    /* Fleet Summary Cards */
+    .fleet-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 32px; }
+    .stat-card {
+      background: var(--white); border: 1px solid var(--border); border-radius: var(--radius-lg);
+      padding: 24px; text-align: center; transition: all var(--transition-normal);
+      box-shadow: var(--shadow-card);
+    }
+    .stat-card:hover { transform: translateY(-2px); box-shadow: var(--shadow-hover); }
+    .stat-value { font-size: 32px; font-weight: 700; letter-spacing: -1px; margin-bottom: 4px; color: var(--blue); }
+    .stat-label { font-size: 13px; color: var(--charcoal); font-weight: 500; }
+
+    /* Controls Bar */
+    .controls-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 24px; flex-wrap: wrap; gap: 16px; }
+    .search-input {
+      padding: 10px 16px 10px 36px; border: 1px solid var(--input-border); border-radius: var(--radius-sm);
+      font-family: inherit; font-size: 14px; background: var(--input-off-white); width: 320px;
+      outline: none; transition: border-color var(--transition-fast);
+      background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="%23636363" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>');
+      background-repeat: no-repeat; background-position: 12px center;
+    }
+    .search-input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(49, 102, 174, 0.2); }
+    .form-select {
+      padding: 10px 16px; border: 1px solid var(--input-border); border-radius: var(--radius-sm);
+      font-family: inherit; font-size: 14px; background: var(--input-off-white); width: 320px;
+      outline: none;
+    }
+
+    /* Terminal Grid & Cards */
+    .terminal-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 16px; }
+    .terminal-card {
+      background: var(--white); border: 1px solid var(--border); border-radius: var(--radius-lg);
+      padding: 24px; transition: all var(--transition-normal); box-shadow: var(--shadow-card);
+      display: flex; flex-direction: column; justify-content: space-between;
+      animation: fadeInUp 0.4s ease both;
+    }
+    @keyframes fadeInUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .terminal-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-hover); border-color: var(--blue); }
+    
+    .terminal-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 16px; }
+    .terminal-name { font-size: 16px; font-weight: 600; color: var(--black); }
+    .terminal-serial { font-family: monospace; font-size: 12px; color: var(--blue); font-weight: 600; margin-top: 4px; }
+    
+    .status-badge {
+      display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px;
+      border-radius: var(--radius-full); font-size: 11px; font-weight: 600; text-transform: uppercase;
+    }
+    .status-badge::before { content: ''; width: 6px; height: 6px; border-radius: 50%; }
+    .status-badge.online { background: rgba(5, 172, 63, 0.08); color: var(--success-color); border: 1px solid rgba(5, 172, 63, 0.2); }
+    .status-badge.online::before { background: var(--success-color); }
+    .status-badge.offline { background: rgba(255, 77, 65, 0.08); color: var(--light-red); border: 1px solid rgba(255, 77, 65, 0.2); }
+    .status-badge.offline::before { background: var(--light-red); }
+
+    .info-section { font-size: 13px; margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--gray); }
+    .info-row { display: flex; justify-content: space-between; margin-bottom: 4px; }
+    .info-label { color: var(--dark-gray-shade); }
+    .info-value { font-weight: 600; color: var(--charcoal); }
+    
+    .card-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+
+    /* Signal Gauge */
+    .signal-gauge { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 11px; font-family: monospace; }
+    .signal-label { width: 35px; color: var(--dark-gray-shade); font-weight: 600; }
+    .signal-bar-container { flex: 1; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; display: flex; }
+    .signal-bar-fill { height: 100%; transition: width 0.3s ease; }
+    .signal-value { width: 60px; text-align: right; }
+    .signal-quality { width: 45px; text-align: right; font-weight: 600; }
+    
+    .text-green { color: var(--success-color); }
+    .text-yellow { color: var(--orange); }
+    .text-red { color: var(--light-red); }
+    .bg-green { background: var(--success-color); }
+    .bg-yellow { background: var(--orange); }
+    .bg-red { background: var(--light-red); }
+
+    /* Range Pills */
+    .range-pills { display: flex; gap: 4px; background: var(--light-blue); border-radius: var(--radius-full); padding: 3px; border: 1px solid var(--input-border); }
+    .range-pill { padding: 8px 18px; border: none; border-radius: var(--radius-full); background: transparent; color: var(--charcoal); font-size: 13px; font-weight: 600; cursor: pointer; }
+    .range-pill.active { background: var(--blue); color: var(--white); }
+
+    /* Map */
+    #map-container { height: 600px; width: 100%; border-radius: var(--radius-lg); border: 1px solid var(--border); overflow: hidden; }
+    
+    /* Table */
+    .table-container { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius-lg); }
+    .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .data-table th, .data-table td { padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--border); }
+    .data-table th { background: var(--gray); color: var(--charcoal); font-weight: 600; position: sticky; top: 0; }
+    .data-table tr:hover { background: var(--off-white); }
+    .data-table tr:last-child td { border-bottom: none; }
+
+    /* Alerts */
+    .alert-feed { display: flex; flex-direction: column; gap: 12px; }
+    .alert-card { background: var(--white); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 16px; display: flex; gap: 16px; align-items: flex-start; }
+    .alert-time { font-size: 12px; color: var(--dark-gray-shade); min-width: 140px; }
+    .alert-type { font-weight: 600; color: var(--orange); font-size: 13px; text-transform: uppercase; }
+    .alert-router { font-weight: 600; color: var(--blue); }
+    .alert-msg { font-size: 14px; flex: 1; }
+
+    /* Modals */
+    .modal-overlay { position: fixed; inset: 0; background: rgba(35, 36, 40, 0.45); backdrop-filter: blur(4px); display: none; align-items: center; justify-content: center; z-index: 200; padding: 24px; }
+    .modal-content { background: var(--white); border-radius: var(--radius-lg); width: 100%; max-width: 520px; box-shadow: 0 16px 64px rgba(35, 36, 40, 0.15); max-height: 90vh; overflow-y: auto; }
+    .modal-header { display: flex; justify-content: space-between; padding: 20px 24px; border-bottom: 1px solid var(--input-border); }
+    .modal-header h2 { font-size: 18px; font-weight: 600; }
+    .modal-close { background: transparent; border: none; font-size: 24px; cursor: pointer; color: var(--charcoal); }
+    .modal-body { padding: 24px; }
+    
+    .form-group { margin-bottom: 16px; }
+    .form-label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: var(--charcoal); }
+    .form-input { width: 100%; padding: 10px 14px; border: 1px solid var(--input-border); border-radius: var(--radius-sm); font-family: inherit; font-size: 14px; }
+
+    /* Toasts */
+    .toast { background: var(--black); color: var(--white); padding: 12px 24px; border-radius: var(--radius-sm); margin-bottom: 10px; font-size: 14px; font-weight: 500; animation: fadeInUp 0.3s ease; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+    .toast.error { background: var(--light-red); }
+
+    /* Responsive */
+    @media (max-width: 1024px) { .fleet-summary { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 768px) {
+      .fleet-summary { grid-template-columns: 1fr; }
+      .nav-bar { flex-direction: column; height: auto; padding: 12px; gap: 8px; }
+      #app { padding-top: 140px; }
+      .search-input { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div id="toast-container" style="position:fixed;top:20px;right:20px;z-index:9999;"></div>
+
+  <header class="fello-header"></header>
+  <script src="/shared-header.js"></script>
+
+  <nav class="nav-bar">
+    <div class="nav-left">
+      <span style="font-size: 20px;">🔌</span>
+      <span class="nav-title">Peplink Dashboard</span>
+    </div>
+    <div class="nav-right">
+      <div class="refresh-indicator">
+        <span class="refresh-dot"></span> Live
+      </div>
+      <button class="btn btn-secondary btn-sm" id="refresh-btn" title="Refresh">↻</button>
+      <div id="user-badge" style="margin-left: 12px;"></div>
+    </div>
+  </nav>
+
+  <div id="app">
+    <div class="tab-bar">
+      <button class="tab-btn active" data-tab="tab-fleet">📡 Fleet Overview</button>
+      <button class="tab-btn" data-tab="tab-clients">👥 Connected Clients</button>
+      <button class="tab-btn" data-tab="tab-bandwidth">📊 Bandwidth</button>
+      <button class="tab-btn" data-tab="tab-gps">📍 GPS Tracking</button>
+      <button class="tab-btn" data-tab="tab-alerts">📋 Event Log</button>
+    </div>
+
+    <!-- Fleet Overview -->
+    <div class="tab-panel active" id="tab-fleet">
+      <div class="fleet-summary">
+        <div class="stat-card">
+          <div class="stat-value" id="stat-total">—</div>
+          <div class="stat-label">Total Devices</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" style="color:var(--success-color)" id="stat-online">—</div>
+          <div class="stat-label">Online</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" style="color:var(--light-red)" id="stat-offline">—</div>
+          <div class="stat-label">Offline</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" style="color:var(--blue)" id="stat-clients">—</div>
+          <div class="stat-label">Connected Clients</div>
+        </div>
+      </div>
+      
+      <div class="controls-bar">
+        <input type="text" id="search-input" class="search-input" placeholder="Search by name, serial, firmware...">
+        <div style="display:flex; gap: 8px;">
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;cursor:pointer;">
+            <input type="checkbox" id="filter-online" checked> Online
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;cursor:pointer;">
+            <input type="checkbox" id="filter-offline" checked> Offline
+          </label>
+        </div>
+      </div>
+
+      <div class="terminal-grid" id="routers-grid">
+        <div style="grid-column: 1/-1; text-align:center; padding: 48px; color: var(--charcoal);">Loading devices...</div>
+      </div>
+    </div>
+
+    <!-- Connected Clients -->
+    <div class="tab-panel" id="tab-clients">
+      <div class="controls-bar">
+        <h2>Connected Clients</h2>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <select id="clients-device-select" class="form-select">
+            <option value="">Select a device...</option>
+          </select>
+          <button class="btn btn-secondary btn-sm" onclick="loadClients()">↻</button>
+        </div>
+      </div>
+      <div class="table-container" id="clients-table-container">
+        <div style="text-align:center; padding: 48px; color: var(--charcoal);">Select a device to view clients.</div>
+      </div>
+    </div>
+
+    <!-- Bandwidth -->
+    <div class="tab-panel" id="tab-bandwidth">
+      <div class="controls-bar">
+        <h2>Bandwidth Usage</h2>
+        <div style="display:flex; gap:8px; align-items:center;">
+          <select id="bw-device-select" class="form-select">
+            <option value="">Select a device...</option>
+          </select>
+          <div class="range-pills" id="bw-pills">
+            <button class="range-pill active" data-range="hourly">Hourly</button>
+            <button class="range-pill" data-range="daily">Daily</button>
+            <button class="range-pill" data-range="monthly">Monthly</button>
+          </div>
+        </div>
+      </div>
+      <div id="bw-content">
+        <div style="text-align:center; padding: 48px; color: var(--charcoal);">Select a device to view bandwidth.</div>
+      </div>
+    </div>
+
+    <!-- GPS Tracking -->
+    <div class="tab-panel" id="tab-gps">
+      <h2 style="margin-bottom:24px;">Fleet Locations</h2>
+      <div id="map-container"></div>
+      <div id="map-msg" style="text-align:center; padding:48px; color:var(--charcoal); display:none;">No GPS data available.</div>
+    </div>
+
+    <!-- Event Log -->
+    <div class="tab-panel" id="tab-alerts">
+      <div class="controls-bar">
+        <h2>Event Log</h2>
+        <select id="events-device-select" class="form-select">
+          <option value="">Select a device...</option>
+        </select>
+      </div>
+      <div class="alert-feed" id="events-list">
+        <div style="text-align:center; padding: 48px; color: var(--charcoal);">Select a device to view events.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Reboot Modal -->
+  <div class="modal-overlay" id="reboot-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>Reboot Device</h2>
+        <button class="modal-close" onclick="closeModal('reboot-modal')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p style="margin-bottom: 24px; color: var(--charcoal);">Are you sure you want to reboot <strong id="reboot-target-name"></strong>?</p>
+        <div style="display:flex; gap:16px; justify-content:flex-end;">
+          <button class="btn btn-secondary" onclick="closeModal('reboot-modal')">Cancel</button>
+          <button class="btn btn-danger" id="reboot-confirm-btn">Yes, Reboot</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script>
+    let currentUser = null;
+    let devicesData = [];
+    let map = null;
+    let mapMarkers = [];
+    let refreshInterval;
+    let currentBwRange = 'hourly';
+
+    document.addEventListener('DOMContentLoaded', () => {
+      // Setup tabs
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+          document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+          btn.classList.add('active');
+          document.getElementById(btn.dataset.tab).classList.add('active');
+          if (btn.dataset.tab === 'tab-gps' && map) {
+            setTimeout(() => { map.invalidateSize(); loadGpsData(); }, 200);
+          }
+        });
+      });
+
+      // Events
+      document.getElementById('refresh-btn').addEventListener('click', loadData);
+      document.getElementById('search-input').addEventListener('input', renderFleet);
+      document.getElementById('filter-online').addEventListener('change', renderFleet);
+      document.getElementById('filter-offline').addEventListener('change', renderFleet);
+      
+      document.getElementById('clients-device-select').addEventListener('change', loadClients);
+      document.getElementById('bw-device-select').addEventListener('change', loadBandwidth);
+      document.getElementById('events-device-select').addEventListener('change', loadEvents);
+      
+      document.querySelectorAll('#bw-pills .range-pill').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          document.querySelectorAll('#bw-pills .range-pill').forEach(b => b.classList.remove('active'));
+          e.target.classList.add('active');
+          currentBwRange = e.target.dataset.range;
+          loadBandwidth();
+        });
+      });
+
+      // Auth Check
+      fetch('/api/auth/me', { credentials: 'include' })
+        .then(r => r.json())
+        .then(u => {
+          if (!u.username) { window.location.href = '/login'; return; }
+          currentUser = u;
+          if (document.getElementById('user-badge')) {
+            document.getElementById('user-badge').innerHTML = `<span style="background:var(--gray);padding:6px 12px;border-radius:20px;font-size:12px;font-weight:600;border:1px solid var(--border)">👤 ${u.username}</span>`;
+          }
+          loadData();
+        })
+        .catch(() => window.location.href = '/login');
+
+      refreshInterval = setInterval(loadData, 30000);
+      initMap();
+    });
+
+    function showToast(msg, type = 'success') {
+      const container = document.getElementById('toast-container');
+      const t = document.createElement('div');
+      t.className = `toast ${type}`;
+      t.textContent = msg;
+      container.appendChild(t);
+      setTimeout(() => t.remove(), 4000);
+    }
+
+    async function loadData() {
+      try {
+        const res = await fetch('/api/peplink/fleet', { credentials: 'include' });
+        if (!res.ok) throw new Error('Failed to fetch fleet data');
+        const data = await res.json();
+        
+        devicesData = data.devices || [];
+        const stats = data.stats || {};
+        
+        document.getElementById('stat-total').textContent = stats.total || devicesData.length;
+        document.getElementById('stat-online').textContent = stats.online || 0;
+        document.getElementById('stat-offline').textContent = stats.offline || 0;
+        document.getElementById('stat-clients').textContent = stats.clientCount || 0;
+        
+        populateSelects();
+        renderFleet();
+        
+        if (document.getElementById('tab-gps').classList.contains('active')) {
+          loadGpsData();
+        }
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    }
+
+    function populateSelects() {
+      const selects = ['clients-device-select', 'bw-device-select', 'events-device-select'];
+      selects.forEach(id => {
+        const sel = document.getElementById(id);
+        const val = sel.value;
+        sel.innerHTML = '<option value="">Select a device...</option>' + 
+          devicesData.map(d => `<option value="${d.id}">${d.name} (${d.sn})</option>`).join('');
+        if (val && devicesData.find(d => String(d.id) === String(val))) sel.value = val;
+      });
+    }
+
+    function getSignalColor(type, value) {
+      if (value === null || value === undefined) return ['gray', 'var(--border)'];
+      if (type === 'rssi') {
+        if (value >= -65) return ['green', 'var(--success-color)'];
+        if (value >= -85) return ['yellow', 'var(--orange)'];
+        return ['red', 'var(--light-red)'];
+      }
+      if (type === 'rsrp') {
+        if (value >= -80) return ['green', 'var(--success-color)'];
+        if (value >= -100) return ['yellow', 'var(--orange)'];
+        return ['red', 'var(--light-red)'];
+      }
+      if (type === 'sinr') {
+        if (value >= 10) return ['green', 'var(--success-color)'];
+        if (value >= 0) return ['yellow', 'var(--orange)'];
+        return ['red', 'var(--light-red)'];
+      }
+      return ['gray', 'var(--border)'];
+    }
+
+    function getSignalQualityText(type, value) {
+      if (value === null || value === undefined) return 'N/A';
+      if (type === 'rssi') return value >= -65 ? 'Good' : value >= -85 ? 'Fair' : 'Poor';
+      if (type === 'rsrp') return value >= -80 ? 'Good' : value >= -100 ? 'Fair' : 'Poor';
+      if (type === 'sinr') return value >= 10 ? 'Good' : value >= 0 ? 'Fair' : 'Poor';
+      return 'N/A';
+    }
+
+    function getSignalPercent(type, value) {
+      if (value === null || value === undefined) return 0;
+      if (type === 'rssi') return Math.max(0, Math.min(100, (value + 110) * 2)); // -110 to -60
+      if (type === 'rsrp') return Math.max(0, Math.min(100, (value + 130) * (100/60))); // -130 to -70
+      if (type === 'sinr') return Math.max(0, Math.min(100, (value + 10) * (100/30))); // -10 to 20
+      return 0;
+    }
+
+    function renderSignalGauge(label, value, unit, type) {
+      const [colorClass, bgColor] = getSignalColor(type, value);
+      const quality = getSignalQualityText(type, value);
+      const pct = getSignalPercent(type, value);
+      const displayVal = value !== null && value !== undefined ? `${value} ${unit}` : 'N/A';
+      
+      return `
+        <div class="signal-gauge">
+          <div class="signal-label">${label}</div>
+          <div class="signal-bar-container">
+            <div class="signal-bar-fill bg-${colorClass}" style="width: ${pct}%"></div>
+          </div>
+          <div class="signal-value">${displayVal}</div>
+          <div class="signal-quality text-${colorClass}">[${quality}]</div>
+        </div>
+      `;
+    }
+
+    function renderFleet() {
+      const query = document.getElementById('search-input').value.toLowerCase();
+      const showOnline = document.getElementById('filter-online').checked;
+      const showOffline = document.getElementById('filter-offline').checked;
+      
+      const filtered = devicesData.filter(d => {
+        const isOnline = d.status === 'online';
+        if (!showOnline && isOnline) return false;
+        if (!showOffline && !isOnline) return false;
+        
+        if (!query) return true;
+        return (
+          (d.name && d.name.toLowerCase().includes(query)) ||
+          (d.sn && d.sn.toLowerCase().includes(query)) ||
+          (d.firmware && d.firmware.toLowerCase().includes(query))
+        );
+      });
+
+      const grid = document.getElementById('routers-grid');
+      if (filtered.length === 0) {
+        grid.innerHTML = '<div style="grid-column: 1/-1; text-align:center; padding: 48px; color: var(--charcoal);">No devices match your criteria.</div>';
+        return;
+      }
+      
+      grid.innerHTML = filtered.map((device, i) => {
+        const isOnline = device.status === 'online';
+        
+        let cellularHtml = '';
+        if (device.cellular) {
+          cellularHtml = `
+            <div style="margin-top:12px; padding-top:12px; border-top:1px solid var(--gray);">
+              <div style="font-size:12px; font-weight:600; margin-bottom:8px; color:var(--charcoal);">Cellular: ${device.cellular.carrier || 'Unknown'} (${device.cellular.status || 'Offline'})</div>
+              ${renderSignalGauge('RSSI', device.cellular.rssi, 'dBm', 'rssi')}
+              ${renderSignalGauge('RSRP', device.cellular.rsrp, 'dBm', 'rsrp')}
+              ${renderSignalGauge('SINR', device.cellular.sinr, 'dB', 'sinr')}
+              <div style="font-size:11px; color:var(--dark-gray-shade); margin-top:8px;">Band: ${device.cellular.band || '-'} | Cell ID: ${device.cellular.cellId || '-'}</div>
+            </div>
+          `;
+        }
+
+        let wbHtml = '';
+        if (device.webbing?.matched) {
+          const wb = device.webbing;
+          const sc = wb.status === 'Active' ? 'var(--success-color)' : 'var(--orange)';
+          wbHtml = `
+            <div class="info-row">
+              <span class="info-label">Webbing SIM</span>
+              <span class="info-value" style="text-align:right">
+                <span style="color:${sc};font-weight:600">${wb.status}</span> · ${wb.branch || 'inventory'}<br>
+                <span style="font-family:monospace;font-size:11px;color:var(--dark-gray-shade)">${wb.iccid || ''}</span>
+              </span>
+            </div>
+          `;
+        }
+
+        return `
+          <div class="terminal-card" style="animation-delay: ${Math.min(i*0.05, 0.5)}s">
+            <div>
+              <div class="terminal-header">
+                <div>
+                  <div class="terminal-name">${device.name || 'Unknown'}</div>
+                  <div class="terminal-serial">${device.sn || '-'}</div>
+                  <div style="font-size:11px;color:var(--dark-gray-shade);margin-top:2px;">Group: ${device.group || 'Default'}</div>
+                </div>
+                <div class="status-badge ${isOnline ? 'online' : 'offline'}">${device.status || 'unknown'}</div>
+              </div>
+              <div class="info-section">
+                <div class="info-row"><span class="info-label">Firmware</span><span class="info-value">${device.firmware || '-'}</span></div>
+                <div class="info-row"><span class="info-label">IP Address</span><span class="info-value" style="font-family:monospace">${device.ip || '-'}</span></div>
+                ${wbHtml}
+              </div>
+              ${cellularHtml}
+            </div>
+            <div class="card-actions">
+              <button class="btn btn-secondary btn-sm" onclick="navToClients('${device.id}')">👥 Clients</button>
+              <button class="btn btn-secondary btn-sm" onclick="navToBandwidth('${device.id}')">📊 Usage</button>
+              ${currentUser?.role === 'admin' ? `<button class="btn btn-danger btn-sm" onclick="showRebootModal('${device.id}', '${(device.name || '').replace(/'/g, "\\'")}')">🔄 Reboot</button>` : ''}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    function navToClients(id) {
+      document.querySelector('[data-tab="tab-clients"]').click();
+      document.getElementById('clients-device-select').value = id;
+      loadClients();
+    }
+
+    function navToBandwidth(id) {
+      document.querySelector('[data-tab="tab-bandwidth"]').click();
+      document.getElementById('bw-device-select').value = id;
+      loadBandwidth();
+    }
+
+    // Modal logic
+    function closeModal(id) { document.getElementById(id).style.display = 'none'; }
+    
+    let pendingRebootId = null;
+    function showRebootModal(id, name) {
+      pendingRebootId = id;
+      document.getElementById('reboot-target-name').textContent = name;
+      document.getElementById('reboot-modal').style.display = 'flex';
+    }
+
+    document.getElementById('reboot-confirm-btn').addEventListener('click', async () => {
+      if (!pendingRebootId) return;
+      try {
+        const res = await fetch(`/api/peplink/devices/${pendingRebootId}/reboot`, { method: 'POST', credentials: 'include' });
+        if (!res.ok) throw new Error('Reboot failed');
+        showToast('Reboot command sent successfully');
+        closeModal('reboot-modal');
+      } catch (err) {
+        showToast(err.message, 'error');
+      }
+    });
+
+    // Clients
+    async function loadClients() {
+      const id = document.getElementById('clients-device-select').value;
+      const container = document.getElementById('clients-table-container');
+      if (!id) {
+        container.innerHTML = '<div style="text-align:center; padding: 48px; color: var(--charcoal);">Select a device to view clients.</div>';
+        return;
+      }
+      
+      container.innerHTML = '<div style="text-align:center; padding: 48px; color: var(--charcoal);">Loading clients...</div>';
+      
+      try {
+        const res = await fetch(`/api/peplink/devices/${id}/clients`, { credentials: 'include' });
+        if (!res.ok) throw new Error('Failed to fetch clients');
+        const data = await res.json();
+        
+        if (!data.data || data.data.length === 0) {
+          container.innerHTML = '<div style="text-align:center; padding: 48px; color: var(--charcoal);">No clients connected.</div>';
+          return;
+        }
+        
+        container.innerHTML = `
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Hostname</th>
+                <th>IP Address</th>
+                <th>MAC Address</th>
+                <th>Type</th>
+                <th>Network</th>
+                <th>Signal</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${data.data.map(c => `
+                <tr>
+                  <td style="font-weight:600;">${c.hostname || 'Unknown'}</td>
+                  <td style="font-family:monospace;">${c.ip || '-'}</td>
+                  <td style="font-family:monospace; color:var(--dark-gray-shade);">${c.mac || '-'}</td>
+                  <td>${c.connectionType === 'wifi' ? '📶 WiFi' : '🔌 Wired'}</td>
+                  <td>${c.network || c.ssid || '-'}</td>
+                  <td>${c.signal ? `${c.signal} dBm` : '-'}</td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        `;
+      } catch (err) {
+        container.innerHTML = `<div style="text-align:center; padding: 48px; color: var(--light-red);">${err.message}</div>`;
+      }
+    }
+
+    // Bandwidth
+    async function loadBandwidth() {
+      const id = document.getElementById('bw-device-select').value;
+      const container = document.getElementById('bw-content');
+      if (!id) {
+        container.innerHTML = '<div style="text-align:center; padding: 48px; color: var(--charcoal);">Select a device to view bandwidth.</div>';
+        return;
+      }
+      
+      container.innerHTML = '<div style="text-align:center; padding: 48px; color: var(--charcoal);">Loading bandwidth data...</div>';
+      
+      try {
+        const res = await fetch(`/api/peplink/devices/${id}/bandwidth?range=${currentBwRange}`, { credentials: 'include' });
+        if (!res.ok) throw new Error('Failed to fetch bandwidth');
+        const data = await res.json();
+        
+        const wans = data.data?.wans || [];
+        
+        if (wans.length === 0) {
+          container.innerHTML = '<div style="text-align:center; padding: 48px; color: var(--charcoal);">No bandwidth data available.</div>';
+          return;
+        }
+
+        container.innerHTML = `
+          <div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px;">
+            ${wans.map(wan => `
+              <div class="stat-card" style="text-align:left; padding:20px;">
+                <h3 style="font-size:16px; margin-bottom:16px;">${wan.name || 'WAN'}</h3>
+                <div style="display:flex; justify-content:space-between; margin-bottom:12px; padding-bottom:12px; border-bottom:1px solid var(--gray);">
+                  <div>
+                    <div style="font-size:12px; color:var(--charcoal);">⬇️ Download</div>
+                    <div style="font-size:20px; font-weight:700; color:var(--success-color);">${wan.download || '0'}</div>
+                  </div>
+                  <div style="text-align:right;">
+                    <div style="font-size:12px; color:var(--charcoal);">⬆️ Upload</div>
+                    <div style="font-size:20px; font-weight:700; color:var(--blue);">${wan.upload || '0'}</div>
+                  </div>
+                </div>
+                <div style="display:flex; justify-content:space-between;">
+                  <div style="font-size:12px; color:var(--charcoal);">Total</div>
+                  <div style="font-size:14px; font-weight:700;">${wan.total || '0'}</div>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      } catch (err) {
+        container.innerHTML = `<div style="text-align:center; padding: 48px; color: var(--light-red);">${err.message}</div>`;
+      }
+    }
+
+    // Map
+    function initMap() {
+      map = L.map('map-container').setView([0, 0], 2);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+    }
+
+    async function loadGpsData() {
+      mapMarkers.forEach(m => map.removeLayer(m));
+      mapMarkers = [];
+      
+      const onlineDevices = devicesData.filter(d => d.status === 'online');
+      let bounds = L.latLngBounds();
+      let hasPoints = false;
+      
+      for (const d of onlineDevices) {
+        try {
+          const res = await fetch(`/api/peplink/devices/${d.id}/location`, { credentials: 'include' });
+          if (!res.ok) continue;
+          const data = await res.json();
+          const locs = data.data || [];
+          if (locs.length > 0) {
+            const latest = locs[0];
+            if (latest.la && latest.lo) {
+              const marker = L.marker([latest.la, latest.lo]).addTo(map);
+              marker.bindPopup(`<strong>${d.name}</strong><br>${d.sn}`);
+              mapMarkers.push(marker);
+              bounds.extend([latest.la, latest.lo]);
+              hasPoints = true;
+            }
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+      
+      if (hasPoints) {
+        map.fitBounds(bounds, { padding: [50, 50] });
+        document.getElementById('map-container').style.display = 'block';
+        document.getElementById('map-msg').style.display = 'none';
+      } else {
+        document.getElementById('map-container').style.display = 'none';
+        document.getElementById('map-msg').style.display = 'block';
+      }
+    }
+
+    // Events
+    async function loadEvents() {
+      const id = document.getElementById('events-device-select').value;
+      const list = document.getElementById('events-list');
+      if (!id) {
+        list.innerHTML = '<div style="text-align:center; padding: 48px; color: var(--charcoal);">Select a device to view events.</div>';
+        return;
+      }
+      
+      list.innerHTML = '<div style="text-align:center; padding: 48px; color: var(--charcoal);">Loading events...</div>';
+      
+      try {
+        const res = await fetch(`/api/peplink/devices/${id}/events`, { credentials: 'include' });
+        if (!res.ok) throw new Error('Failed to fetch events');
+        const data = await res.json();
+        
+        if (!data.data || data.data.length === 0) {
+          list.innerHTML = '<div style="text-align:center; padding: 48px; color: var(--charcoal);">No recent events.</div>';
+          return;
+        }
+        
+        list.innerHTML = data.data.map(e => `
+          <div class="alert-card">
+            <div class="alert-time">${new Date(e.timestamp || e.created_at).toLocaleString()}</div>
+            <div style="flex:1">
+              <div class="alert-type">${e.type || 'Event'}</div>
+              <div class="alert-msg">${e.message || ''}</div>
+            </div>
+          </div>
+        `).join('');
+      } catch (err) {
+        list.innerHTML = `<div style="text-align:center; padding: 48px; color: var(--light-red);">${err.message}</div>`;
+      }
+    }
+  </script>
+</body>
+</html>

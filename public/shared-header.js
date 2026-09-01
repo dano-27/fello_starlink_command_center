@@ -13,6 +13,7 @@
     { href: '/orders/', icon: '📦', label: 'IMS Orders', key: 'orders' },
     { href: '/inventory/', icon: '🏭', label: 'Inventory', key: 'inventory' },
     { href: '/cradlepoint/', icon: '🌐', label: 'Cradlepoint', key: 'cradlepoint' },
+    { href: '/peplink/', icon: '🔌', label: 'Peplink', key: 'peplink' },
     { href: '/reports/', icon: '📊', label: 'Reports', key: 'reports' },
     { href: '/training/', icon: '📖', label: 'Training', key: 'training' },
   ];
