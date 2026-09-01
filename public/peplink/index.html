@@ -231,6 +231,15 @@
     .toast { background: var(--black); color: var(--white); padding: 12px 24px; border-radius: var(--radius-sm); margin-bottom: 10px; font-size: 14px; font-weight: 500; animation: fadeInUp 0.3s ease; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
     .toast.error { background: var(--light-red); }
 
+    
+    /* Accordion */
+    .accordion { border: 1px solid var(--border); border-radius: var(--radius-sm); margin-bottom: 12px; overflow: hidden; }
+    .accordion-header { background: var(--gray); padding: 12px 16px; font-weight: 600; cursor: pointer; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid transparent; }
+    .accordion-header:hover { background: var(--input-off-white); }
+    .accordion-header.active { border-bottom-color: var(--border); background: var(--input-off-white); }
+    .accordion-body { padding: 16px; display: none; background: var(--white); }
+    .accordion-body.active { display: block; }
+
     /* Responsive */
     @media (max-width: 1024px) { .fleet-summary { grid-template-columns: repeat(2, 1fr); } }
     @media (max-width: 768px) {
@@ -267,7 +276,12 @@
       <button class="tab-btn" data-tab="tab-clients">👥 Connected Clients</button>
       <button class="tab-btn" data-tab="tab-bandwidth">📊 Bandwidth</button>
       <button class="tab-btn" data-tab="tab-gps">📍 GPS Tracking</button>
-      <button class="tab-btn" data-tab="tab-alerts">📋 Event Log</button>
+            <button class="tab-btn" data-tab="tab-alerts">📋 Event Log</button>
+      <button class="tab-btn" data-tab="tab-wifi">📶 WiFi Config</button>
+      <button class="tab-btn" data-tab="tab-wan">🌐 WAN Mgmt</button>
+      <button class="tab-btn" data-tab="tab-speed">🏎️ Speed Test</button>
+      <button class="tab-btn" data-tab="tab-network">🛡️ Network</button>
+      <button class="tab-btn" data-tab="tab-admin">⚙️ Admin</button>
     </div>
 
     <!-- Fleet Overview -->
@@ -351,7 +365,7 @@
       <div id="map-msg" style="text-align:center; padding:48px; color:var(--charcoal); display:none;">No GPS data available.</div>
     </div>
 
-    <!-- Event Log -->
+        <!-- Event Log -->
     <div class="tab-panel" id="tab-alerts">
       <div class="controls-bar">
         <h2>Event Log</h2>
@@ -363,6 +377,76 @@
         <div style="text-align:center; padding: 48px; color: var(--charcoal);">Select a device to view events.</div>
       </div>
     </div>
+
+    <!-- WiFi Config -->
+    <div class="tab-panel" id="tab-wifi">
+      <div class="controls-bar">
+        <h2>WiFi Config</h2>
+        <select id="wifi-device-select" class="form-select"><option value="">Select a device...</option></select>
+      </div>
+      <div id="wifi-content">
+        <div style="text-align:center; padding: 48px; color: var(--charcoal);">Select a device to configure WiFi.</div>
+      </div>
+    </div>
+
+    <!-- WAN Management -->
+    <div class="tab-panel" id="tab-wan">
+      <div class="controls-bar">
+        <h2>WAN Management</h2>
+        <select id="wan-device-select" class="form-select"><option value="">Select a device...</option></select>
+      </div>
+      <div id="wan-content">
+        <div style="text-align:center; padding: 48px; color: var(--charcoal);">Select a device to manage WANs.</div>
+      </div>
+    </div>
+
+    <!-- Speed Test -->
+    <div class="tab-panel" id="tab-speed">
+      <div class="controls-bar">
+        <h2>Speed Test</h2>
+        <select id="speed-device-select" class="form-select"><option value="">Select a device...</option></select>
+      </div>
+      <div id="speed-content" style="text-align:center; padding: 48px;">
+        <button class="btn btn-primary" id="btn-run-speedtest" style="font-size:18px; padding: 16px 32px;" disabled>Run Speed Test</button>
+        <div id="speed-results" style="margin-top: 32px; display: none; grid-template-columns: repeat(3, 1fr); gap: 16px;">
+          <div class="stat-card">
+            <div class="stat-value" id="speed-dl">—</div>
+            <div class="stat-label">Download (Mbps)</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="speed-ul" style="color:var(--success-color)">—</div>
+            <div class="stat-label">Upload (Mbps)</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-value" id="speed-ping" style="color:var(--orange)">—</div>
+            <div class="stat-label">Latency (ms)</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Network Config -->
+    <div class="tab-panel" id="tab-network">
+      <div class="controls-bar">
+        <h2>Network Config</h2>
+        <select id="network-device-select" class="form-select"><option value="">Select a device...</option></select>
+      </div>
+      <div id="network-content">
+        <div style="text-align:center; padding: 48px; color: var(--charcoal);">Select a device to view network config.</div>
+      </div>
+    </div>
+
+    <!-- Device Admin -->
+    <div class="tab-panel" id="tab-admin">
+      <div class="controls-bar">
+        <h2>Device Admin</h2>
+        <select id="admin-device-select" class="form-select"><option value="">Select a device...</option></select>
+      </div>
+      <div id="admin-content">
+        <div style="text-align:center; padding: 48px; color: var(--charcoal);">Select a device to manage.</div>
+      </div>
+    </div>
+  </div>
   </div>
 
   <!-- Reboot Modal -->
@@ -377,6 +461,23 @@
         <div style="display:flex; gap:16px; justify-content:flex-end;">
           <button class="btn btn-secondary" onclick="closeModal('reboot-modal')">Cancel</button>
           <button class="btn btn-danger" id="reboot-confirm-btn">Yes, Reboot</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Action Modal -->
+  <div class="modal-overlay" id="action-modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="action-modal-title">Confirm Action</h2>
+        <button class="modal-close" onclick="closeModal('action-modal')">&times;</button>
+      </div>
+      <div class="modal-body">
+        <p id="action-modal-msg" style="margin-bottom: 24px; color: var(--charcoal);"></p>
+        <div style="display:flex; gap:16px; justify-content:flex-end;">
+          <button class="btn btn-secondary" onclick="closeModal('action-modal')">Cancel</button>
+          <button class="btn btn-primary" id="action-confirm-btn">Confirm</button>
         </div>
       </div>
     </div>
@@ -414,6 +515,15 @@
       document.getElementById('clients-device-select').addEventListener('change', loadClients);
       document.getElementById('bw-device-select').addEventListener('change', loadBandwidth);
       document.getElementById('events-device-select').addEventListener('change', loadEvents);
+      document.getElementById('wifi-device-select').addEventListener('change', loadWifi);
+      document.getElementById('wan-device-select').addEventListener('change', loadWan);
+      document.getElementById('speed-device-select').addEventListener('change', () => {
+        document.getElementById('btn-run-speedtest').disabled = !document.getElementById('speed-device-select').value;
+      });
+      document.getElementById('network-device-select').addEventListener('change', loadNetwork);
+      document.getElementById('admin-device-select').addEventListener('change', loadAdmin);
+      document.getElementById('btn-run-speedtest').addEventListener('click', runSpeedTest);
+
       
       document.querySelectorAll('#bw-pills .range-pill').forEach(btn => {
         btn.addEventListener('click', (e) => {
@@ -476,7 +586,7 @@
     }
 
     function populateSelects() {
-      const selects = ['clients-device-select', 'bw-device-select', 'events-device-select'];
+      const selects = ['clients-device-select', 'bw-device-select', 'events-device-select', 'wifi-device-select', 'wan-device-select', 'speed-device-select', 'network-device-select', 'admin-device-select'];
       selects.forEach(id => {
         const sel = document.getElementById(id);
         const val = sel.value;
@@ -638,6 +748,29 @@
     // Modal logic
     function closeModal(id) { document.getElementById(id).style.display = 'none'; }
     
+    
+    let pendingAction = null;
+    function showActionModal(title, msg, btnText, btnClass, callback) {
+      document.getElementById('action-modal-title').textContent = title;
+      document.getElementById('action-modal-msg').innerHTML = msg;
+      const btn = document.getElementById('action-confirm-btn');
+      btn.textContent = btnText;
+      btn.className = `btn ${btnClass}`;
+      pendingAction = callback;
+      document.getElementById('action-modal').style.display = 'flex';
+    }
+    
+    document.getElementById('action-confirm-btn').addEventListener('click', async () => {
+      if (pendingAction) await pendingAction();
+      closeModal('action-modal');
+    });
+
+    function toggleAccordion(el) {
+      el.classList.toggle('active');
+      const body = el.nextElementSibling;
+      body.classList.toggle('active');
+    }
+
     let pendingRebootId = null;
     function showRebootModal(id, name) {
       pendingRebootId = id;
@@ -758,6 +891,268 @@
       } catch (err) {
         container.innerHTML = `<div style="text-align:center; padding: 48px; color: var(--light-red);">${err.message}</div>`;
       }
+    }
+
+    
+    // --- WiFi Config ---
+    async function loadWifi() {
+      const id = document.getElementById('wifi-device-select').value;
+      const container = document.getElementById('wifi-content');
+      if (!id) { container.innerHTML = '<div style="text-align:center; padding: 48px; color: var(--charcoal);">Select a device.</div>'; return; }
+      container.innerHTML = 'Loading...';
+      try {
+        const res = await fetch(`/api/peplink/devices/${id}/wifi`, { credentials: 'include' });
+        const data = await res.json();
+        container.innerHTML = `
+          <div class="terminal-card">
+            <div class="form-group">
+              <label class="form-label">SSID</label>
+              <input type="text" id="wifi-ssid" class="form-input" value="${data.ssid || ''}">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Password</label>
+              <input type="text" id="wifi-password" class="form-input" value="${data.password || ''}">
+            </div>
+            <div class="form-group">
+              <label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="wifi-enabled" ${data.enabled !== false ? 'checked' : ''}> Enabled</label>
+            </div>
+            <button class="btn btn-primary" onclick="saveWifi('${id}')">Save WiFi Config</button>
+          </div>
+        `;
+      } catch(e) { container.innerHTML = 'Error loading wifi'; }
+    }
+    
+    function saveWifi(id) {
+      const ssid = document.getElementById('wifi-ssid').value;
+      const password = document.getElementById('wifi-password').value;
+      const enabled = document.getElementById('wifi-enabled').checked;
+      
+      showActionModal('Save WiFi Config', `Are you sure you want to apply these WiFi settings to the device?`, 'Save', 'btn-primary', async () => {
+        try {
+          const res = await fetch(`/api/peplink/devices/${id}/wifi`, {
+            method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+            body: JSON.stringify({ ssid, password, enabled })
+          });
+          if(res.ok) showToast('WiFi updated successfully');
+          else throw new Error('Update failed');
+        } catch(e) { showToast(e.message, 'error'); }
+      });
+    }
+
+    // --- WAN Management ---
+    async function loadWan() {
+      const id = document.getElementById('wan-device-select').value;
+      const container = document.getElementById('wan-content');
+      if (!id) { container.innerHTML = '<div style="text-align:center; padding: 48px; color: var(--charcoal);">Select a device.</div>'; return; }
+      container.innerHTML = 'Loading...';
+      try {
+        const res = await fetch(`/api/peplink/devices/${id}/wan`, { credentials: 'include' });
+        const data = await res.json();
+        const wans = data.wans || [];
+        container.innerHTML = `
+          <div class="terminal-card">
+            <h3 style="margin-bottom:16px;">WAN Interfaces</h3>
+            ${wans.map(w => {
+              const color = !w.enabled ? 'gray' : (w.status === 'connected' ? 'var(--success-color)' : 'var(--light-red)');
+              return `
+              <div style="display:flex; justify-content:space-between; align-items:center; padding: 12px; border:1px solid var(--border); border-radius:var(--radius-sm); margin-bottom:8px;">
+                <div>
+                  <div style="font-weight:600; display:flex; align-items:center; gap:8px;">
+                    <div style="width:10px;height:10px;border-radius:50%;background:${color}"></div>
+                    ${w.name} <span style="font-size:11px;color:var(--dark-gray-shade)">(${w.type})</span>
+                  </div>
+                  <div style="font-size:12px; font-family:monospace; margin-top:4px;">IP: ${w.ip || '-'}</div>
+                </div>
+                <div>
+                  <button class="btn btn-secondary btn-sm" onclick="toggleWan('${id}', '${w.id}', ${!w.enabled})">${w.enabled ? 'Disable' : 'Enable'}</button>
+                </div>
+              </div>
+            `}).join('')}
+            
+            <h3 style="margin-top:24px; margin-bottom:16px;">Priority Order</h3>
+            <div class="form-group">
+              <input type="text" id="wan-priority" class="form-input" placeholder="e.g. 1, 2, 3" value="${data.priority || ''}">
+            </div>
+            <button class="btn btn-primary" onclick="saveWanPriority('${id}')">Save Priority</button>
+          </div>
+        `;
+      } catch(e) { container.innerHTML = 'Error loading WANs'; }
+    }
+    
+    async function toggleWan(id, wanId, enabled) {
+      try {
+        const res = await fetch(`/api/peplink/devices/${id}/wan/${wanId}/toggle`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+          body: JSON.stringify({ enabled })
+        });
+        if(res.ok) { showToast('WAN toggled'); loadWan(); }
+        else throw new Error('Toggle failed');
+      } catch(e) { showToast(e.message, 'error'); }
+    }
+
+    async function saveWanPriority(id) {
+      const p = document.getElementById('wan-priority').value.split(',').map(s=>s.trim()).filter(x=>x);
+      try {
+        const res = await fetch(`/api/peplink/devices/${id}/wan/priority`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+          body: JSON.stringify({ priorities: p })
+        });
+        if(res.ok) { showToast('Priority saved'); }
+        else throw new Error('Save failed');
+      } catch(e) { showToast(e.message, 'error'); }
+    }
+
+    // --- Speed Test ---
+    async function runSpeedTest() {
+      const id = document.getElementById('speed-device-select').value;
+      const btn = document.getElementById('btn-run-speedtest');
+      const resDiv = document.getElementById('speed-results');
+      btn.disabled = true;
+      btn.textContent = 'Starting test...';
+      resDiv.style.display = 'grid';
+      document.getElementById('speed-dl').textContent = '...';
+      document.getElementById('speed-ul').textContent = '...';
+      document.getElementById('speed-ping').textContent = '...';
+      
+      try {
+        await fetch(`/api/peplink/devices/${id}/speedtest`, { method: 'POST', credentials: 'include' });
+        
+        const poll = setInterval(async () => {
+          btn.textContent = 'Testing...';
+          const res = await fetch(`/api/peplink/devices/${id}/speedtest`, { credentials: 'include' });
+          const data = await res.json();
+          if (data.status === 'complete') {
+            clearInterval(poll);
+            document.getElementById('speed-dl').textContent = data.download || 0;
+            document.getElementById('speed-ul').textContent = data.upload || 0;
+            document.getElementById('speed-ping').textContent = data.latency || 0;
+            btn.disabled = false;
+            btn.textContent = 'Run Speed Test Again';
+          }
+        }, 2000);
+      } catch(e) {
+        btn.disabled = false;
+        btn.textContent = 'Run Speed Test';
+        showToast('Speed test failed to start', 'error');
+      }
+    }
+
+    // --- Network Config ---
+    async function loadNetwork() {
+      const id = document.getElementById('network-device-select').value;
+      const container = document.getElementById('network-content');
+      if (!id) { container.innerHTML = '<div style="text-align:center; padding: 48px; color: var(--charcoal);">Select a device.</div>'; return; }
+      
+      container.innerHTML = `
+        <div class="accordion">
+          <div class="accordion-header" onclick="toggleAccordion(this)">DHCP Settings <span>▼</span></div>
+          <div class="accordion-body" id="net-dhcp">Loading...</div>
+        </div>
+        <div class="accordion">
+          <div class="accordion-header" onclick="toggleAccordion(this)">Firewall Rules <span>▼</span></div>
+          <div class="accordion-body" id="net-firewall">Loading...</div>
+        </div>
+        <div class="accordion">
+          <div class="accordion-header" onclick="toggleAccordion(this)">Port Forwarding <span>▼</span></div>
+          <div class="accordion-body" id="net-portfwd">Loading...</div>
+        </div>
+        <div class="accordion">
+          <div class="accordion-header" onclick="toggleAccordion(this)">Content Blocking <span>▼</span></div>
+          <div class="accordion-body" id="net-content">Loading...</div>
+        </div>
+        <div class="accordion">
+          <div class="accordion-header" onclick="toggleAccordion(this)">QoS / Bandwidth Limits <span>▼</span></div>
+          <div class="accordion-body" id="net-qos">Loading...</div>
+        </div>
+      `;
+
+      // Fetch all network sections in parallel
+      Promise.allSettled([
+        fetch(`/api/peplink/devices/${id}/dhcp`, {credentials:'include'}).then(r=>r.json()).then(d => {
+          document.getElementById('net-dhcp').innerHTML = `
+            <div class="form-group"><label>IP Range</label><input class="form-input" value="${d.range || ''}"></div>
+            <div class="form-group"><label>Subnet</label><input class="form-input" value="${d.subnet || ''}"></div>
+            <button class="btn btn-secondary">Save</button>
+          `;
+        }),
+        fetch(`/api/peplink/devices/${id}/firewall`, {credentials:'include'}).then(r=>r.json()).then(d => {
+          document.getElementById('net-firewall').innerHTML = `
+            <table class="data-table"><tr><th>Source</th><th>Dest</th><th>Action</th></tr>
+            ${(d.rules||[]).map(r=>`<tr><td>${r.source}</td><td>${r.dest}</td><td>${r.action}</td></tr>`).join('')}
+            </table>
+          `;
+        }),
+        fetch(`/api/peplink/devices/${id}/portforward`, {credentials:'include'}).then(r=>r.json()).then(d => {
+          document.getElementById('net-portfwd').innerHTML = `
+            <table class="data-table"><tr><th>Port</th><th>Protocol</th><th>Dest IP</th></tr>
+            ${(d.rules||[]).map(r=>`<tr><td>${r.port}</td><td>${r.protocol}</td><td>${r.dest}</td></tr>`).join('')}
+            </table>
+          `;
+        }),
+        fetch(`/api/peplink/devices/${id}/contentblock`, {credentials:'include'}).then(r=>r.json()).then(d => {
+          document.getElementById('net-content').innerHTML = `
+            ${(d.categories||[]).map(c=>`<label style="display:block;margin-bottom:8px;"><input type="checkbox" ${c.blocked?'checked':''}> ${c.name}</label>`).join('')}
+          `;
+        }),
+        fetch(`/api/peplink/devices/${id}/qos`, {credentials:'include'}).then(r=>r.json()).then(d => {
+          document.getElementById('net-qos').innerHTML = `
+            <table class="data-table"><tr><th>Target</th><th>Limit (Mbps)</th></tr>
+            ${(d.limits||[]).map(l=>`<tr><td>${l.target}</td><td>${l.limit}</td></tr>`).join('')}
+            </table>
+          `;
+        })
+      ]);
+    }
+
+    // --- Admin ---
+    async function loadAdmin() {
+      const id = document.getElementById('admin-device-select').value;
+      const container = document.getElementById('admin-content');
+      if (!id) { container.innerHTML = '<div style="text-align:center; padding: 48px; color: var(--charcoal);">Select a device.</div>'; return; }
+      
+      container.innerHTML = 'Loading...';
+      try {
+        const [fwRes, sfRes] = await Promise.all([
+          fetch(`/api/peplink/devices/${id}/firmware`, {credentials:'include'}),
+          fetch(`/api/peplink/devices/${id}/speedfusion`, {credentials:'include'})
+        ]);
+        const fw = await fwRes.json();
+        const sf = await sfRes.json();
+        
+        container.innerHTML = `
+          <div class="terminal-card" style="margin-bottom:16px;">
+            <h3>Firmware</h3>
+            <p style="margin: 8px 0; font-size:14px;">Current Version: <strong>${fw.current || 'Unknown'}</strong></p>
+            ${fw.available ? `<p style="color:var(--success-color); font-size:14px; margin-bottom:12px;">Update Available: ${fw.available}</p>` : ''}
+            <button class="btn btn-danger" onclick="upgradeFirmware('${id}')">Upgrade Firmware</button>
+          </div>
+          
+          <div class="terminal-card" style="margin-bottom:16px;">
+            <h3>Configuration</h3>
+            <p style="margin: 8px 0; font-size:14px;">Backup your device configuration.</p>
+            <button class="btn btn-secondary" onclick="window.location.href='/api/peplink/devices/${id}/config'">Download Backup</button>
+          </div>
+          
+          <div class="terminal-card">
+            <h3>SpeedFusion Status</h3>
+            <p style="margin: 8px 0; font-size:14px;">Tunnel: <strong>${sf.tunnelName || 'None'}</strong> - ${sf.status || 'Disconnected'}</p>
+            <div style="display:flex; gap:16px; font-size:13px;">
+              <div>Latency: ${sf.latency || 0}ms</div>
+              <div>Packet Loss: ${sf.packetLoss || 0}%</div>
+            </div>
+          </div>
+        `;
+      } catch(e) { container.innerHTML = 'Error loading admin data'; }
+    }
+    
+    function upgradeFirmware(id) {
+      showActionModal('Upgrade Firmware', 'Are you sure you want to upgrade the firmware? The device will reboot during this process.', 'Upgrade', 'btn-danger', async () => {
+        try {
+          const res = await fetch(`/api/peplink/devices/${id}/firmware`, { method: 'POST', credentials: 'include' });
+          if(res.ok) showToast('Firmware upgrade initiated');
+          else throw new Error('Upgrade failed');
+        } catch(e) { showToast(e.message, 'error'); }
+      });
     }
 
     // Map

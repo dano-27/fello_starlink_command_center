@@ -270,6 +270,27 @@ function describeAction(action) {
   // ── Peplink ──
   if (p.includes('/peplink/webhook')) return `🔌 Peplink event: ${tc || 'webhook received'}`;
   if (p.includes('/peplink') && p.includes('/reboot')) return `🔌 Rebooted Peplink router${tc ? ' — ' + tc : ''}`;
+  if (p.includes('/peplink') && p.includes('/wifi') && m === 'PUT') return `📶 Updated WiFi config on Peplink router${tc ? ' — ' + tc : ''}`;
+  if (p.includes('/peplink') && p.includes('/wifi')) return `📶 Viewed WiFi config on Peplink router **${pathId || ''}**`;
+  if (p.includes('/peplink') && p.includes('/wan/priority')) return `🌐 Changed WAN priority${tc ? ' — ' + tc : ''}`;
+  if (p.includes('/peplink') && p.includes('/wan') && p.includes('/toggle')) return `🌐 ${tc || 'Toggled WAN interface'}`;
+  if (p.includes('/peplink') && p.includes('/wan')) return `🌐 Viewed WAN status on Peplink router **${pathId || ''}**`;
+  if (p.includes('/peplink') && p.includes('/speedtest') && m === 'POST') return `🏎️ ${tc || 'Started speed test on Peplink router'}`;
+  if (p.includes('/peplink') && p.includes('/speedtest')) return `🏎️ Checked speed test results on Peplink router **${pathId || ''}**`;
+  if (p.includes('/peplink') && p.includes('/speedfusion')) return `🔗 Checked SpeedFusion tunnel status on Peplink router **${pathId || ''}**`;
+  if (p.includes('/peplink') && p.includes('/dhcp') && m === 'PUT') return `🔧 ${tc || 'Updated DHCP settings on Peplink router'}`;
+  if (p.includes('/peplink') && p.includes('/dhcp')) return `🔧 Viewed DHCP/LAN config on Peplink router **${pathId || ''}**`;
+  if (p.includes('/peplink') && p.includes('/firewall') && m === 'PUT') return `🛡️ ${tc || 'Updated firewall rules on Peplink router'}`;
+  if (p.includes('/peplink') && p.includes('/firewall')) return `🛡️ Viewed firewall rules on Peplink router **${pathId || ''}**`;
+  if (p.includes('/peplink') && p.includes('/portforward') && m === 'PUT') return `🔀 ${tc || 'Updated port forwarding on Peplink router'}`;
+  if (p.includes('/peplink') && p.includes('/portforward')) return `🔀 Viewed port forwarding on Peplink router **${pathId || ''}**`;
+  if (p.includes('/peplink') && p.includes('/contentblock') && m === 'PUT') return `🚫 ${tc || 'Updated content blocking on Peplink router'}`;
+  if (p.includes('/peplink') && p.includes('/contentblock')) return `🚫 Viewed content blocking on Peplink router **${pathId || ''}**`;
+  if (p.includes('/peplink') && p.includes('/qos') && m === 'PUT') return `📊 ${tc || 'Updated bandwidth limits on Peplink router'}`;
+  if (p.includes('/peplink') && p.includes('/qos')) return `📊 Viewed QoS/bandwidth limits on Peplink router **${pathId || ''}**`;
+  if (p.includes('/peplink') && p.includes('/config')) return `💾 ${tc || 'Downloaded config backup from Peplink router'}`;
+  if (p.includes('/peplink') && p.includes('/firmware') && m === 'POST') return `⬆️ ${tc || 'Started firmware upgrade on Peplink router'}`;
+  if (p.includes('/peplink') && p.includes('/firmware')) return `⬆️ Checked firmware info on Peplink router **${pathId || ''}**`;
   if (p.includes('/peplink') && p.includes('/clients')) return `🔌 Viewed connected clients on Peplink router **${pathId || ''}**`;
   if (p.includes('/peplink') && p.includes('/bandwidth')) return `🔌 Checked bandwidth on Peplink router **${pathId || ''}**`;
   if (p.includes('/peplink') && p.includes('/location')) return `🔌 Checked GPS location of Peplink router **${pathId || ''}**`;
@@ -2297,6 +2318,413 @@ app.post('/api/peplink/webhook', (req, res) => {
   }
   
   res.json({ ok: true });
+});
+
+// ── Peplink Advanced Features (DevAPI) ────────────────────────────────
+
+// Helper: resolve device group from device ID (caches the device list for 30s)
+let plDeviceCache = null;
+let plDeviceCacheTime = 0;
+async function plResolveDevice(deviceId) {
+  if (!plDeviceCache || Date.now() - plDeviceCacheTime > 30000) {
+    const resp = await plFetch('/rest/o/' + PL_ORG_ID + '/d?has_status=true');
+    plDeviceCache = resp.data || [];
+    plDeviceCacheTime = Date.now();
+  }
+  const dev = plDeviceCache.find(d => String(d.id) === String(deviceId));
+  if (!dev) throw new Error('Device not found: ' + deviceId);
+  return dev;
+}
+
+// Helper: execute DevAPI command on a device
+async function plDevApi(deviceId, command, method = 'GET', body = null) {
+  const dev = await plResolveDevice(deviceId);
+  const path = '/rest/o/' + PL_ORG_ID + '/g/' + dev.group_id + '/d/' + dev.id + '/devapi/' + command;
+  const opts = { method };
+  if (body && method === 'POST') opts.body = JSON.stringify(body);
+  return plFetch(path, opts);
+}
+
+// WiFi Configuration — Read
+app.get('/api/peplink/devices/:id/wifi', async (req, res) => {
+  if (!PL_CLIENT_ID) return res.status(503).json({ error: 'Peplink not configured' });
+  try {
+    const result = await plDevApi(req.params.id, 'status.wlan');
+    res.json(result);
+  } catch (err) {
+    console.error('[Peplink] WiFi read error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// WiFi Configuration — Update SSID/Password
+app.put('/api/peplink/devices/:id/wifi', async (req, res) => {
+  if (!req.user || req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  if (!PL_CLIENT_ID) return res.status(503).json({ error: 'Peplink not configured' });
+  try {
+    const { ssid, password, band, enabled } = req.body;
+    const dev = await plResolveDevice(req.params.id);
+    
+    // Build config update
+    const config = {};
+    if (ssid !== undefined) config.ssid = ssid;
+    if (password !== undefined) config.security = { passphrase: password };
+    if (enabled !== undefined) config.enable = enabled;
+    
+    // Push config and apply
+    await plDevApi(req.params.id, 'config.wlan', 'POST', config);
+    const applyResult = await plDevApi(req.params.id, 'cmd.config.apply', 'POST');
+    
+    auditLog(req, {
+      path: '/api/peplink/devices/' + req.params.id + '/wifi',
+      body: { ssid, band, enabled },
+      taskContext: 'Updated WiFi on Peplink router ' + dev.name + (ssid ? ' — SSID: ' + ssid : '')
+    });
+    
+    console.log('[Peplink] WiFi updated on ' + dev.name + ' by ' + req.user.username);
+    res.json({ ok: true, applied: applyResult });
+  } catch (err) {
+    console.error('[Peplink] WiFi update error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// WAN Status — detailed interface status
+app.get('/api/peplink/devices/:id/wan', async (req, res) => {
+  if (!PL_CLIENT_ID) return res.status(503).json({ error: 'Peplink not configured' });
+  try {
+    const result = await plDevApi(req.params.id, 'status.wan.connection');
+    res.json(result);
+  } catch (err) {
+    console.error('[Peplink] WAN status error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// WAN Priority — Change priority order
+app.put('/api/peplink/devices/:id/wan/priority', async (req, res) => {
+  if (!req.user || req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  if (!PL_CLIENT_ID) return res.status(503).json({ error: 'Peplink not configured' });
+  try {
+    const { priorities } = req.body; // Array of WAN IDs in priority order
+    const dev = await plResolveDevice(req.params.id);
+    
+    await plDevApi(req.params.id, 'config.wan.connection', 'POST', { priority: priorities });
+    const applyResult = await plDevApi(req.params.id, 'cmd.config.apply', 'POST');
+    
+    auditLog(req, {
+      path: '/api/peplink/devices/' + req.params.id + '/wan/priority',
+      body: { priorities },
+      taskContext: 'Changed WAN priority on Peplink router ' + dev.name + ' — order: ' + priorities.join(', ')
+    });
+    
+    console.log('[Peplink] WAN priority changed on ' + dev.name + ' by ' + req.user.username);
+    res.json({ ok: true, applied: applyResult });
+  } catch (err) {
+    console.error('[Peplink] WAN priority error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// WAN Enable/Disable — toggle a WAN interface
+app.put('/api/peplink/devices/:id/wan/:wanId/toggle', async (req, res) => {
+  if (!req.user || req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  if (!PL_CLIENT_ID) return res.status(503).json({ error: 'Peplink not configured' });
+  try {
+    const { enabled } = req.body;
+    const dev = await plResolveDevice(req.params.id);
+    
+    await plDevApi(req.params.id, 'config.wan.connection', 'POST', {
+      [req.params.wanId]: { enable: enabled }
+    });
+    const applyResult = await plDevApi(req.params.id, 'cmd.config.apply', 'POST');
+    
+    auditLog(req, {
+      path: '/api/peplink/devices/' + req.params.id + '/wan/' + req.params.wanId + '/toggle',
+      body: { enabled },
+      taskContext: (enabled ? 'Enabled' : 'Disabled') + ' WAN ' + req.params.wanId + ' on Peplink router ' + dev.name
+    });
+    
+    console.log('[Peplink] WAN ' + req.params.wanId + ' ' + (enabled ? 'enabled' : 'disabled') + ' on ' + dev.name + ' by ' + req.user.username);
+    res.json({ ok: true, applied: applyResult });
+  } catch (err) {
+    console.error('[Peplink] WAN toggle error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Speed Test — Start
+app.post('/api/peplink/devices/:id/speedtest', async (req, res) => {
+  if (!req.user || req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  if (!PL_CLIENT_ID) return res.status(503).json({ error: 'Peplink not configured' });
+  try {
+    const dev = await plResolveDevice(req.params.id);
+    const result = await plDevApi(req.params.id, 'cmd.speedtest', 'POST', req.body || {});
+    
+    auditLog(req, {
+      path: '/api/peplink/devices/' + req.params.id + '/speedtest',
+      taskContext: 'Started speed test on Peplink router ' + dev.name
+    });
+    
+    console.log('[Peplink] Speed test started on ' + dev.name + ' by ' + req.user.username);
+    res.json(result);
+  } catch (err) {
+    console.error('[Peplink] Speed test error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Speed Test — Get Results
+app.get('/api/peplink/devices/:id/speedtest', async (req, res) => {
+  if (!PL_CLIENT_ID) return res.status(503).json({ error: 'Peplink not configured' });
+  try {
+    const result = await plDevApi(req.params.id, 'status.speedtest');
+    res.json(result);
+  } catch (err) {
+    console.error('[Peplink] Speed test results error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// SpeedFusion / PepVPN Tunnel Status
+app.get('/api/peplink/devices/:id/speedfusion', async (req, res) => {
+  if (!PL_CLIENT_ID) return res.status(503).json({ error: 'Peplink not configured' });
+  try {
+    const dev = await plResolveDevice(req.params.id);
+    const result = await plFetch('/rest/o/' + PL_ORG_ID + '/g/' + dev.group_id + '/speedfusion');
+    res.json(result);
+  } catch (err) {
+    console.error('[Peplink] SpeedFusion error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DHCP Configuration — Read
+app.get('/api/peplink/devices/:id/dhcp', async (req, res) => {
+  if (!PL_CLIENT_ID) return res.status(503).json({ error: 'Peplink not configured' });
+  try {
+    const result = await plDevApi(req.params.id, 'status.lan');
+    res.json(result);
+  } catch (err) {
+    console.error('[Peplink] DHCP read error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DHCP Configuration — Update
+app.put('/api/peplink/devices/:id/dhcp', async (req, res) => {
+  if (!req.user || req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  if (!PL_CLIENT_ID) return res.status(503).json({ error: 'Peplink not configured' });
+  try {
+    const dev = await plResolveDevice(req.params.id);
+    await plDevApi(req.params.id, 'config.lan', 'POST', req.body);
+    const applyResult = await plDevApi(req.params.id, 'cmd.config.apply', 'POST');
+    
+    auditLog(req, {
+      path: '/api/peplink/devices/' + req.params.id + '/dhcp',
+      body: req.body,
+      taskContext: 'Updated DHCP settings on Peplink router ' + dev.name
+    });
+    
+    console.log('[Peplink] DHCP updated on ' + dev.name + ' by ' + req.user.username);
+    res.json({ ok: true, applied: applyResult });
+  } catch (err) {
+    console.error('[Peplink] DHCP update error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Firewall Rules — Read
+app.get('/api/peplink/devices/:id/firewall', async (req, res) => {
+  if (!PL_CLIENT_ID) return res.status(503).json({ error: 'Peplink not configured' });
+  try {
+    const result = await plDevApi(req.params.id, 'status.firewall');
+    res.json(result);
+  } catch (err) {
+    console.error('[Peplink] Firewall read error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Firewall Rules — Update
+app.put('/api/peplink/devices/:id/firewall', async (req, res) => {
+  if (!req.user || req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  if (!PL_CLIENT_ID) return res.status(503).json({ error: 'Peplink not configured' });
+  try {
+    const dev = await plResolveDevice(req.params.id);
+    await plDevApi(req.params.id, 'config.firewall', 'POST', req.body);
+    const applyResult = await plDevApi(req.params.id, 'cmd.config.apply', 'POST');
+    
+    auditLog(req, {
+      path: '/api/peplink/devices/' + req.params.id + '/firewall',
+      body: req.body,
+      taskContext: 'Updated firewall rules on Peplink router ' + dev.name
+    });
+    
+    console.log('[Peplink] Firewall updated on ' + dev.name + ' by ' + req.user.username);
+    res.json({ ok: true, applied: applyResult });
+  } catch (err) {
+    console.error('[Peplink] Firewall update error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Port Forwarding — Read
+app.get('/api/peplink/devices/:id/portforward', async (req, res) => {
+  if (!PL_CLIENT_ID) return res.status(503).json({ error: 'Peplink not configured' });
+  try {
+    const result = await plDevApi(req.params.id, 'status.portforwarding');
+    res.json(result);
+  } catch (err) {
+    console.error('[Peplink] Port forward read error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Port Forwarding — Update
+app.put('/api/peplink/devices/:id/portforward', async (req, res) => {
+  if (!req.user || req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  if (!PL_CLIENT_ID) return res.status(503).json({ error: 'Peplink not configured' });
+  try {
+    const dev = await plResolveDevice(req.params.id);
+    await plDevApi(req.params.id, 'config.portforwarding', 'POST', req.body);
+    const applyResult = await plDevApi(req.params.id, 'cmd.config.apply', 'POST');
+    
+    auditLog(req, {
+      path: '/api/peplink/devices/' + req.params.id + '/portforward',
+      body: req.body,
+      taskContext: 'Updated port forwarding on Peplink router ' + dev.name
+    });
+    
+    console.log('[Peplink] Port forwarding updated on ' + dev.name + ' by ' + req.user.username);
+    res.json({ ok: true, applied: applyResult });
+  } catch (err) {
+    console.error('[Peplink] Port forward update error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Content Blocking — Read
+app.get('/api/peplink/devices/:id/contentblock', async (req, res) => {
+  if (!PL_CLIENT_ID) return res.status(503).json({ error: 'Peplink not configured' });
+  try {
+    const result = await plDevApi(req.params.id, 'status.contentblocking');
+    res.json(result);
+  } catch (err) {
+    console.error('[Peplink] Content blocking read error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Content Blocking — Update
+app.put('/api/peplink/devices/:id/contentblock', async (req, res) => {
+  if (!req.user || req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  if (!PL_CLIENT_ID) return res.status(503).json({ error: 'Peplink not configured' });
+  try {
+    const dev = await plResolveDevice(req.params.id);
+    await plDevApi(req.params.id, 'config.contentblocking', 'POST', req.body);
+    const applyResult = await plDevApi(req.params.id, 'cmd.config.apply', 'POST');
+    
+    auditLog(req, {
+      path: '/api/peplink/devices/' + req.params.id + '/contentblock',
+      body: req.body,
+      taskContext: 'Updated content blocking on Peplink router ' + dev.name
+    });
+    
+    console.log('[Peplink] Content blocking updated on ' + dev.name + ' by ' + req.user.username);
+    res.json({ ok: true, applied: applyResult });
+  } catch (err) {
+    console.error('[Peplink] Content blocking update error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Bandwidth Limits / QoS — Read
+app.get('/api/peplink/devices/:id/qos', async (req, res) => {
+  if (!PL_CLIENT_ID) return res.status(503).json({ error: 'Peplink not configured' });
+  try {
+    const result = await plDevApi(req.params.id, 'status.qos');
+    res.json(result);
+  } catch (err) {
+    console.error('[Peplink] QoS read error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Bandwidth Limits / QoS — Update
+app.put('/api/peplink/devices/:id/qos', async (req, res) => {
+  if (!req.user || req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  if (!PL_CLIENT_ID) return res.status(503).json({ error: 'Peplink not configured' });
+  try {
+    const dev = await plResolveDevice(req.params.id);
+    await plDevApi(req.params.id, 'config.qos', 'POST', req.body);
+    const applyResult = await plDevApi(req.params.id, 'cmd.config.apply', 'POST');
+    
+    auditLog(req, {
+      path: '/api/peplink/devices/' + req.params.id + '/qos',
+      body: req.body,
+      taskContext: 'Updated bandwidth limits on Peplink router ' + dev.name
+    });
+    
+    console.log('[Peplink] QoS updated on ' + dev.name + ' by ' + req.user.username);
+    res.json({ ok: true, applied: applyResult });
+  } catch (err) {
+    console.error('[Peplink] QoS update error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Config Backup — Download
+app.get('/api/peplink/devices/:id/config', async (req, res) => {
+  if (!req.user || req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  if (!PL_CLIENT_ID) return res.status(503).json({ error: 'Peplink not configured' });
+  try {
+    const dev = await plResolveDevice(req.params.id);
+    const config = await plFetch('/rest/o/' + PL_ORG_ID + '/g/' + dev.group_id + '/d/' + dev.id + '/config');
+    
+    auditLog(req, {
+      path: '/api/peplink/devices/' + req.params.id + '/config',
+      taskContext: 'Downloaded config backup from Peplink router ' + dev.name
+    });
+    
+    res.json(config);
+  } catch (err) {
+    console.error('[Peplink] Config backup error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Firmware Info
+app.get('/api/peplink/devices/:id/firmware', async (req, res) => {
+  if (!PL_CLIENT_ID) return res.status(503).json({ error: 'Peplink not configured' });
+  try {
+    const result = await plDevApi(req.params.id, 'info.firmware');
+    res.json(result);
+  } catch (err) {
+    console.error('[Peplink] Firmware info error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Firmware Upgrade
+app.post('/api/peplink/devices/:id/firmware', async (req, res) => {
+  if (!req.user || req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+  if (!PL_CLIENT_ID) return res.status(503).json({ error: 'Peplink not configured' });
+  try {
+    const dev = await plResolveDevice(req.params.id);
+    const result = await plDevApi(req.params.id, 'cmd.firmware.upgrade', 'POST');
+    
+    auditLog(req, {
+      path: '/api/peplink/devices/' + req.params.id + '/firmware',
+      taskContext: 'Started firmware upgrade on Peplink router ' + dev.name
+    });
+    
+    console.log('[Peplink] Firmware upgrade started on ' + dev.name + ' by ' + req.user.username);
+    res.json({ ok: true, result });
+  } catch (err) {
+    console.error('[Peplink] Firmware upgrade error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ═══════════════════════════════════════════════════════════════════════
