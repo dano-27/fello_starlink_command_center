@@ -2004,7 +2004,7 @@ async function plEnsureToken() {
   return plToken;
 }
 
-async function plFetch(endpoint, options = {}) {
+async function plFetch(endpoint, options = {}, _retry = false) {
   const token = await plEnsureToken();
   const url = endpoint.startsWith('http') ? endpoint : PL_BASE_URL + endpoint;
   const resp = await fetch(url, {
@@ -2015,6 +2015,12 @@ async function plFetch(endpoint, options = {}) {
       ...(options.headers || {})
     }
   });
+  if (resp.status === 401 && !_retry) {
+    console.log('[Peplink] Token rejected (401), refreshing...');
+    plToken = null;
+    plTokenExpiry = 0;
+    return plFetch(endpoint, options, true);
+  }
   if (!resp.ok) {
     const text = await resp.text();
     throw new Error('Peplink API ' + resp.status + ': ' + text.substring(0, 200));
