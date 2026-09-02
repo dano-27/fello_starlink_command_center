@@ -614,7 +614,8 @@
         }
 
         function updateStatusUI(data) {
-            isConnected = !!data.connected;
+            const agent = data.agent || {};
+            isConnected = !!agent.connected;
             const dot = document.getElementById('agent-status-indicator');
             const text = document.getElementById('agent-status-text');
             const warning = document.getElementById('connection-warning');
@@ -623,9 +624,9 @@
                 dot.className = 'status-dot connected';
                 text.textContent = 'Connected';
                 warning.classList.remove('show');
-                document.getElementById('agent-name').textContent = data.agentName || 'Windows PC';
-                document.getElementById('agent-connected-since').textContent = data.connectedSince ? new Date(data.connectedSince).toLocaleTimeString() : 'N/A';
-                document.getElementById('agent-last-ping').textContent = data.lastPing ? new Date(data.lastPing).toLocaleTimeString() : 'N/A';
+                document.getElementById('agent-name').textContent = agent.name || 'Agent';
+                document.getElementById('agent-connected-since').textContent = agent.connectedAt ? new Date(agent.connectedAt).toLocaleTimeString() : 'N/A';
+                document.getElementById('agent-last-ping').textContent = agent.lastPing ? new Date(agent.lastPing).toLocaleTimeString() : 'N/A';
             } else {
                 dot.className = 'status-dot disconnected';
                 text.textContent = 'Disconnected';
