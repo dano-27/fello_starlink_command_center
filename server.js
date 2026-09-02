@@ -11418,16 +11418,22 @@ wss.on('connection', (ws, request) => {
   });
 
   ws.on('close', () => {
-    agentConnection = null;
-    agentInfo.connected = false;
-    console.log(`[Agent] ❌ Browser agent disconnected: ${agentName}`);
+    // Only clear state if THIS ws is still the active connection
+    // (a new connection may have already replaced us)
+    if (agentConnection === ws) {
+      agentConnection = null;
+      agentInfo.connected = false;
+      console.log(`[Agent] ❌ Browser agent disconnected: ${agentName}`);
 
-    // Mark dispatched tasks as failed (agent disconnected)
-    agentTasks.filter(t => t.status === 'dispatched').forEach(t => {
-      t.status = 'queued'; // Re-queue for when agent reconnects
-      t.dispatchedAt = null;
-    });
-    saveAgentTasks();
+      // Re-queue dispatched tasks for when agent reconnects
+      agentTasks.filter(t => t.status === 'dispatched').forEach(t => {
+        t.status = 'queued';
+        t.dispatchedAt = null;
+      });
+      saveAgentTasks();
+    } else {
+      console.log(`[Agent] Old connection closed (replaced): ${agentName}`);
+    }
   });
 
   ws.on('error', (err) => {
