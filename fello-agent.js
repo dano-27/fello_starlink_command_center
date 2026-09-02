@@ -62,15 +62,20 @@ async function ensureBrowser() {
 async function ensureLoggedIn() {
   await ensureBrowser();
   try {
-    await page.goto('https://a.simplemdm.com/admin/devices', { waitUntil: 'domcontentloaded', timeout: 15000 });
-    if (page.url().includes('/login') || page.url().includes('/sign_in')) {
+    await page.goto('https://a.simplemdm.com/admin/devices', { waitUntil: 'domcontentloaded', timeout: 20000 });
+    // SimpleMDM redirects to /admin/auth/sign_in if not logged in
+    if (page.url().includes('/auth/sign_in') || page.url().includes('/login')) {
       if (!CONFIG.smdmEmail || !CONFIG.smdmPassword) throw new Error('SimpleMDM credentials not set');
       log('Logging into SimpleMDM...');
-      await page.fill('input[name="email"], input[type="email"], #user_email', CONFIG.smdmEmail);
-      await page.fill('input[name="password"], input[type="password"], #user_password', CONFIG.smdmPassword);
-      await page.click('button[type="submit"], input[type="submit"]');
-      await page.waitForURL('**/admin/**', { timeout: 15000 });
-      log('Logged into SimpleMDM');
+      await page.fill('#user_email', CONFIG.smdmEmail);
+      await page.fill('#user_password', CONFIG.smdmPassword);
+      await page.click('input[type="submit"].sign-in-button');
+      // Wait for redirect away from sign_in page
+      await page.waitForFunction(() => !window.location.href.includes('/auth/sign_in'), { timeout: 15000 });
+      await page.waitForTimeout(1000);
+      log('Logged into SimpleMDM — URL: ' + page.url());
+    } else {
+      log('Already logged in — URL: ' + page.url());
     }
   } catch (e) { throw e; }
 }
