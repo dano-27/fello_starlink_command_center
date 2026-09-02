@@ -6433,6 +6433,8 @@ ${otherAppsXml}
     <integer>1</integer>
     <key>PayloadRemovalDisallowed</key>
     <false/>
+    <key>PayloadScope</key>
+    <string>System</string>
 </dict>
 </plist>`;
 
