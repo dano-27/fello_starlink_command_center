@@ -1,7 +1,9 @@
 const express = require('express');
+const http = require('http');
 const path = require('path');
 const crypto = require('crypto');
 const fs = require('fs');
+const { WebSocketServer } = require('ws');
 const multer = require('multer');
 const { FelloCrmClient, CrmApiError } = require('./fello-crm-client');
 const { CustomerVerifyService } = require('./customer-verify');
@@ -298,6 +300,13 @@ function describeAction(action) {
   if (p.includes('/peplink/fleet')) return '🔌 Viewed Peplink fleet overview';
   if (p.includes('/peplink/devices')) return `🔌 Viewed Peplink device **${pathId || 'details'}**`;
   if (p.includes('/peplink/groups')) return '🔌 Viewed Peplink groups';
+
+  // ── Automation Agent ──
+  if (p.includes('/agent/tasks') && p.includes('/retry')) return `🤖 Retried automation task`;
+  if (p.includes('/agent/tasks/clear')) return `🤖 Cleared automation task history`;
+  if (p.includes('/agent/tasks') && m === 'POST') return `🤖 ${tc || 'Queued automation task'}`;
+  if (p.includes('/agent/tasks') && m === 'DELETE') return `🤖 Cancelled automation task`;
+  if (p.includes('/agent/status')) return `🤖 Viewed automation agent status`;
 
   // ── Generic fallback with more context ──
   const lastSegments = p.split('/').filter(Boolean).slice(-2).join('/');
@@ -11066,15 +11075,379 @@ app.get('/api/training/ai-tips', async (req, res) => {
   }
 });
 
+// ██████████████████████████████████████████████████████████████████████
+// ██  Browser Automation Agent — WebSocket Bridge + Task Queue
+// ██████████████████████████████████████████████████████████████████████
+
+const AGENT_TASKS_FILE = path.join(DATA_DIR, 'agent-tasks.json');
+const AGENT_SECRET = process.env.AGENT_SECRET || 'fello-agent-2026';
+
+// ── In-memory state ─────────────────────────────────────────────────
+let agentConnection = null; // Active WebSocket to the Windows agent
+let agentInfo = { connected: false, name: '', connectedAt: null, lastPing: null };
+let agentTasks = []; // Task queue
+
+function loadAgentTasks() {
+  try {
+    if (fs.existsSync(AGENT_TASKS_FILE)) {
+      agentTasks = JSON.parse(fs.readFileSync(AGENT_TASKS_FILE, 'utf8'));
+    }
+  } catch (e) { console.error('[Agent] Failed to load tasks:', e.message); }
+}
+function saveAgentTasks() {
+  try {
+    fs.writeFileSync(AGENT_TASKS_FILE, JSON.stringify(agentTasks, null, 2));
+  } catch (e) { console.error('[Agent] Failed to save tasks:', e.message); }
+}
+loadAgentTasks();
+
+function dispatchNextTask() {
+  if (!agentConnection || agentConnection.readyState !== 1) return;
+  const queued = agentTasks.find(t => t.status === 'queued');
+  if (!queued) return;
+  queued.status = 'dispatched';
+  queued.dispatchedAt = new Date().toISOString();
+  saveAgentTasks();
+  agentConnection.send(JSON.stringify({ type: 'task', task: queued }));
+  console.log(`[Agent] Dispatched task ${queued.id}: ${queued.action}`);
+}
+
+// ── Agent REST API ──────────────────────────────────────────────────
+
+// Get agent status
+app.get('/api/agent/status', requireAuth, (req, res) => {
+  const recentTasks = agentTasks.slice(-20).reverse();
+  res.json({
+    agent: {
+      connected: agentInfo.connected,
+      name: agentInfo.name || 'Not connected',
+      connectedAt: agentInfo.connectedAt,
+      lastPing: agentInfo.lastPing,
+    },
+    queue: {
+      total: agentTasks.length,
+      queued: agentTasks.filter(t => t.status === 'queued').length,
+      dispatched: agentTasks.filter(t => t.status === 'dispatched').length,
+      completed: agentTasks.filter(t => t.status === 'completed').length,
+      failed: agentTasks.filter(t => t.status === 'failed').length,
+    },
+    tasks: recentTasks,
+  });
+});
+
+// Create a new task
+app.post('/api/agent/tasks', requireAuth, (req, res) => {
+  if (!req.session.isAdmin) return res.status(403).json({ error: 'Admin only' });
+  const { action, params, description } = req.body;
+  if (!action) return res.status(400).json({ error: 'action is required' });
+
+  const task = {
+    id: crypto.randomUUID(),
+    action,
+    params: params || {},
+    description: description || action,
+    status: 'queued',
+    createdAt: new Date().toISOString(),
+    createdBy: req.session.username,
+    dispatchedAt: null,
+    completedAt: null,
+    result: null,
+    error: null,
+    screenshot: null,
+  };
+
+  agentTasks.push(task);
+  saveAgentTasks();
+
+  logAudit(req, 'POST', '/api/agent/tasks', null, {
+    action,
+    description: `🤖 Queued automation task: ${description || action}`,
+  });
+
+  // Dispatch immediately if agent is connected
+  dispatchNextTask();
+
+  res.json({ task });
+});
+
+// Get task by ID
+app.get('/api/agent/tasks/:taskId', requireAuth, (req, res) => {
+  const task = agentTasks.find(t => t.id === req.params.taskId);
+  if (!task) return res.status(404).json({ error: 'Task not found' });
+  res.json({ task });
+});
+
+// Get task screenshot
+app.get('/api/agent/tasks/:taskId/screenshot', requireAuth, (req, res) => {
+  const task = agentTasks.find(t => t.id === req.params.taskId);
+  if (!task || !task.screenshot) return res.status(404).json({ error: 'No screenshot' });
+  const imgBuf = Buffer.from(task.screenshot, 'base64');
+  res.setHeader('Content-Type', 'image/png');
+  res.setHeader('Content-Length', imgBuf.length);
+  res.end(imgBuf);
+});
+
+// Retry a failed task
+app.post('/api/agent/tasks/:taskId/retry', requireAuth, (req, res) => {
+  if (!req.session.isAdmin) return res.status(403).json({ error: 'Admin only' });
+  const task = agentTasks.find(t => t.id === req.params.taskId);
+  if (!task) return res.status(404).json({ error: 'Task not found' });
+  if (task.status !== 'failed' && task.status !== 'completed') {
+    return res.status(400).json({ error: 'Can only retry failed or completed tasks' });
+  }
+  task.status = 'queued';
+  task.dispatchedAt = null;
+  task.completedAt = null;
+  task.result = null;
+  task.error = null;
+  task.screenshot = null;
+  task.retryCount = (task.retryCount || 0) + 1;
+  saveAgentTasks();
+  dispatchNextTask();
+  res.json({ task });
+});
+
+// Cancel a queued task
+app.delete('/api/agent/tasks/:taskId', requireAuth, (req, res) => {
+  if (!req.session.isAdmin) return res.status(403).json({ error: 'Admin only' });
+  const idx = agentTasks.findIndex(t => t.id === req.params.taskId);
+  if (idx === -1) return res.status(404).json({ error: 'Task not found' });
+  if (agentTasks[idx].status === 'dispatched') {
+    return res.status(400).json({ error: 'Cannot cancel a dispatched task (it\'s running)' });
+  }
+  agentTasks.splice(idx, 1);
+  saveAgentTasks();
+  res.json({ message: 'Task cancelled' });
+});
+
+// Clear completed/failed tasks
+app.post('/api/agent/tasks/clear', requireAuth, (req, res) => {
+  if (!req.session.isAdmin) return res.status(403).json({ error: 'Admin only' });
+  const before = agentTasks.length;
+  agentTasks = agentTasks.filter(t => t.status === 'queued' || t.status === 'dispatched');
+  saveAgentTasks();
+  res.json({ message: `Cleared ${before - agentTasks.length} tasks` });
+});
+
+// List available actions (for the UI dropdown)
+app.get('/api/agent/actions', requireAuth, (req, res) => {
+  res.json({ actions: [
+    {
+      id: 'create_wifi_profile',
+      name: 'Create WiFi Profile',
+      icon: '📶',
+      description: 'Create a new WiFi profile in SimpleMDM',
+      params: [
+        { key: 'name', label: 'Profile Name', type: 'text', required: true, placeholder: 'WiFi - EventName' },
+        { key: 'ssid', label: 'SSID', type: 'text', required: true },
+        { key: 'password', label: 'Password', type: 'password', required: true },
+        { key: 'security', label: 'Security', type: 'select', options: ['WPA2', 'WPA3', 'WPA2/WPA3', 'WEP', 'None'], default: 'WPA2' },
+        { key: 'autoJoin', label: 'Auto-Join', type: 'checkbox', default: true },
+      ]
+    },
+    {
+      id: 'create_restrictions_profile',
+      name: 'Create Restrictions Profile',
+      icon: '🔒',
+      description: 'Create a new Restrictions profile in SimpleMDM',
+      params: [
+        { key: 'name', label: 'Profile Name', type: 'text', required: true },
+        { key: 'allowCamera', label: 'Allow Camera', type: 'checkbox', default: true },
+        { key: 'allowAppInstall', label: 'Allow App Install', type: 'checkbox', default: false },
+        { key: 'allowAppRemoval', label: 'Allow App Removal', type: 'checkbox', default: false },
+        { key: 'allowSafari', label: 'Allow Safari', type: 'checkbox', default: true },
+        { key: 'allowScreenshot', label: 'Allow Screenshots', type: 'checkbox', default: true },
+      ]
+    },
+    {
+      id: 'create_lock_screen_message',
+      name: 'Set Lock Screen Message',
+      icon: '📱',
+      description: 'Create a Lock Screen Message profile',
+      params: [
+        { key: 'name', label: 'Profile Name', type: 'text', required: true },
+        { key: 'message', label: 'Lock Screen Message', type: 'textarea', required: true, placeholder: 'If found, contact Fello at...' },
+        { key: 'assetTag', label: 'Asset Tag (optional)', type: 'text' },
+      ]
+    },
+    {
+      id: 'create_single_app_mode',
+      name: 'Enable Single App Mode / Kiosk',
+      icon: '🔐',
+      description: 'Create a Single App Mode (kiosk) profile',
+      params: [
+        { key: 'name', label: 'Profile Name', type: 'text', required: true },
+        { key: 'appBundleId', label: 'App Bundle ID', type: 'text', required: true, placeholder: 'com.example.app' },
+        { key: 'allowTouch', label: 'Allow Touch', type: 'checkbox', default: true },
+        { key: 'allowAutoLock', label: 'Allow Auto-Lock', type: 'checkbox', default: false },
+      ]
+    },
+    {
+      id: 'update_wallpaper',
+      name: 'Set Wallpaper',
+      icon: '🖼️',
+      description: 'Create a Wallpaper profile with a custom image',
+      params: [
+        { key: 'name', label: 'Profile Name', type: 'text', required: true },
+        { key: 'imageUrl', label: 'Image URL', type: 'text', required: true, placeholder: 'https://...' },
+        { key: 'location', label: 'Apply To', type: 'select', options: ['Both', 'Lock Screen', 'Home Screen'], default: 'Both' },
+      ]
+    },
+    {
+      id: 'assign_profile_to_group',
+      name: 'Assign Profile to Group',
+      icon: '📎',
+      description: 'Assign an existing profile to an assignment group',
+      params: [
+        { key: 'profileId', label: 'Profile ID', type: 'text', required: true },
+        { key: 'groupId', label: 'Assignment Group ID', type: 'text', required: true },
+      ]
+    },
+    {
+      id: 'custom_navigation',
+      name: 'Custom Browser Task',
+      icon: '🌐',
+      description: 'Navigate to a URL and perform a custom action',
+      params: [
+        { key: 'url', label: 'URL', type: 'text', required: true },
+        { key: 'instructions', label: 'Instructions', type: 'textarea', required: true, placeholder: 'Describe what the agent should do...' },
+      ]
+    },
+  ]});
+});
+
+// ── Agent page ──────────────────────────────────────────────────────
+app.get('/agent', (req, res) => res.redirect('/agent/'));
+app.use('/agent', express.static(path.join(__dirname, 'public', 'agent')));
+
 // Hub landing page
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-app.listen(PORT, () => {
+// ── HTTP + WebSocket Server ─────────────────────────────────────────
+const server = http.createServer(app);
+
+const wss = new WebSocketServer({ noServer: true });
+
+server.on('upgrade', (request, socket, head) => {
+  const url = new URL(request.url, `http://${request.headers.host}`);
+  if (url.pathname === '/ws/agent') {
+    // Verify agent secret from query string
+    const secret = url.searchParams.get('secret');
+    if (secret !== AGENT_SECRET) {
+      socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+      socket.destroy();
+      console.log('[Agent] Connection rejected — bad secret');
+      return;
+    }
+    wss.handleUpgrade(request, socket, head, (ws) => {
+      wss.emit('connection', ws, request);
+    });
+  } else {
+    socket.destroy();
+  }
+});
+
+wss.on('connection', (ws, request) => {
+  const url = new URL(request.url, `http://${request.headers.host}`);
+  const agentName = url.searchParams.get('name') || 'Unknown Agent';
+
+  // Disconnect existing agent if any
+  if (agentConnection && agentConnection.readyState === 1) {
+    agentConnection.close(1000, 'Replaced by new connection');
+  }
+
+  agentConnection = ws;
+  agentInfo = {
+    connected: true,
+    name: agentName,
+    connectedAt: new Date().toISOString(),
+    lastPing: new Date().toISOString(),
+  };
+  console.log(`[Agent] ✅ Browser agent connected: ${agentName}`);
+
+  // Send any queued tasks
+  setTimeout(() => dispatchNextTask(), 500);
+
+  ws.on('message', (data) => {
+    try {
+      const msg = JSON.parse(data.toString());
+      agentInfo.lastPing = new Date().toISOString();
+
+      if (msg.type === 'ping') {
+        ws.send(JSON.stringify({ type: 'pong' }));
+        return;
+      }
+
+      if (msg.type === 'task_result') {
+        const task = agentTasks.find(t => t.id === msg.taskId);
+        if (task) {
+          task.status = msg.success ? 'completed' : 'failed';
+          task.completedAt = new Date().toISOString();
+          task.result = msg.result || null;
+          task.error = msg.error || null;
+          task.screenshot = msg.screenshot || null;
+          saveAgentTasks();
+          console.log(`[Agent] Task ${task.id} ${task.status}: ${task.action}`);
+
+          logAudit({ session: { username: 'agent' }, ip: 'agent' },
+            task.status === 'completed' ? 'POST' : 'ERROR',
+            `/api/agent/tasks/${task.id}/result`,
+            null,
+            { action: task.action, description: `🤖 Agent ${task.status}: ${task.description || task.action}` }
+          );
+        }
+        // Dispatch next task in queue
+        setTimeout(() => dispatchNextTask(), 1000);
+        return;
+      }
+
+      if (msg.type === 'status_update') {
+        // Agent reporting on what it's doing
+        const task = agentTasks.find(t => t.id === msg.taskId);
+        if (task) {
+          task.statusMessage = msg.message;
+          if (msg.screenshot) task.screenshot = msg.screenshot;
+          // Don't save to disk on every status update for performance
+        }
+        return;
+      }
+    } catch (e) {
+      console.error('[Agent] Bad message:', e.message);
+    }
+  });
+
+  ws.on('close', () => {
+    agentConnection = null;
+    agentInfo.connected = false;
+    console.log(`[Agent] ❌ Browser agent disconnected: ${agentName}`);
+
+    // Mark dispatched tasks as failed (agent disconnected)
+    agentTasks.filter(t => t.status === 'dispatched').forEach(t => {
+      t.status = 'queued'; // Re-queue for when agent reconnects
+      t.dispatchedAt = null;
+    });
+    saveAgentTasks();
+  });
+
+  ws.on('error', (err) => {
+    console.error('[Agent] WebSocket error:', err.message);
+  });
+});
+
+// Heartbeat — detect stale connections
+setInterval(() => {
+  if (agentConnection && agentConnection.readyState === 1) {
+    agentConnection.ping();
+  }
+}, 30000);
+
+server.listen(PORT, () => {
   console.log(`\n  ✦ Fello Command Center`);
   console.log(`  ─────────────────────────────────`);
   console.log(`  Running at http://localhost:${PORT}`);
+  console.log(`  WebSocket agent endpoint: ws://localhost:${PORT}/ws/agent`);
   console.log(`  Press Ctrl+C to stop\n`);
 
   // Initialize Gemini AI assistant with data source references
@@ -11088,3 +11461,4 @@ app.listen(PORT, () => {
     getInventoryCache: () => inventoryCache
   });
 });
+

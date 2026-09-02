@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Automation Agent | Fello Command Center</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="/shared-header.js"></script>
+    <style>
+        :root {
+            --blue: #3166ae;
+            --yellow: #fcd230;
+            --black: #232428;
+            --charcoal: #3e3e40;
+            --white: #fff;
+            --gray: #fafafa;
+            --border: #cfccca;
+            --success-color: #05ac3f;
+            --light-red: #ff4d41;
+            --light-blue: #f4f6fa;
+            --font: 'Montserrat', sans-serif;
+            --radius-lg: 16px;
+            --radius-pill: 40px;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: var(--font);
+            background-color: var(--gray);
+            color: var(--black);
+            line-height: 1.5;
+        }
+
+        /* Container */
+        .container {
+            max-width: 1200px;
+            margin: 2rem auto;
+            padding: 0 1rem;
+        }
+
+        /* Cards */
+        .card {
+            background: var(--white);
+            border-radius: var(--radius-lg);
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+            border: 1px solid var(--border);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 0.5rem;
+        }
+
+        .card-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--blue);
+        }
+
+        /* Buttons */
+        .btn {
+            background: var(--blue);
+            color: var(--white);
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: var(--radius-pill);
+            font-family: var(--font);
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.9rem;
+        }
+
+        .btn:hover {
+            opacity: 0.9;
+        }
+
+        .btn-outline {
+            background: transparent;
+            color: var(--blue);
+            border: 1px solid var(--blue);
+        }
+
+        .btn-danger {
+            background: var(--light-red);
+            color: var(--white);
+        }
+
+        .btn-danger-outline {
+            background: transparent;
+            color: var(--light-red);
+            border: 1px solid var(--light-red);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        /* Forms */
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+            font-size: 0.9rem;
+            color: var(--charcoal);
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-family: var(--font);
+            font-size: 1rem;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: var(--blue);
+            box-shadow: 0 0 0 2px rgba(49, 102, 174, 0.2);
+        }
+
+        /* Animations & Status */
+        @keyframes pulse-green {
+            0% { box-shadow: 0 0 0 0 rgba(5, 172, 63, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(5, 172, 63, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(5, 172, 63, 0); }
+        }
+
+        @keyframes pulse-blue {
+            0% { box-shadow: 0 0 0 0 rgba(49, 102, 174, 0.7); }
+            70% { box-shadow: 0 0 0 6px rgba(49, 102, 174, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(49, 102, 174, 0); }
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        .status-dot.connected {
+            background-color: var(--success-color);
+            animation: pulse-green 2s infinite;
+        }
+
+        .status-dot.disconnected {
+            background-color: var(--light-red);
+        }
+
+        /* Badge */
+        .badge {
+            padding: 0.25rem 0.75rem;
+            border-radius: var(--radius-pill);
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .badge-queued { background: #e0e0e0; color: var(--charcoal); }
+        .badge-dispatched { 
+            background: var(--light-blue); 
+            color: var(--blue); 
+            border: 1px solid var(--blue);
+            animation: pulse-blue 2s infinite;
+        }
+        .badge-completed { background: #d4edda; color: var(--success-color); }
+        .badge-failed { background: #f8d7da; color: var(--light-red); }
+
+        /* Status Grid */
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+
+        .stat-card {
+            background: var(--light-blue);
+            border-radius: 12px;
+            padding: 1rem;
+            text-align: center;
+        }
+        
+        .stat-card-title {
+            font-size: 0.85rem;
+            color: var(--charcoal);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.5rem;
+        }
+
+        .stat-card-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--blue);
+        }
+
+        /* Task History */
+        .task-list {
+            list-style: none;
+        }
+
+        .task-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 0;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .task-item:last-child {
+            border-bottom: none;
+        }
+
+        .task-info {
+            flex-grow: 1;
+        }
+
+        .task-desc {
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }
+
+        .task-meta {
+            font-size: 0.8rem;
+            color: var(--charcoal);
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .task-actions {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        /* Warning Banner */
+        .warning-banner {
+            background-color: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeeba;
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+            display: none; /* hidden by default */
+        }
+        .warning-banner.show {
+            display: block;
+        }
+
+        /* Collapsible Section */
+        .collapsible-header {
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .collapsible-content {
+            display: none;
+            padding-top: 1rem;
+            margin-top: 1rem;
+            border-top: 1px solid var(--border);
+        }
+
+        .collapsible-content.show {
+            display: block;
+        }
+        
+        pre {
+            background: #f4f4f4;
+            padding: 1rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-family: monospace;
+            margin: 0.5rem 0;
+        }
+        code {
+            font-family: monospace;
+            background: #f4f4f4;
+            padding: 0.2rem 0.4rem;
+            border-radius: 4px;
+        }
+
+        /* Toast Container */
+        #toast-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .toast {
+            background: var(--white);
+            border-left: 4px solid var(--blue);
+            padding: 1rem 1.5rem;
+            border-radius: 4px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            animation: slideIn 0.3s ease-out forwards;
+            min-width: 250px;
+        }
+        .toast.success { border-color: var(--success-color); }
+        .toast.error { border-color: var(--light-red); }
+
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        @keyframes fadeOut {
+            from { opacity: 1; }
+            to { opacity: 0; }
+        }
+
+        /* Modal */
+        #modal-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.8);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 10000;
+        }
+        #modal-overlay.show { display: flex; }
+        
+        #modal-content {
+            background: var(--white);
+            padding: 1rem;
+            border-radius: var(--radius-lg);
+            max-width: 90vw;
+            max-height: 90vh;
+            position: relative;
+        }
+        
+        #modal-close {
+            position: absolute;
+            top: -15px;
+            right: -15px;
+            background: var(--white);
+            border: none;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            cursor: pointer;
+            font-weight: bold;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        #modal-image {
+            max-width: 100%;
+            max-height: calc(90vh - 2rem);
+            object-fit: contain;
+        }
+
+        @media (max-width: 768px) {
+            .task-item {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        
+        <!-- Agent Status -->
+        <div class="card" id="agent-status-section">
+            <div class="card-header">
+                <div class="card-title">Agent Status</div>
+                <div style="display:flex; align-items:center; gap: 0.5rem;">
+                    <span id="agent-status-indicator" class="status-dot disconnected"></span>
+                    <span id="agent-status-text" style="font-weight:600;">Disconnected</span>
+                </div>
+            </div>
+            
+            <div style="display:flex; gap: 2rem; margin-bottom: 1rem;">
+                <div>
+                    <span style="color:var(--charcoal); font-size:0.9rem;">Agent Name:</span>
+                    <strong id="agent-name">N/A</strong>
+                </div>
+                <div>
+                    <span style="color:var(--charcoal); font-size:0.9rem;">Connected Since:</span>
+                    <strong id="agent-connected-since">N/A</strong>
+                </div>
+                <div>
+                    <span style="color:var(--charcoal); font-size:0.9rem;">Last Ping:</span>
+                    <strong id="agent-last-ping">N/A</strong>
+                </div>
+            </div>
+
+            <div class="status-grid">
+                <div class="stat-card">
+                    <div class="stat-card-title">Queued</div>
+                    <div class="stat-card-value" id="stat-queued">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-card-title">Running</div>
+                    <div class="stat-card-value" id="stat-running">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-card-title">Completed</div>
+                    <div class="stat-card-value" id="stat-completed">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-card-title">Failed</div>
+                    <div class="stat-card-value" id="stat-failed">0</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- New Task -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">New Task</div>
+            </div>
+            
+            <div id="connection-warning" class="warning-banner">
+                Warning: Agent is disconnected. Tasks will be queued until an agent connects.
+            </div>
+
+            <form id="new-task-form">
+                <div class="form-group">
+                    <label class="form-label">Action</label>
+                    <select class="form-control" id="action-select" required>
+                        <option value="">Select an action...</option>
+                        <!-- Populated by JS -->
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Description (Optional)</label>
+                    <input type="text" class="form-control" id="task-description" placeholder="Short description for history">
+                </div>
+
+                <div id="dynamic-params-container">
+                    <!-- Dynamic form fields rendered here -->
+                </div>
+
+                <button type="submit" class="btn" id="btn-queue-task">Queue Task</button>
+            </form>
+        </div>
+
+        <!-- Task History -->
+        <div class="card">
+            <div class="card-header">
+                <div class="card-title">Task History</div>
+                <button class="btn btn-danger-outline" id="btn-clear-history">Clear History</button>
+            </div>
+            <ul class="task-list" id="task-history-list">
+                <!-- Populated by JS -->
+            </ul>
+        </div>
+
+        <!-- Setup Guide -->
+        <div class="card">
+            <div class="collapsible-header" id="setup-header">
+                <div class="card-title">Setup Guide — Windows Agent</div>
+                <span>▼</span>
+            </div>
+            <div class="collapsible-content" id="setup-content">
+                <ol style="margin-left: 1.5rem; padding-bottom: 1rem;">
+                    <li style="margin-bottom:0.5rem;">Install Node.js on Windows PC.</li>
+                    <li style="margin-bottom:0.5rem;">Create a directory and install dependencies: <code>npm init -y && npm install playwright ws</code></li>
+                    <li style="margin-bottom:0.5rem;">Install Chromium: <code>npx playwright install chromium</code></li>
+                    <li style="margin-bottom:0.5rem;">Download the agent script (e.g. <code>fello-agent.js</code>) from the repository.</li>
+                    <li style="margin-bottom:0.5rem;">Set environment variables:<br>
+                        <code>set AGENT_SERVER=wss://your-command-center-url</code><br>
+                        <code>set AGENT_SECRET=your_secret_key</code><br>
+                        <code>set SIMPLEMDM_EMAIL=email@example.com</code><br>
+                        <code>set SIMPLEMDM_PASSWORD=securepassword</code>
+                    </li>
+                    <li style="margin-bottom:0.5rem;">Run the agent: <code>node fello-agent.js</code></li>
+                </ol>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Toast Container -->
+    <div id="toast-container"></div>
+
+    <!-- Modal Overlay -->
+    <div id="modal-overlay">
+        <div id="modal-content">
+            <button id="modal-close">×</button>
+            <img id="modal-image" src="" alt="Screenshot">
+        </div>
+    </div>
+
+    <script>
+        // Init Shared Header
+        document.addEventListener('DOMContentLoaded', () => {
+            if (typeof initSharedHeader === 'function') {
+                initSharedHeader('agent');
+            }
+            fetchActions();
+            fetchStatus();
+            setInterval(fetchStatus, 5000);
+            
+            // Collapsible setup guide
+            document.getElementById('setup-header').addEventListener('click', () => {
+                const content = document.getElementById('setup-content');
+                content.classList.toggle('show');
+            });
+            
+            // Modal close
+            document.getElementById('modal-close').addEventListener('click', closeModal);
+            document.getElementById('modal-overlay').addEventListener('click', (e) => {
+                if(e.target.id === 'modal-overlay') closeModal();
+            });
+
+            // Form Submit
+            document.getElementById('new-task-form').addEventListener('submit', handleTaskSubmit);
+            
+            // Clear History
+            document.getElementById('btn-clear-history').addEventListener('click', clearHistory);
+            
+            // Action select change
+            document.getElementById('action-select').addEventListener('change', renderDynamicParams);
+        });
+
+        // State
+        let availableActions = [];
+        let isConnected = false;
+
+        // UI Utils
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            container.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.style.animation = 'fadeOut 0.3s ease-out forwards';
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        function openModal(imageUrl) {
+            const overlay = document.getElementById('modal-overlay');
+            const img = document.getElementById('modal-image');
+            img.src = imageUrl;
+            overlay.classList.add('show');
+        }
+
+        function closeModal() {
+            document.getElementById('modal-overlay').classList.remove('show');
+            document.getElementById('modal-image').src = "";
+        }
+
+        // API Calls
+        async function fetchActions() {
+            try {
+                const res = await fetch('/api/agent/actions', { credentials: 'include' });
+                if(res.ok) {
+                    availableActions = await res.json();
+                    const select = document.getElementById('action-select');
+                    availableActions.forEach(action => {
+                        const opt = document.createElement('option');
+                        opt.value = action.id;
+                        opt.textContent = action.name;
+                        select.appendChild(opt);
+                    });
+                }
+            } catch (err) {
+                console.error("Failed to fetch actions", err);
+            }
+        }
+
+        async function fetchStatus() {
+            try {
+                const res = await fetch('/api/agent/status', { credentials: 'include' });
+                if(res.ok) {
+                    const data = await res.json();
+                    updateStatusUI(data);
+                }
+            } catch (err) {
+                console.error("Failed to fetch status", err);
+                updateStatusUI({ connected: false });
+            }
+        }
+
+        function updateStatusUI(data) {
+            isConnected = !!data.connected;
+            const dot = document.getElementById('agent-status-indicator');
+            const text = document.getElementById('agent-status-text');
+            const warning = document.getElementById('connection-warning');
+            
+            if(isConnected) {
+                dot.className = 'status-dot connected';
+                text.textContent = 'Connected';
+                warning.classList.remove('show');
+                document.getElementById('agent-name').textContent = data.agentName || 'Windows PC';
+                document.getElementById('agent-connected-since').textContent = data.connectedSince ? new Date(data.connectedSince).toLocaleTimeString() : 'N/A';
+                document.getElementById('agent-last-ping').textContent = data.lastPing ? new Date(data.lastPing).toLocaleTimeString() : 'N/A';
+            } else {
+                dot.className = 'status-dot disconnected';
+                text.textContent = 'Disconnected';
+                warning.classList.add('show');
+                document.getElementById('agent-name').textContent = 'N/A';
+                document.getElementById('agent-connected-since').textContent = 'N/A';
+                document.getElementById('agent-last-ping').textContent = 'N/A';
+            }
+
+            // Stats
+            let q=0, r=0, c=0, f=0;
+            const tasks = data.tasks || [];
+            tasks.forEach(t => {
+                if(t.status === 'queued') q++;
+                else if(t.status === 'dispatched' || t.status === 'running') r++;
+                else if(t.status === 'completed') c++;
+                else if(t.status === 'failed') f++;
+            });
+
+            document.getElementById('stat-queued').textContent = q;
+            document.getElementById('stat-running').textContent = r;
+            document.getElementById('stat-completed').textContent = c;
+            document.getElementById('stat-failed').textContent = f;
+
+            renderTaskHistory(tasks);
+        }
+
+        function renderDynamicParams() {
+            const container = document.getElementById('dynamic-params-container');
+            container.innerHTML = '';
+            
+            const actionId = document.getElementById('action-select').value;
+            if(!actionId) return;
+
+            const action = availableActions.find(a => a.id === actionId);
+            if(!action || !action.params) return;
+
+            action.params.forEach(param => {
+                const group = document.createElement('div');
+                group.className = 'form-group';
+                
+                const label = document.createElement('label');
+                label.className = 'form-label';
+                label.textContent = param.label || param.name;
+                group.appendChild(label);
+
+                let input;
+                if(param.type === 'select') {
+                    input = document.createElement('select');
+                    input.className = 'form-control';
+                    if(param.options) {
+                        param.options.forEach(opt => {
+                            const option = document.createElement('option');
+                            option.value = opt.value;
+                            option.textContent = opt.label;
+                            input.appendChild(option);
+                        });
+                    }
+                } else if(param.type === 'textarea') {
+                    input = document.createElement('textarea');
+                    input.className = 'form-control';
+                    input.rows = 3;
+                } else if(param.type === 'checkbox') {
+                    input = document.createElement('input');
+                    input.type = 'checkbox';
+                    input.style.marginLeft = '10px';
+                    group.style.display = 'flex';
+                    group.style.alignItems = 'center';
+                    group.insertBefore(input, label);
+                    label.style.marginBottom = '0';
+                    label.style.marginLeft = '0.5rem';
+                } else {
+                    input = document.createElement('input');
+                    input.type = param.type || 'text';
+                    input.className = 'form-control';
+                }
+                
+                input.id = `param-${param.name}`;
+                input.name = param.name;
+                if(param.required) input.required = true;
+                
+                if(param.type !== 'checkbox') {
+                    group.appendChild(input);
+                }
+                container.appendChild(group);
+            });
+        }
+
+        async function handleTaskSubmit(e) {
+            e.preventDefault();
+            
+            const actionId = document.getElementById('action-select').value;
+            const description = document.getElementById('task-description').value;
+            
+            const action = availableActions.find(a => a.id === actionId);
+            const params = {};
+            
+            if(action && action.params) {
+                action.params.forEach(p => {
+                    const el = document.getElementById(`param-${p.name}`);
+                    if(el) {
+                        params[p.name] = p.type === 'checkbox' ? el.checked : el.value;
+                    }
+                });
+            }
+
+            const payload = { action: actionId, description, params };
+
+            try {
+                const res = await fetch('/api/agent/tasks', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify(payload)
+                });
+
+                if(res.ok) {
+                    showToast('Task queued successfully!');
+                    e.target.reset();
+                    renderDynamicParams();
+                    fetchStatus(); // refresh immediately
+                } else {
+                    const err = await res.text();
+                    showToast(`Error: ${err}`, 'error');
+                }
+            } catch(err) {
+                showToast(`Request failed`, 'error');
+            }
+        }
+
+        function renderTaskHistory(tasks) {
+            const list = document.getElementById('task-history-list');
+            list.innerHTML = '';
+            
+            if(tasks.length === 0) {
+                list.innerHTML = '<li style="padding:1rem;color:#888;">No tasks found.</li>';
+                return;
+            }
+
+            // Sort newest first
+            tasks.sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+            tasks.forEach(t => {
+                const li = document.createElement('li');
+                li.className = 'task-item';
+                
+                let badgeClass = '';
+                if(t.status === 'queued') badgeClass = 'badge-queued';
+                else if(t.status === 'dispatched' || t.status === 'running') badgeClass = 'badge-dispatched';
+                else if(t.status === 'completed') badgeClass = 'badge-completed';
+                else if(t.status === 'failed') badgeClass = 'badge-failed';
+
+                let timeStr = new Date(t.createdAt).toLocaleTimeString();
+                if(t.completedAt) timeStr += ` → ${new Date(t.completedAt).toLocaleTimeString()}`;
+
+                const html = `
+                    <div class="task-info">
+                        <div class="task-desc">${t.description || t.action}</div>
+                        <div class="task-meta">
+                            <span class="badge ${badgeClass}">${t.status}</span>
+                            <span>${timeStr}</span>
+                            ${t.error ? `<span style="color:var(--light-red)">${t.error}</span>` : ''}
+                        </div>
+                    </div>
+                    <div class="task-actions" id="actions-${t.id}">
+                        <!-- Buttons populated dynamically -->
+                    </div>
+                `;
+                li.innerHTML = html;
+                list.appendChild(li);
+
+                const actionsContainer = li.querySelector(`#actions-${t.id}`);
+                
+                if(t.status === 'queued') {
+                    const btnCancel = document.createElement('button');
+                    btnCancel.className = 'btn btn-outline';
+                    btnCancel.textContent = '❌ Cancel';
+                    btnCancel.onclick = () => cancelTask(t.id);
+                    actionsContainer.appendChild(btnCancel);
+                }
+
+                if(t.status === 'failed') {
+                    const btnRetry = document.createElement('button');
+                    btnRetry.className = 'btn btn-outline';
+                    btnRetry.textContent = '🔄 Retry';
+                    btnRetry.onclick = () => retryTask(t.id);
+                    actionsContainer.appendChild(btnRetry);
+                }
+
+                if(t.status === 'completed' || t.status === 'failed') {
+                    const btnPic = document.createElement('button');
+                    btnPic.className = 'btn btn-outline';
+                    btnPic.textContent = '📸 View';
+                    btnPic.onclick = () => openModal(`/api/agent/tasks/${t.id}/screenshot`);
+                    actionsContainer.appendChild(btnPic);
+                }
+            });
+        }
+
+        async function cancelTask(id) {
+            try {
+                const res = await fetch(`/api/agent/tasks/${id}`, {
+                    method: 'DELETE',
+                    credentials: 'include'
+                });
+                if(res.ok) {
+                    showToast('Task cancelled');
+                    fetchStatus();
+                }
+            } catch(e) {
+                showToast('Failed to cancel', 'error');
+            }
+        }
+
+        async function retryTask(id) {
+            try {
+                const res = await fetch(`/api/agent/tasks/${id}/retry`, {
+                    method: 'POST',
+                    credentials: 'include'
+                });
+                if(res.ok) {
+                    showToast('Task requeued');
+                    fetchStatus();
+                }
+            } catch(e) {
+                showToast('Failed to retry', 'error');
+            }
+        }
+
+        async function clearHistory() {
+            if(!confirm("Clear all task history?")) return;
+            try {
+                const res = await fetch(`/api/agent/tasks/clear`, {
+                    method: 'POST',
+                    credentials: 'include'
+                });
+                if(res.ok) {
+                    showToast('History cleared');
+                    fetchStatus();
+                }
+            } catch(e) {
+                showToast('Failed to clear', 'error');
+            }
+        }
+    </script>
+</body>
+</html>
