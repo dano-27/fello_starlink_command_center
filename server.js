@@ -6391,6 +6391,50 @@ function generateHomescreenMobileconfig(profileName, dockAppBundle, dockAppName)
                         <string>Application</string>
                     </dict>
                 </array>
+                <array>
+                    <dict>
+                        <key>Type</key>
+                        <string>Folder</string>
+                        <key>DisplayName</key>
+                        <string>Other</string>
+                        <key>Pages</key>
+                        <array>
+                            <array>
+                                <dict><key>BundleID</key><string>com.apple.mobilesafari</string><key>Type</key><string>Application</string></dict>
+                                <dict><key>BundleID</key><string>com.apple.mobilemail</string><key>Type</key><string>Application</string></dict>
+                                <dict><key>BundleID</key><string>com.apple.mobilecal</string><key>Type</key><string>Application</string></dict>
+                                <dict><key>BundleID</key><string>com.apple.mobilenotes</string><key>Type</key><string>Application</string></dict>
+                                <dict><key>BundleID</key><string>com.apple.reminders</string><key>Type</key><string>Application</string></dict>
+                                <dict><key>BundleID</key><string>com.apple.Maps</string><key>Type</key><string>Application</string></dict>
+                                <dict><key>BundleID</key><string>com.apple.camera</string><key>Type</key><string>Application</string></dict>
+                                <dict><key>BundleID</key><string>com.apple.mobileslideshow</string><key>Type</key><string>Application</string></dict>
+                                <dict><key>BundleID</key><string>com.apple.AppStore</string><key>Type</key><string>Application</string></dict>
+                            </array>
+                            <array>
+                                <dict><key>BundleID</key><string>com.apple.calculator</string><key>Type</key><string>Application</string></dict>
+                                <dict><key>BundleID</key><string>com.apple.clock</string><key>Type</key><string>Application</string></dict>
+                                <dict><key>BundleID</key><string>com.apple.compass</string><key>Type</key><string>Application</string></dict>
+                                <dict><key>BundleID</key><string>com.apple.facetime</string><key>Type</key><string>Application</string></dict>
+                                <dict><key>BundleID</key><string>com.apple.MobileSMS</string><key>Type</key><string>Application</string></dict>
+                                <dict><key>BundleID</key><string>com.apple.iBooks</string><key>Type</key><string>Application</string></dict>
+                                <dict><key>BundleID</key><string>com.apple.news</string><key>Type</key><string>Application</string></dict>
+                                <dict><key>BundleID</key><string>com.apple.Health</string><key>Type</key><string>Application</string></dict>
+                                <dict><key>BundleID</key><string>com.apple.Fitness</string><key>Type</key><string>Application</string></dict>
+                            </array>
+                            <array>
+                                <dict><key>BundleID</key><string>com.apple.shortcuts</string><key>Type</key><string>Application</string></dict>
+                                <dict><key>BundleID</key><string>com.apple.tips</string><key>Type</key><string>Application</string></dict>
+                                <dict><key>BundleID</key><string>com.apple.weather</string><key>Type</key><string>Application</string></dict>
+                                <dict><key>BundleID</key><string>com.apple.VoiceMemos</string><key>Type</key><string>Application</string></dict>
+                                <dict><key>BundleID</key><string>com.apple.Translate</string><key>Type</key><string>Application</string></dict>
+                                <dict><key>BundleID</key><string>com.apple.measure</string><key>Type</key><string>Application</string></dict>
+                                <dict><key>BundleID</key><string>com.apple.DocumentsApp</string><key>Type</key><string>Application</string></dict>
+                                <dict><key>BundleID</key><string>com.apple.podcasts</string><key>Type</key><string>Application</string></dict>
+                                <dict><key>BundleID</key><string>com.apple.Music</string><key>Type</key><string>Application</string></dict>
+                            </array>
+                        </array>
+                    </dict>
+                </array>
             </array>
         </dict>
     </array>
