@@ -11115,7 +11115,7 @@ function dispatchNextTask() {
 // ── Agent REST API ──────────────────────────────────────────────────
 
 // Get agent status
-app.get('/api/agent/status', requireAuth, (req, res) => {
+app.get('/api/agent/status', (req, res) => {
   const recentTasks = agentTasks.slice(-20).reverse();
   res.json({
     agent: {
@@ -11136,8 +11136,8 @@ app.get('/api/agent/status', requireAuth, (req, res) => {
 });
 
 // Create a new task
-app.post('/api/agent/tasks', requireAuth, (req, res) => {
-  if (!req.session.isAdmin) return res.status(403).json({ error: 'Admin only' });
+app.post('/api/agent/tasks', (req, res) => {
+  if (!req.user || req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
   const { action, params, description } = req.body;
   if (!action) return res.status(400).json({ error: 'action is required' });
 
@@ -11148,7 +11148,7 @@ app.post('/api/agent/tasks', requireAuth, (req, res) => {
     description: description || action,
     status: 'queued',
     createdAt: new Date().toISOString(),
-    createdBy: req.session.username,
+    createdBy: req.user.username,
     dispatchedAt: null,
     completedAt: null,
     result: null,
@@ -11156,13 +11156,9 @@ app.post('/api/agent/tasks', requireAuth, (req, res) => {
     screenshot: null,
   };
 
+
   agentTasks.push(task);
   saveAgentTasks();
-
-  logAudit(req, 'POST', '/api/agent/tasks', null, {
-    action,
-    description: `🤖 Queued automation task: ${description || action}`,
-  });
 
   // Dispatch immediately if agent is connected
   dispatchNextTask();
@@ -11171,14 +11167,14 @@ app.post('/api/agent/tasks', requireAuth, (req, res) => {
 });
 
 // Get task by ID
-app.get('/api/agent/tasks/:taskId', requireAuth, (req, res) => {
+app.get('/api/agent/tasks/:taskId', (req, res) => {
   const task = agentTasks.find(t => t.id === req.params.taskId);
   if (!task) return res.status(404).json({ error: 'Task not found' });
   res.json({ task });
 });
 
 // Get task screenshot
-app.get('/api/agent/tasks/:taskId/screenshot', requireAuth, (req, res) => {
+app.get('/api/agent/tasks/:taskId/screenshot', (req, res) => {
   const task = agentTasks.find(t => t.id === req.params.taskId);
   if (!task || !task.screenshot) return res.status(404).json({ error: 'No screenshot' });
   const imgBuf = Buffer.from(task.screenshot, 'base64');
@@ -11188,8 +11184,8 @@ app.get('/api/agent/tasks/:taskId/screenshot', requireAuth, (req, res) => {
 });
 
 // Retry a failed task
-app.post('/api/agent/tasks/:taskId/retry', requireAuth, (req, res) => {
-  if (!req.session.isAdmin) return res.status(403).json({ error: 'Admin only' });
+app.post('/api/agent/tasks/:taskId/retry', (req, res) => {
+  if (!req.user || req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
   const task = agentTasks.find(t => t.id === req.params.taskId);
   if (!task) return res.status(404).json({ error: 'Task not found' });
   if (task.status !== 'failed' && task.status !== 'completed') {
@@ -11208,8 +11204,8 @@ app.post('/api/agent/tasks/:taskId/retry', requireAuth, (req, res) => {
 });
 
 // Cancel a queued task
-app.delete('/api/agent/tasks/:taskId', requireAuth, (req, res) => {
-  if (!req.session.isAdmin) return res.status(403).json({ error: 'Admin only' });
+app.delete('/api/agent/tasks/:taskId', (req, res) => {
+  if (!req.user || req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
   const idx = agentTasks.findIndex(t => t.id === req.params.taskId);
   if (idx === -1) return res.status(404).json({ error: 'Task not found' });
   if (agentTasks[idx].status === 'dispatched') {
@@ -11221,8 +11217,8 @@ app.delete('/api/agent/tasks/:taskId', requireAuth, (req, res) => {
 });
 
 // Clear completed/failed tasks
-app.post('/api/agent/tasks/clear', requireAuth, (req, res) => {
-  if (!req.session.isAdmin) return res.status(403).json({ error: 'Admin only' });
+app.post('/api/agent/tasks/clear', (req, res) => {
+  if (!req.user || req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
   const before = agentTasks.length;
   agentTasks = agentTasks.filter(t => t.status === 'queued' || t.status === 'dispatched');
   saveAgentTasks();
@@ -11230,7 +11226,7 @@ app.post('/api/agent/tasks/clear', requireAuth, (req, res) => {
 });
 
 // List available actions (for the UI dropdown)
-app.get('/api/agent/actions', requireAuth, (req, res) => {
+app.get('/api/agent/actions', (req, res) => {
   res.json({ actions: [
     {
       id: 'create_wifi_profile',
@@ -11391,12 +11387,15 @@ wss.on('connection', (ws, request) => {
           saveAgentTasks();
           console.log(`[Agent] Task ${task.id} ${task.status}: ${task.action}`);
 
-          logAudit({ session: { username: 'agent' }, ip: 'agent' },
-            task.status === 'completed' ? 'POST' : 'ERROR',
-            `/api/agent/tasks/${task.id}/result`,
-            null,
-            { action: task.action, description: `🤖 Agent ${task.status}: ${task.description || task.action}` }
-          );
+          auditLog({
+            user: 'agent',
+            name: 'Browser Agent',
+            role: 'system',
+            method: task.status === 'completed' ? 'POST' : 'ERROR',
+            path: `/api/agent/tasks/${task.id}/result`,
+            body: { action: task.action, description: `🤖 Agent ${task.status}: ${task.description || task.action}` },
+            ip: 'agent',
+          });
         }
         // Dispatch next task in queue
         setTimeout(() => dispatchNextTask(), 1000);
