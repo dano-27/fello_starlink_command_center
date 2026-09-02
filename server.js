@@ -6341,16 +6341,6 @@ function generateHomescreenMobileconfig(profileName, dockAppBundle, dockAppName)
   const uuid2 = crypto.randomUUID();
   const identifier = `com.fello.homescreen.${Date.now()}`;
 
-  // Build the "Other" folder items
-  const otherAppsXml = HOMESCREEN_OTHER_APPS.map(b =>
-    `                                <dict>
-                                    <key>BundleID</key>
-                                    <string>${b}</string>
-                                    <key>Type</key>
-                                    <string>Application</string>
-                                </dict>`
-  ).join('\n');
-
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -6370,55 +6360,38 @@ function generateHomescreenMobileconfig(profileName, dockAppBundle, dockAppName)
             <string>Home Screen Layout</string>
             <key>PayloadDescription</key>
             <string>Configures the home screen layout for ${profileName}</string>
-            <key>HomescreenLayout</key>
-            <dict>
-                <key>Dock</key>
+            <key>Dock</key>
+            <array>
+                <dict>
+                    <key>BundleID</key>
+                    <string>${dockAppBundle}</string>
+                    <key>Type</key>
+                    <string>Application</string>
+                </dict>
+            </array>
+            <key>Pages</key>
+            <array>
                 <array>
                     <dict>
                         <key>BundleID</key>
-                        <string>${dockAppBundle}</string>
+                        <string>${HOMESCREEN_ALWAYS_APPS.simpleMdm.bundle}</string>
+                        <key>Type</key>
+                        <string>Application</string>
+                    </dict>
+                    <dict>
+                        <key>BundleID</key>
+                        <string>${HOMESCREEN_ALWAYS_APPS.felloConnect.bundle}</string>
+                        <key>Type</key>
+                        <string>Application</string>
+                    </dict>
+                    <dict>
+                        <key>BundleID</key>
+                        <string>${HOMESCREEN_ALWAYS_APPS.settings.bundle}</string>
                         <key>Type</key>
                         <string>Application</string>
                     </dict>
                 </array>
-                <key>Pages</key>
-                <array>
-                    <array>
-                        <dict>
-                            <key>BundleID</key>
-                            <string>${HOMESCREEN_ALWAYS_APPS.simpleMdm.bundle}</string>
-                            <key>Type</key>
-                            <string>Application</string>
-                        </dict>
-                        <dict>
-                            <key>BundleID</key>
-                            <string>${HOMESCREEN_ALWAYS_APPS.felloConnect.bundle}</string>
-                            <key>Type</key>
-                            <string>Application</string>
-                        </dict>
-                        <dict>
-                            <key>BundleID</key>
-                            <string>${HOMESCREEN_ALWAYS_APPS.settings.bundle}</string>
-                            <key>Type</key>
-                            <string>Application</string>
-                        </dict>
-                    </array>
-                    <array>
-                        <dict>
-                            <key>Type</key>
-                            <string>Folder</string>
-                            <key>DisplayName</key>
-                            <string>Other</string>
-                            <key>Pages</key>
-                            <array>
-                                <array>
-${otherAppsXml}
-                                </array>
-                            </array>
-                        </dict>
-                    </array>
-                </array>
-            </dict>
+            </array>
         </dict>
     </array>
     <key>PayloadDisplayName</key>
