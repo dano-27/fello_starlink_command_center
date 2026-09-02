@@ -304,7 +304,11 @@ function describeAction(action) {
   // ── Automation Agent ──
   if (p.includes('/agent/tasks') && p.includes('/retry')) return `🤖 Retried automation task`;
   if (p.includes('/agent/tasks/clear')) return `🤖 Cleared automation task history`;
-  if (p.includes('/agent/tasks') && m === 'POST') return `🤖 ${tc || 'Queued automation task'}`;
+  if (p.includes('/agent/tasks') && m === 'POST') {
+    const action = b?.action || '';
+    if (action === 'ai_task') return `🧠 Queued AI task: "${(b?.params?.instruction || '').substring(0, 60)}"`;
+    return `🤖 ${tc || 'Queued automation task'}`;
+  }
   if (p.includes('/agent/tasks') && m === 'DELETE') return `🤖 Cancelled automation task`;
   if (p.includes('/agent/status')) return `🤖 Viewed automation agent status`;
   if (p.includes('/simplemdm/homescreen-layout')) return `📱 Created Home Screen Layout profile`;
@@ -11580,10 +11584,21 @@ app.get('/api/agent/actions', (req, res) => {
       id: 'custom_navigation',
       name: 'Custom Browser Task',
       icon: '🌐',
-      description: 'Navigate to a URL and perform a custom action',
+      description: 'Navigate to a URL and optionally use AI to follow instructions',
       params: [
-        { key: 'url', label: 'URL', type: 'text', required: true },
-        { key: 'instructions', label: 'Instructions', type: 'textarea', required: true, placeholder: 'Describe what the agent should do...' },
+        { key: 'url', label: 'URL', type: 'text', required: false, placeholder: 'https://... (optional if AI is enabled)' },
+        { key: 'instructions', label: 'Instructions (AI)', type: 'textarea', required: false, placeholder: 'Describe what the agent should do (uses AI vision)...' },
+      ]
+    },
+    {
+      id: 'ai_task',
+      name: '🤖 AI Task',
+      icon: '🧠',
+      description: 'Give the AI a natural language instruction — it will see the page and figure out what to do',
+      params: [
+        { key: 'instruction', label: 'What should the AI do?', type: 'textarea', required: true, placeholder: 'e.g. Go to SimpleMDM profiles and create a WiFi profile called "Guest WiFi" with SSID "FelloGuest" and WPA2 password "Welcome2026"' },
+        { key: 'startUrl', label: 'Start URL (optional)', type: 'text', required: false, placeholder: 'https://a.simplemdm.com/admin/...' },
+        { key: 'maxSteps', label: 'Max Steps', type: 'number', required: false, default: 20 },
       ]
     },
   ]});
@@ -11684,6 +11699,8 @@ wss.on('connection', (ws, request) => {
         const task = agentTasks.find(t => t.id === msg.taskId);
         if (task) {
           task.statusMessage = msg.message;
+          if (!task.statusHistory) task.statusHistory = [];
+          task.statusHistory.push({ message: msg.message, time: new Date().toISOString() });
           if (msg.screenshot) task.screenshot = msg.screenshot;
           // Don't save to disk on every status update for performance
         }

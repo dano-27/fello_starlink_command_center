@@ -784,12 +784,23 @@
 
                 const html = `
                     <div class="task-info">
-                        <div class="task-desc">${t.description || t.action}</div>
+                        <div class="task-desc">${t.action === 'ai_task' ? '🧠 ' : ''}${t.description || t.action}</div>
                         <div class="task-meta">
                             <span class="badge ${badgeClass}">${t.status}</span>
                             <span>${timeStr}</span>
+                            ${t.result?.steps ? `<span>📊 ${t.result.steps} steps</span>` : ''}
+                            ${t.result?.summary ? `<span style="color:var(--success-color)">✅ ${t.result.summary}</span>` : ''}
                             ${t.error ? `<span style="color:var(--light-red)">${t.error}</span>` : ''}
                         </div>
+                        ${(t.statusHistory && t.statusHistory.length > 0) ? `
+                        <details style="margin-top:6px;font-size:0.82rem;">
+                            <summary style="cursor:pointer;color:var(--blue);font-weight:500;">
+                                ${t.status === 'dispatched' ? '🔄 Live progress' : '📋 Step log'} (${t.statusHistory.length} steps)
+                            </summary>
+                            <div style="max-height:200px;overflow-y:auto;padding:6px 0;border-top:1px solid var(--border);margin-top:4px;">
+                                ${t.statusHistory.map(s => `<div style="padding:2px 0;color:#555;">${new Date(s.time).toLocaleTimeString()} — ${s.message}</div>`).join('')}
+                            </div>
+                        </details>` : (t.statusMessage ? `<div style="margin-top:4px;font-size:0.82rem;color:#888;">${t.statusMessage}</div>` : '')}
                     </div>
                     <div class="task-actions" id="actions-${t.id}">
                         <!-- Buttons populated dynamically -->
