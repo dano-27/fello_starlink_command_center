@@ -97,22 +97,64 @@ const handlers = {
   async create_wifi_profile(task) {
     const { name, ssid, password, security, autoJoin } = task.params;
     await ensureLoggedIn();
-    sendStatus(task.id, 'Navigating to profile creation...');
-    await page.goto('https://a.simplemdm.com/admin/profiles', { waitUntil: 'domcontentloaded' });
-    await page.waitForTimeout(1000);
-    const addBtn = await page.$('a:text("Add Profile"), a:text("New Profile"), a[href*="profiles/new"]');
-    if (addBtn) { await addBtn.click(); await page.waitForTimeout(1000); }
-    sendStatus(task.id, 'Selecting WiFi type...');
-    const opt = await page.$('a:text("WiFi"), div:text("WiFi"), [data-type="wifi"]');
-    if (opt) { await opt.click(); await page.waitForTimeout(1500); }
-    sendStatus(task.id, 'Filling WiFi config...');
-    const nf = await page.$('input[name*="name"], #profile_name'); if (nf) await nf.fill(name || 'WiFi - ' + ssid);
-    const sf = await page.$('input[name*="ssid"], input[placeholder*="SSID"]'); if (sf) await sf.fill(ssid);
-    if (security) { const sel = await page.$('select[name*="security"]'); if (sel) await sel.selectOption({ label: security }); }
-    if (password) { const pf = await page.$('input[name*="password"]'); if (pf) await pf.fill(password); }
-    sendStatus(task.id, 'Saving...');
-    const sb = await page.$('button:text("Save"), button:text("Create"), input[type="submit"]'); if (sb) await sb.click();
+    sendStatus(task.id, 'Navigating to profiles page...');
+    await page.goto('https://a.simplemdm.com/admin/profiles', { waitUntil: 'domcontentloaded', timeout: 15000 });
     await page.waitForTimeout(2000);
+
+    // Click "Create Profile" button (blue button, top right)
+    sendStatus(task.id, 'Clicking Create Profile...');
+    const createBtn = await page.$('a:has-text("Create Profile"), button:has-text("Create Profile")');
+    if (createBtn) {
+      await createBtn.click();
+      await page.waitForTimeout(2000);
+    } else {
+      throw new Error('Could not find "Create Profile" button');
+    }
+
+    // Select WiFi / Wireless Network profile type
+    sendStatus(task.id, 'Selecting WiFi / Wireless Network type...');
+    const wifiOpt = await page.$('a:has-text("Wireless Network"), a:has-text("Wi-Fi"), a:has-text("WiFi"), [data-type="wifi"]');
+    if (wifiOpt) {
+      await wifiOpt.click();
+      await page.waitForTimeout(2000);
+    } else {
+      // Try clicking any link containing wifi or wireless
+      const links = await page.$$('a');
+      let found = false;
+      for (const link of links) {
+        const text = await link.textContent();
+        if (text && (text.toLowerCase().includes('wireless') || text.toLowerCase().includes('wi-fi') || text.toLowerCase().includes('wifi'))) {
+          await link.click();
+          found = true;
+          break;
+        }
+      }
+      if (!found) throw new Error('Could not find WiFi/Wireless Network profile type option');
+      await page.waitForTimeout(2000);
+    }
+
+    sendStatus(task.id, 'Filling WiFi config...');
+    // Fill profile name
+    const nameField = await page.$('input[name*="name"], input[placeholder*="name"], #profile_name');
+    if (nameField) await nameField.fill(name || 'WiFi - ' + ssid);
+    // Fill SSID
+    const ssidField = await page.$('input[name*="ssid"], input[name*="SSID"], input[placeholder*="SSID"], input[placeholder*="Network"]');
+    if (ssidField) await ssidField.fill(ssid);
+    // Security type
+    if (security) {
+      const secSelect = await page.$('select[name*="security"], select[name*="encryption"]');
+      if (secSelect) await secSelect.selectOption({ label: security });
+    }
+    // Password
+    if (password) {
+      const pwField = await page.$('input[name*="password"][type="password"], input[name*="password"][type="text"], input[placeholder*="assword"]');
+      if (pwField) await pwField.fill(password);
+    }
+
+    sendStatus(task.id, 'Saving profile...');
+    const saveBtn = await page.$('button:has-text("Save"), button:has-text("Create"), input[type="submit"][value*="Save"], input[type="submit"][value*="Create"]');
+    if (saveBtn) await saveBtn.click();
+    await page.waitForTimeout(3000);
     return { success: true, result: { profileUrl: page.url(), message: 'WiFi profile "' + (name||ssid) + '" created' }, screenshot: await takeScreenshot() };
   },
 
@@ -122,7 +164,7 @@ const handlers = {
     sendStatus(task.id, 'Navigating to profiles...');
     await page.goto('https://a.simplemdm.com/admin/profiles', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(1000);
-    const addBtn = await page.$('a:text("Add Profile"), a[href*="profiles/new"]'); if (addBtn) { await addBtn.click(); await page.waitForTimeout(1000); }
+    const addBtn = await page.$('a:has-text("Create Profile"), button:has-text("Create Profile")'); if (addBtn) { await addBtn.click(); await page.waitForTimeout(1000); }
     sendStatus(task.id, 'Selecting Restrictions...');
     const opt = await page.$('a:text("Restrictions"), [data-type="restrictions"]'); if (opt) { await opt.click(); await page.waitForTimeout(1500); }
     sendStatus(task.id, 'Configuring restrictions...');
@@ -145,7 +187,7 @@ const handlers = {
     sendStatus(task.id, 'Navigating to profiles...');
     await page.goto('https://a.simplemdm.com/admin/profiles', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(1000);
-    const addBtn = await page.$('a:text("Add Profile"), a[href*="profiles/new"]'); if (addBtn) { await addBtn.click(); await page.waitForTimeout(1000); }
+    const addBtn = await page.$('a:has-text("Create Profile"), button:has-text("Create Profile")'); if (addBtn) { await addBtn.click(); await page.waitForTimeout(1000); }
     sendStatus(task.id, 'Selecting Lock Screen Message...');
     const opt = await page.$('a:text("Lock Screen"), [data-type="lock_screen"]'); if (opt) { await opt.click(); await page.waitForTimeout(1500); }
     const nf = await page.$('input[name*="name"]'); if (nf) await nf.fill(name);
@@ -163,7 +205,7 @@ const handlers = {
     sendStatus(task.id, 'Navigating to profiles...');
     await page.goto('https://a.simplemdm.com/admin/profiles', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(1000);
-    const addBtn = await page.$('a:text("Add Profile"), a[href*="profiles/new"]'); if (addBtn) { await addBtn.click(); await page.waitForTimeout(1000); }
+    const addBtn = await page.$('a:has-text("Create Profile"), button:has-text("Create Profile")'); if (addBtn) { await addBtn.click(); await page.waitForTimeout(1000); }
     const opt = await page.$('a:text("Single App"), a:text("App Lock"), [data-type="single_app"]'); if (opt) { await opt.click(); await page.waitForTimeout(1500); }
     const nf = await page.$('input[name*="name"]'); if (nf) await nf.fill(name);
     const bf = await page.$('input[name*="bundle"], input[name*="app_id"]'); if (bf) await bf.fill(appBundleId);
@@ -179,7 +221,7 @@ const handlers = {
     sendStatus(task.id, 'Navigating to profiles...');
     await page.goto('https://a.simplemdm.com/admin/profiles', { waitUntil: 'domcontentloaded' });
     await page.waitForTimeout(1000);
-    const addBtn = await page.$('a:text("Add Profile"), a[href*="profiles/new"]'); if (addBtn) { await addBtn.click(); await page.waitForTimeout(1000); }
+    const addBtn = await page.$('a:has-text("Create Profile"), button:has-text("Create Profile")'); if (addBtn) { await addBtn.click(); await page.waitForTimeout(1000); }
     const opt = await page.$('a:text("Wallpaper"), [data-type="wallpaper"]'); if (opt) { await opt.click(); await page.waitForTimeout(1500); }
     const nf = await page.$('input[name*="name"]'); if (nf) await nf.fill(name);
     const uf = await page.$('input[name*="url"], input[name*="image"]'); if (uf) await uf.fill(imageUrl);
