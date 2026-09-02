@@ -307,6 +307,8 @@ function describeAction(action) {
   if (p.includes('/agent/tasks') && m === 'POST') return `🤖 ${tc || 'Queued automation task'}`;
   if (p.includes('/agent/tasks') && m === 'DELETE') return `🤖 Cancelled automation task`;
   if (p.includes('/agent/status')) return `🤖 Viewed automation agent status`;
+  if (p.includes('/simplemdm/homescreen-layout')) return `📱 Created Home Screen Layout profile`;
+  if (p.includes('/simplemdm/apps/catalog')) return `📱 Viewed SimpleMDM app catalog`;
 
   // ── Generic fallback with more context ──
   const lastSegments = p.split('/').filter(Boolean).slice(-2).join('/');
@@ -6311,6 +6313,200 @@ app.get('/api/simplemdm/profiles', async (req, res) => {
   } catch (err) {
     console.error('SimpleMDM profiles proxy error:', err.message);
     return res.status(500).json({ error: 'SimpleMDM proxy failed: ' + err.message });
+  }
+});
+
+// ── Home Screen Layout Profile Generator ────────────────────────────
+// Creates a .mobileconfig with com.apple.homescreenlayout payload
+// Layout: Dock = order app, Page 1 = SimpleMDM + Fello Connect + Settings, Page 2 = folder with everything else
+
+const HOMESCREEN_ALWAYS_APPS = {
+  simpleMdm: { bundle: 'com.unwiredrev.DeviceLink.public', name: 'SimpleMDM' },
+  felloConnect: { bundle: 'com.fello.FelloRemote', name: 'Fello Connect' },
+  settings: { bundle: 'com.apple.Preferences', name: 'Settings' },
+};
+
+// Common system apps to put in the "Other" folder
+const HOMESCREEN_OTHER_APPS = [
+  'com.apple.mobilesafari', 'com.apple.mobilemail', 'com.apple.mobilecal',
+  'com.apple.mobilenotes', 'com.apple.reminders', 'com.apple.Maps',
+  'com.apple.camera', 'com.apple.mobileslideshow', 'com.apple.AppStore',
+  'com.apple.calculator', 'com.apple.clock', 'com.apple.compass',
+  'com.apple.MobileStore', 'com.apple.iBooks', 'com.apple.facetime',
+  'com.apple.mobilephone', 'com.apple.MobileSMS',
+];
+
+function generateHomescreenMobileconfig(profileName, dockAppBundle, dockAppName) {
+  const uuid1 = crypto.randomUUID();
+  const uuid2 = crypto.randomUUID();
+  const identifier = `com.fello.homescreen.${Date.now()}`;
+
+  // Build the "Other" folder items
+  const otherAppsXml = HOMESCREEN_OTHER_APPS.map(b =>
+    `                                <dict>
+                                    <key>BundleID</key>
+                                    <string>${b}</string>
+                                    <key>Type</key>
+                                    <string>Application</string>
+                                </dict>`
+  ).join('\n');
+
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>PayloadContent</key>
+    <array>
+        <dict>
+            <key>PayloadType</key>
+            <string>com.apple.homescreenlayout</string>
+            <key>PayloadVersion</key>
+            <integer>1</integer>
+            <key>PayloadIdentifier</key>
+            <string>${identifier}.layout</string>
+            <key>PayloadUUID</key>
+            <string>${uuid1}</string>
+            <key>PayloadDisplayName</key>
+            <string>Home Screen Layout</string>
+            <key>PayloadDescription</key>
+            <string>Configures the home screen layout for ${profileName}</string>
+            <key>HomescreenLayout</key>
+            <dict>
+                <key>Dock</key>
+                <array>
+                    <dict>
+                        <key>BundleID</key>
+                        <string>${dockAppBundle}</string>
+                        <key>Type</key>
+                        <string>Application</string>
+                    </dict>
+                </array>
+                <key>Pages</key>
+                <array>
+                    <array>
+                        <dict>
+                            <key>BundleID</key>
+                            <string>${HOMESCREEN_ALWAYS_APPS.simpleMdm.bundle}</string>
+                            <key>Type</key>
+                            <string>Application</string>
+                        </dict>
+                        <dict>
+                            <key>BundleID</key>
+                            <string>${HOMESCREEN_ALWAYS_APPS.felloConnect.bundle}</string>
+                            <key>Type</key>
+                            <string>Application</string>
+                        </dict>
+                        <dict>
+                            <key>BundleID</key>
+                            <string>${HOMESCREEN_ALWAYS_APPS.settings.bundle}</string>
+                            <key>Type</key>
+                            <string>Application</string>
+                        </dict>
+                    </array>
+                    <array>
+                        <dict>
+                            <key>Type</key>
+                            <string>Folder</string>
+                            <key>DisplayName</key>
+                            <string>Other</string>
+                            <key>Pages</key>
+                            <array>
+                                <array>
+${otherAppsXml}
+                                </array>
+                            </array>
+                        </dict>
+                    </array>
+                </array>
+            </dict>
+        </dict>
+    </array>
+    <key>PayloadDisplayName</key>
+    <string>${profileName}</string>
+    <key>PayloadIdentifier</key>
+    <string>${identifier}</string>
+    <key>PayloadUUID</key>
+    <string>${uuid2}</string>
+    <key>PayloadType</key>
+    <string>Configuration</string>
+    <key>PayloadVersion</key>
+    <integer>1</integer>
+    <key>PayloadRemovalDisallowed</key>
+    <false/>
+</dict>
+</plist>`;
+
+  return xml;
+}
+
+// GET /api/simplemdm/apps/catalog — List all apps available for Home Screen Layout dock
+app.get('/api/simplemdm/apps/catalog', async (req, res) => {
+  const accountId = req.query.account || 'fello';
+  const rawKey = getMdmAccountKey(accountId);
+  const auth = 'Basic ' + Buffer.from(rawKey + ':').toString('base64');
+  try {
+    const allApps = [];
+    let startAfter = '';
+    for (let page = 0; page < 5; page++) {
+      const url = `https://a.simplemdm.com/api/v1/apps?limit=100${startAfter ? '&starting_after=' + startAfter : ''}`;
+      const resp = await fetch(url, { headers: { Authorization: auth } });
+      if (!resp.ok) break;
+      const data = await resp.json();
+      if (!data.data || data.data.length === 0) break;
+      for (const app of data.data) {
+        allApps.push({
+          id: app.id,
+          name: app.attributes.name,
+          bundleId: app.attributes.bundle_identifier,
+          appType: app.attributes.app_type,
+        });
+      }
+      if (!data.has_more) break;
+      startAfter = data.data[data.data.length - 1].id;
+    }
+    res.json({ apps: allApps });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/simplemdm/homescreen-layout — Create and upload a Home Screen Layout profile
+app.post('/api/simplemdm/homescreen-layout', async (req, res) => {
+  if (!req.user || req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+
+  const { dockAppBundleId, dockAppName, profileName, groupId, account } = req.body;
+  if (!dockAppBundleId) return res.status(400).json({ error: 'dockAppBundleId is required' });
+
+  const accountId = account || 'fello';
+  const rawKey = getMdmAccountKey(accountId);
+  const name = profileName || `Home Screen - ${dockAppName || dockAppBundleId}`;
+
+  try {
+    // Generate the mobileconfig XML
+    const xml = generateHomescreenMobileconfig(name, dockAppBundleId, dockAppName || dockAppBundleId);
+
+    // Upload to SimpleMDM as a custom configuration profile
+    const uploaded = await uploadCustomProfile(rawKey, name, xml);
+    console.log(`[SimpleMDM] Home Screen Layout profile created: ${uploaded.name} (ID: ${uploaded.id})`);
+
+    // Optionally assign to a group
+    if (groupId) {
+      const auth = 'Basic ' + Buffer.from(rawKey + ':').toString('base64');
+      await fetch(`https://a.simplemdm.com/api/v1/device_groups/${groupId}/custom_configuration_profiles/${uploaded.id}`, {
+        method: 'POST',
+        headers: { Authorization: auth },
+      });
+      console.log(`[SimpleMDM] Home Screen Layout profile ${uploaded.id} assigned to group ${groupId}`);
+    }
+
+    res.json({
+      success: true,
+      profile: uploaded,
+      message: `Home Screen Layout "${name}" created${groupId ? ' and assigned to group ' + groupId : ''}`,
+    });
+  } catch (err) {
+    console.error('[SimpleMDM] Home Screen Layout error:', err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 
