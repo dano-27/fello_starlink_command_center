@@ -586,12 +586,13 @@
             try {
                 const res = await fetch('/api/agent/actions', { credentials: 'include' });
                 if(res.ok) {
-                    availableActions = await res.json();
+                    const data = await res.json();
+                    availableActions = data.actions || data;
                     const select = document.getElementById('action-select');
                     availableActions.forEach(action => {
                         const opt = document.createElement('option');
                         opt.value = action.id;
-                        opt.textContent = action.name;
+                        opt.textContent = `${action.icon} ${action.name}`;
                         select.appendChild(opt);
                     });
                 }
@@ -670,7 +671,7 @@
                 
                 const label = document.createElement('label');
                 label.className = 'form-label';
-                label.textContent = param.label || param.name;
+                label.textContent = param.label || param.key;
                 group.appendChild(label);
 
                 let input;
@@ -680,8 +681,9 @@
                     if(param.options) {
                         param.options.forEach(opt => {
                             const option = document.createElement('option');
-                            option.value = opt.value;
-                            option.textContent = opt.label;
+                            option.value = typeof opt === 'string' ? opt : opt.value;
+                            option.textContent = typeof opt === 'string' ? opt : opt.label;
+                            if(param.default && (typeof opt === 'string' ? opt : opt.value) === param.default) option.selected = true;
                             input.appendChild(option);
                         });
                     }
@@ -689,10 +691,12 @@
                     input = document.createElement('textarea');
                     input.className = 'form-control';
                     input.rows = 3;
+                    if(param.placeholder) input.placeholder = param.placeholder;
                 } else if(param.type === 'checkbox') {
                     input = document.createElement('input');
                     input.type = 'checkbox';
                     input.style.marginLeft = '10px';
+                    if(param.default) input.checked = true;
                     group.style.display = 'flex';
                     group.style.alignItems = 'center';
                     group.insertBefore(input, label);
@@ -702,10 +706,12 @@
                     input = document.createElement('input');
                     input.type = param.type || 'text';
                     input.className = 'form-control';
+                    if(param.placeholder) input.placeholder = param.placeholder;
+                    if(param.default) input.value = param.default;
                 }
                 
-                input.id = `param-${param.name}`;
-                input.name = param.name;
+                input.id = `param-${param.key}`;
+                input.name = param.key;
                 if(param.required) input.required = true;
                 
                 if(param.type !== 'checkbox') {
@@ -726,9 +732,9 @@
             
             if(action && action.params) {
                 action.params.forEach(p => {
-                    const el = document.getElementById(`param-${p.name}`);
+                    const el = document.getElementById(`param-${p.key}`);
                     if(el) {
-                        params[p.name] = p.type === 'checkbox' ? el.checked : el.value;
+                        params[p.key] = p.type === 'checkbox' ? el.checked : el.value;
                     }
                 });
             }
