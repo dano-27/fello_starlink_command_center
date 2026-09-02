@@ -4701,7 +4701,7 @@ async function fetchAllApps(apiKey) {
     const resp = await smdmRequest(apiKey, `/apps?limit=100&starting_after=${startingAfter}`);
     const items = resp.data || [];
     if (items.length > 0) {
-      all = all.concat(items.map(a => ({ id: a.id, name: a.attributes.name })));
+      all = all.concat(items.map(a => ({ id: a.id, name: a.attributes.name, bundleId: a.attributes.bundle_identifier })));
       startingAfter = items[items.length - 1].id;
       hasMore = items.length >= 100;
     } else {
@@ -5854,7 +5854,7 @@ app.post('/api/automation/provision', async (req, res) => {
         }
       }
 
-      // ── Step 4: Auto-match Home Screen Layout ──
+      // ── Step 4: Auto-match or Auto-generate Home Screen Layout ──
       const allProfiles = await fetchAllProfiles(rawKey);
       const layouts = allProfiles.filter(p => p.type === 'home_screen_layout');
       const layoutMatch = matchHomeScreenLayout(requestedApps, layouts);
@@ -5869,7 +5869,33 @@ app.post('/api/automation/provision', async (req, res) => {
           console.log(`[PROVISION]   ⚠ Layout assign failed: "${layoutMatch.name}" — ${e.message}`);
         }
       } else {
-        console.log(`[PROVISION]   ℹ No matching home screen layout found`);
+        // No existing layout matched — auto-generate one using matched apps
+        // Find the primary dock app: first non-default matched app
+        const dockApp = run.appsMatched.find(a => !a.default);
+        if (dockApp) {
+          try {
+            // Look up bundle ID from catalog
+            const catalogEntry = appCatalog.find(a => a.id === dockApp.id);
+            const dockBundleId = catalogEntry?.bundleId;
+            if (dockBundleId) {
+              const layoutName = `Home Screen - ${groupName}`;
+              console.log(`[PROVISION]   🏠 Auto-generating Home Screen Layout: dock=${dockApp.matched} (${dockBundleId})`);
+              const layoutXml = generateHomescreenMobileconfig(layoutName, dockBundleId, dockApp.matched);
+              const uploaded = await uploadCustomProfile(rawKey, layoutName, layoutXml);
+              // Assign to group
+              await smdmRequest(rawKey, `/assignment_groups/${groupId}/profiles/${uploaded.id}`, 'POST');
+              run.layoutMatched = { name: layoutName, id: uploaded.id, generated: true, dockApp: dockApp.matched };
+              console.log(`[PROVISION]   ✓ Layout: "${layoutName}" (auto-generated, dock: ${dockApp.matched})`);
+            } else {
+              console.log(`[PROVISION]   ℹ No bundle ID found for dock app "${dockApp.matched}" — skipping layout`);
+            }
+          } catch (e) {
+            console.log(`[PROVISION]   ⚠ Auto-generate layout failed: ${e.message}`);
+            run.layoutMatched = { warning: `Auto-generate failed: ${e.message}` };
+          }
+        } else {
+          console.log(`[PROVISION]   ℹ No non-default apps matched — skipping home screen layout`);
+        }
       }
 
       // ── Done with group config ──
@@ -6530,13 +6556,9 @@ app.post('/api/simplemdm/homescreen-layout', async (req, res) => {
     const uploaded = await uploadCustomProfile(rawKey, name, xml);
     console.log(`[SimpleMDM] Home Screen Layout profile created: ${uploaded.name} (ID: ${uploaded.id})`);
 
-    // Optionally assign to a group
+    // Optionally assign to a group (uses assignment_groups for DCR compatibility)
     if (groupId) {
-      const auth = 'Basic ' + Buffer.from(rawKey + ':').toString('base64');
-      await fetch(`https://a.simplemdm.com/api/v1/device_groups/${groupId}/custom_configuration_profiles/${uploaded.id}`, {
-        method: 'POST',
-        headers: { Authorization: auth },
-      });
+      await smdmRequest(rawKey, `/assignment_groups/${groupId}/profiles/${uploaded.id}`, 'POST');
       console.log(`[SimpleMDM] Home Screen Layout profile ${uploaded.id} assigned to group ${groupId}`);
     }
 
@@ -8540,7 +8562,7 @@ app.get('/api/esim/available', async (req, res) => {
 
 app.post('/api/orders/create', async (req, res) => {
   try {
-    const { orderName, account = 'fello', serials = [] } = req.body;
+    const { orderName, account = 'fello', serials = [], dockAppBundleId, dockAppName } = req.body;
     
     if (!orderName || !orderName.trim()) {
       return res.status(400).json({ error: 'Order name is required' });
@@ -8619,6 +8641,23 @@ app.post('/api/orders/create', async (req, res) => {
     const assigned = results.filter(r => r.status === 'assigned').length;
     const failed = results.filter(r => r.status !== 'assigned').length;
     
+    // Step 3: Auto-generate Home Screen Layout if dock app specified
+    let layoutProfile = null;
+    if (dockAppBundleId) {
+      try {
+        const layoutName = `Home Screen - ${cleanName}`;
+        console.log(`[Order] 🏠 Auto-generating Home Screen Layout: dock=${dockAppName || dockAppBundleId}`);
+        const layoutXml = generateHomescreenMobileconfig(layoutName, dockAppBundleId, dockAppName || dockAppBundleId);
+        const uploaded = await uploadCustomProfile(apiKey, layoutName, layoutXml);
+        await smdmRequest(apiKey, `/assignment_groups/${groupId}/profiles/${uploaded.id}`, 'POST');
+        layoutProfile = { id: uploaded.id, name: layoutName, dockApp: dockAppName || dockAppBundleId };
+        console.log(`[Order]   ✓ Layout "${layoutName}" created and assigned`);
+      } catch (e) {
+        console.error(`[Order]   ⚠ Layout generation failed: ${e.message}`);
+        layoutProfile = { error: e.message };
+      }
+    }
+    
     console.log(`[Order] Complete: ${assigned} assigned, ${failed} failed`);
     
     res.json({
@@ -8628,6 +8667,7 @@ app.post('/api/orders/create', async (req, res) => {
       account,
       accountName: acct.name,
       results,
+      layoutProfile,
       summary: {
         total: cleanSerials.length,
         assigned,
