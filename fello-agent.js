@@ -292,7 +292,7 @@ AVAILABLE ACTIONS (respond with JSON):
 
 async function askGemini(screenshotBase64, instruction, actionHistory) {
   const genAI = new GoogleGenerativeAI(CONFIG.geminiApiKey);
-  const MODELS = ['gemini-2.5-flash', 'gemini-2.0-flash'];
+  const MODELS = ['gemini-3.7-flash', 'gemini-3.6-flash'];
   let lastError = null;
 
   const historyText = actionHistory.length > 0
