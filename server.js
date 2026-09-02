@@ -6412,14 +6412,14 @@ function generateHomescreenMobileconfig(profileName, dockAppBundle, dockAppName)
                             </array>
                             <array>
                                 <dict><key>BundleID</key><string>com.apple.calculator</string><key>Type</key><string>Application</string></dict>
-                                <dict><key>BundleID</key><string>com.apple.clock</string><key>Type</key><string>Application</string></dict>
+                                <dict><key>BundleID</key><string>com.apple.mobiletimer</string><key>Type</key><string>Application</string></dict>
                                 <dict><key>BundleID</key><string>com.apple.compass</string><key>Type</key><string>Application</string></dict>
                                 <dict><key>BundleID</key><string>com.apple.facetime</string><key>Type</key><string>Application</string></dict>
                                 <dict><key>BundleID</key><string>com.apple.MobileSMS</string><key>Type</key><string>Application</string></dict>
                                 <dict><key>BundleID</key><string>com.apple.iBooks</string><key>Type</key><string>Application</string></dict>
                                 <dict><key>BundleID</key><string>com.apple.news</string><key>Type</key><string>Application</string></dict>
                                 <dict><key>BundleID</key><string>com.apple.Health</string><key>Type</key><string>Application</string></dict>
-                                <dict><key>BundleID</key><string>com.apple.Fitness</string><key>Type</key><string>Application</string></dict>
+                                <dict><key>BundleID</key><string>com.apple.MobileAddressBook</string><key>Type</key><string>Application</string></dict>
                             </array>
                             <array>
                                 <dict><key>BundleID</key><string>com.apple.shortcuts</string><key>Type</key><string>Application</string></dict>
@@ -6431,6 +6431,28 @@ function generateHomescreenMobileconfig(profileName, dockAppBundle, dockAppName)
                                 <dict><key>BundleID</key><string>com.apple.DocumentsApp</string><key>Type</key><string>Application</string></dict>
                                 <dict><key>BundleID</key><string>com.apple.podcasts</string><key>Type</key><string>Application</string></dict>
                                 <dict><key>BundleID</key><string>com.apple.Music</string><key>Type</key><string>Application</string></dict>
+                            </array>
+                            <array>
+                                <dict><key>BundleID</key><string>com.apple.findmy</string><key>Type</key><string>Application</string></dict>
+                                <dict><key>BundleID</key><string>com.apple.freeform</string><key>Type</key><string>Application</string></dict>
+                                <dict><key>BundleID</key><string>com.apple.gamecenter</string><key>Type</key><string>Application</string></dict>
+                                <dict><key>BundleID</key><string>com.apple.Home</string><key>Type</key><string>Application</string></dict>
+                                <dict><key>BundleID</key><string>com.apple.MobileStore</string><key>Type</key><string>Application</string></dict>
+                                <dict><key>BundleID</key><string>com.apple.journal</string><key>Type</key><string>Application</string></dict>
+                                <dict><key>BundleID</key><string>com.apple.Magnifier</string><key>Type</key><string>Application</string></dict>
+                                <dict><key>BundleID</key><string>com.apple.Passwords</string><key>Type</key><string>Application</string></dict>
+                                <dict><key>BundleID</key><string>com.apple.mobilephone</string><key>Type</key><string>Application</string></dict>
+                            </array>
+                            <array>
+                                <dict><key>BundleID</key><string>com.apple.Photo-Booth</string><key>Type</key><string>Application</string></dict>
+                                <dict><key>BundleID</key><string>com.apple.Preview</string><key>Type</key><string>Application</string></dict>
+                                <dict><key>BundleID</key><string>com.apple.stocks</string><key>Type</key><string>Application</string></dict>
+                                <dict><key>BundleID</key><string>com.apple.tv</string><key>Type</key><string>Application</string></dict>
+                                <dict><key>BundleID</key><string>com.apple.Fitness</string><key>Type</key><string>Application</string></dict>
+                                <dict><key>BundleID</key><string>com.apple.store.Jolly</string><key>Type</key><string>Application</string></dict>
+                                <dict><key>BundleID</key><string>com.apple.Pages</string><key>Type</key><string>Application</string></dict>
+                                <dict><key>BundleID</key><string>com.apple.Numbers</string><key>Type</key><string>Application</string></dict>
+                                <dict><key>BundleID</key><string>com.apple.Keynote</string><key>Type</key><string>Application</string></dict>
                             </array>
                         </array>
                     </dict>
