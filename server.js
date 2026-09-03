@@ -8873,6 +8873,48 @@ app.get('/api/esim/available', async (req, res) => {
   }
 });
 
+// GET /api/orders/active-deployments — orders currently on active deployment
+app.get('/api/orders/active-deployments', async (req, res) => {
+  try {
+    const imsToken = process.env.IMS_TOKEN || process.env.IMS_NEXTGEN_TOKEN || '2423|rydhEvIv6ZsEABia67jH5ffhMUJLthtu3YrfySpx93f5cc0e';
+    const imsBase = process.env.IMS_BASE_URL || process.env.IMS_NEXTGEN_URL || 'https://ims-v4-migration-prod-876702752852.us-east4.run.app';
+    const ordersResp = await fetch(imsBase + '/api/orders', {
+      headers: { 'Authorization': 'Bearer ' + imsToken, 'Accept': 'application/json' }
+    });
+    if (!ordersResp.ok) throw new Error('IMS API returned ' + ordersResp.status);
+    const allOrders = await ordersResp.json();
+    const orders = Array.isArray(allOrders) ? allOrders : (allOrders.data || []);
+
+    const now = new Date();
+    const active = [];
+
+    for (const o of orders) {
+      if (!o.shipments || !o.shipments.length) continue;
+      for (const s of o.shipments) {
+        const start = s.rental_start ? new Date(s.rental_start) : null;
+        const end = s.rental_end ? new Date(s.rental_end) : null;
+        if (start && end && now >= start && now <= end) {
+          active.push({
+            orderId: o.fly_order_id,
+            customer: o.customer_name,
+            rentalStart: s.rental_start,
+            rentalEnd: s.rental_end,
+            status: s.status || o.status,
+          });
+          break; // one match per order is enough
+        }
+      }
+    }
+
+    // Sort by rental_end (soonest ending first)
+    active.sort((a, b) => new Date(a.rentalEnd) - new Date(b.rentalEnd));
+
+    res.json({ active, count: active.length });
+  } catch (err) {
+    res.status(500).json({ error: err.message, active: [] });
+  }
+});
+
 app.post('/api/orders/create', async (req, res) => {
   try {
     const { orderName, account = 'fello', serials = [], dockAppBundleId, dockAppName } = req.body;

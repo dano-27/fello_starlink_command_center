@@ -68,14 +68,37 @@
           </button>
         </div>
 
-        <div class="tool-guide-examples">
-          <span class="tool-guide-examples-label">Try:</span>
-          <button class="tool-guide-chip" onclick="document.getElementById('search-input').value=this.textContent;document.getElementById('search-btn').click();">FE13916</button>
-          <button class="tool-guide-chip" onclick="document.getElementById('search-input').value=this.textContent;document.getElementById('search-btn').click();">Alamo Fireworks</button>
-          <button class="tool-guide-chip" onclick="document.getElementById('search-input').value=this.textContent;document.getElementById('search-btn').click();">WW13725786</button>
+        <div class="tool-guide-examples" id="try-section">
+          <span class="tool-guide-examples-label">Active Deployments:</span>
+          <span id="try-chips" style="display:inline;">
+            <span style="color:#9ca3af;font-size:0.85rem;">Loading...</span>
+          </span>
         </div>
       </div>
     </div>
+<script>
+(async function loadActiveDeployments() {
+  try {
+    var res = await fetch('/api/orders/active-deployments', { credentials: 'include' });
+    var data = await res.json();
+    var chips = document.getElementById('try-chips');
+    if (data.active && data.active.length > 0) {
+      chips.innerHTML = data.active.map(function(o) {
+        var endDate = new Date(o.rentalEnd);
+        var daysLeft = Math.ceil((endDate - new Date()) / 86400000);
+        var label = o.orderId + ' — ' + o.customer;
+        var badge = daysLeft <= 1 ? ' 🔴' : daysLeft <= 3 ? ' 🟡' : '';
+        return '<button class="tool-guide-chip" onclick="document.getElementById(\'search-input\').value=\'' + o.orderId + '\';document.getElementById(\'search-btn\').click();" title="Ends ' + endDate.toLocaleDateString() + ' (' + daysLeft + 'd left)">' + label + badge + '</button>';
+      }).join('');
+      document.querySelector('#try-section .tool-guide-examples-label').textContent = 'Active Deployments (' + data.active.length + '):';
+    } else {
+      chips.innerHTML = '<span style="color:#9ca3af;font-size:0.85rem;">No active deployments right now</span>';
+    }
+  } catch(e) {
+    document.getElementById('try-chips').innerHTML = '<button class="tool-guide-chip" onclick="document.getElementById(\'search-input\').value=this.textContent;document.getElementById(\'search-btn\').click();">FE13916</button><button class="tool-guide-chip" onclick="document.getElementById(\'search-input\').value=this.textContent;document.getElementById(\'search-btn\').click();">Alamo Fireworks</button>';
+  }
+})();
+</script>
 
     <div id="results-container" class="results-container">
       <!-- Dynamic Content Will Be Injected Here -->
