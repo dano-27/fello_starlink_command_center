@@ -51,7 +51,21 @@ function err(msg) { console.error(`[${new Date().toLocaleTimeString()}] ERROR ${
 // ── Browser Management ──────────────────────────────────────────────
 
 async function ensureBrowser() {
-  if (browser) return;
+  // Check if existing browser is still alive
+  if (browser) {
+    try {
+      // Quick health check — if this throws, browser is dead
+      browser.pages();
+      if (page && !page.isClosed()) return;
+      // Page closed but browser alive — get a new page
+      page = browser.pages()[0] || await browser.newPage();
+      return;
+    } catch (e) {
+      log('Browser crashed, relaunching... (' + e.message + ')');
+      browser = null;
+      page = null;
+    }
+  }
   log('Launching Chrome...');
   browser = await chromium.launchPersistentContext(CONFIG.userDataDir, {
     headless: CONFIG.headless,
