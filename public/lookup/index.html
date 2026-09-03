@@ -167,8 +167,12 @@ fetch("/api/auth/me").then(function(r){return r.json()}).then(function(u){
         <input type="text" id="prov-groupName" required placeholder="SH1234 - Client Name" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;font-family:inherit;font-size:0.9rem;">
       </div>
       <div style="margin-bottom:14px;">
-        <label style="font-size:0.82rem;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Apps (comma-separated)</label>
-        <input type="text" id="prov-apps" placeholder="Eventbrite, Square POS, Shopify POS" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;font-family:inherit;font-size:0.9rem;">
+        <label style="font-size:0.82rem;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Apps</label>
+        <div id="prov-apps-selected" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;"></div>
+        <div style="position:relative;">
+          <input type="text" id="prov-apps-search" placeholder="Search apps..." autocomplete="off" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;font-family:inherit;font-size:0.9rem;" onfocus="showAppDropdown()" oninput="filterApps()">
+          <div id="prov-apps-dropdown" style="display:none;position:absolute;top:100%;left:0;right:0;max-height:200px;overflow-y:auto;background:white;border:1px solid #d1d5db;border-top:none;border-radius:0 0 8px 8px;z-index:10;box-shadow:0 4px 12px rgba(0,0,0,0.1);"></div>
+        </div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
         <div>
@@ -207,6 +211,71 @@ fetch("/api/auth/me").then(function(r){return r.json()}).then(function(u){
 </div>
 
 <script>
+var appCatalog = [];
+var selectedApps = [];
+
+// Load app catalog on page load
+(async function loadAppCatalog() {
+  try {
+    var res = await fetch('/api/simplemdm/apps/catalog', { credentials: 'include' });
+    var data = await res.json();
+    if (data.apps) appCatalog = data.apps.sort(function(a,b){ return a.name.localeCompare(b.name); });
+  } catch(e) { console.log('App catalog load failed:', e); }
+})();
+
+function showAppDropdown() {
+  filterApps();
+  document.getElementById('prov-apps-dropdown').style.display = 'block';
+}
+
+function filterApps() {
+  var query = document.getElementById('prov-apps-search').value.toLowerCase();
+  var dropdown = document.getElementById('prov-apps-dropdown');
+  var filtered = appCatalog.filter(function(a) {
+    return a.name.toLowerCase().includes(query) && selectedApps.indexOf(a.name) === -1;
+  });
+  if (filtered.length === 0) {
+    dropdown.innerHTML = '<div style="padding:10px 12px;color:#9ca3af;font-size:0.85rem;">No matching apps</div>';
+  } else {
+    dropdown.innerHTML = filtered.slice(0, 20).map(function(a) {
+      return '<div onclick="selectApp(\'' + a.name.replace(/'/g, "\\'") + '\')" style="padding:8px 12px;cursor:pointer;font-size:0.85rem;border-bottom:1px solid #f3f4f6;transition:background 0.1s;" onmouseover="this.style.background=\'#f0fdf4\'" onmouseout="this.style.background=\'white\'">' +
+        '<span style="font-weight:500;">' + a.name + '</span>' +
+        (a.bundleId ? ' <span style="color:#9ca3af;font-size:0.75rem;">' + a.bundleId + '</span>' : '') +
+      '</div>';
+    }).join('');
+  }
+  dropdown.style.display = 'block';
+}
+
+function selectApp(name) {
+  if (selectedApps.indexOf(name) === -1) selectedApps.push(name);
+  document.getElementById('prov-apps-search').value = '';
+  renderSelectedApps();
+  document.getElementById('prov-apps-dropdown').style.display = 'none';
+}
+
+function removeApp(name) {
+  selectedApps = selectedApps.filter(function(a) { return a !== name; });
+  renderSelectedApps();
+}
+
+function renderSelectedApps() {
+  var container = document.getElementById('prov-apps-selected');
+  container.innerHTML = selectedApps.map(function(name) {
+    return '<span style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;background:#e0f2fe;color:#0369a1;border-radius:6px;font-size:0.8rem;font-weight:500;">' +
+      name +
+      ' <span onclick="removeApp(\'' + name.replace(/'/g, "\\'") + '\')" style="cursor:pointer;font-size:1rem;line-height:1;color:#0369a1;opacity:0.6;">×</span>' +
+    '</span>';
+  }).join('');
+}
+
+// Close dropdown on outside click
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('#prov-apps-dropdown') && e.target.id !== 'prov-apps-search') {
+    document.getElementById('prov-apps-dropdown').style.display = 'none';
+  }
+});
+
 function openProvisionModal() {
   document.getElementById('provision-modal').style.display = 'flex';
   setTimeout(function(){ document.getElementById('prov-groupName').focus(); }, 100);
@@ -215,6 +284,8 @@ function closeProvisionModal() {
   document.getElementById('provision-modal').style.display = 'none';
   document.getElementById('prov-result').style.display = 'none';
   document.getElementById('provision-form').reset();
+  selectedApps = [];
+  renderSelectedApps();
   document.getElementById('prov-submit-btn').disabled = false;
   document.getElementById('prov-submit-btn').textContent = '🚀 Provision Order';
 }
@@ -230,8 +301,9 @@ async function submitProvision(e) {
   resultDiv.style.display = 'none';
 
   var body = { groupName: document.getElementById('prov-groupName').value.trim() };
-  var appsVal = document.getElementById('prov-apps').value.trim();
-  if (appsVal) body.apps = appsVal.split(',').map(function(s){return s.trim()}).filter(Boolean);
+
+  // Apps from multi-select
+  if (selectedApps.length > 0) body.apps = selectedApps;
 
   var ssid = document.getElementById('prov-wifiSsid').value.trim();
   if (ssid) body.wifiNetworks = [{ ssid: ssid, password: document.getElementById('prov-wifiPassword').value, security: document.getElementById('prov-wifiSecurity').value }];
@@ -270,6 +342,8 @@ async function submitProvision(e) {
       btn.textContent = '✅ Done — Provision Another?';
       btn.disabled = false;
       document.getElementById('provision-form').reset();
+      selectedApps = [];
+      renderSelectedApps();
     } else {
       resultDiv.innerHTML = '<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:10px;padding:16px;color:#991b1b;font-weight:600;">❌ ' + (data.error || 'Unknown error') + '</div>';
       resultDiv.style.display = 'block';
