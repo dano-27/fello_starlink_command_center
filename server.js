@@ -7314,21 +7314,16 @@ app.post('/api/simplemdm/devices/bulk-wipe', async (req, res) => {
 app.post('/api/simplemdm/groups/:groupId/delete-with-cleanup', async (req, res) => {
   const accountId = req.query.account || req.body?.account || 'fello';
   const rawKey = getMdmAccountKey(accountId);
-  const auth = 'Basic ' + Buffer.from(rawKey + ':').toString('base64');
-  const depServerId = MDM_ACCOUNTS[accountId]?.depServerId || '10650';
-
-
-
   const groupId = req.params.groupId;
-  const { wipeFirst } = req.body || {};
-  console.log(`[GROUP-DELETE] Starting cleanup for group ${groupId}${wipeFirst ? ' (with factory reset)' : ''}`);
+  console.log(`[GROUP-DELETE] Starting cleanup for group ${groupId} (factory erase + eSIM preserve)`);
 
   const results = { devicesProcessed: 0, wiped: [], unenrolled: [], errors: [], groupDeleted: false };
 
   try {
     const groupData = await smdmRequest(rawKey, `/assignment_groups/${groupId}`);
+    const groupName = groupData.data?.attributes?.name || groupId;
     const deviceRefs = groupData.data?.relationships?.devices?.data || [];
-    console.log(`[GROUP-DELETE] Group has ${deviceRefs.length} direct devices`);
+    console.log(`[GROUP-DELETE] Group "${groupName}" has ${deviceRefs.length} devices`);
 
     const serialsForAbm = [];
     for (const ref of deviceRefs) {
@@ -7337,23 +7332,19 @@ app.post('/api/simplemdm/groups/:groupId/delete-with-cleanup', async (req, res) 
         const serial = deviceData.data?.attributes?.serial_number || '';
         const name = deviceData.data?.attributes?.name || serial;
 
-        if (wipeFirst) {
-          try {
-            await smdmRequest(rawKey, `/devices/${ref.id}/wipe`, 'POST');
-            results.wiped.push({ deviceId: ref.id, serial, name });
-            console.log(`[GROUP-DELETE]   🔄 Wipe command sent to: ${name} (${serial})`);
-          } catch (wipeErr) {
-            console.log(`[GROUP-DELETE]   ⚠ Wipe failed for ${name}: ${wipeErr.message}`);
-          }
+        // Factory erase with eSIM preservation
+        try {
+          await smdmRequest(rawKey, `/devices/${ref.id}/wipe`, 'POST', { preserve_data_plan: 'true' });
+          results.wiped.push({ deviceId: ref.id, serial, name });
+          console.log(`[GROUP-DELETE]   🔄 Factory erase sent (eSIM preserved): ${name} (${serial})`);
+        } catch (wipeErr) {
+          console.log(`[GROUP-DELETE]   ⚠ Wipe failed for ${name}: ${wipeErr.message}`);
+          results.errors.push({ deviceId: ref.id, serial, name, error: `Wipe failed: ${wipeErr.message}` });
         }
 
-        try {
-          await smdmRequest(rawKey, `/devices/${ref.id}/unenroll`, 'POST');
-        } catch (_) { /* may already be unenrolled */ }
-
-        try {
-          await smdmRequest(rawKey, `/devices/${ref.id}`, 'DELETE');
-        } catch (_) { /* best effort */ }
+        // Unenroll and delete from SimpleMDM
+        try { await smdmRequest(rawKey, `/devices/${ref.id}/unenroll`, 'POST'); } catch (_) {}
+        try { await smdmRequest(rawKey, `/devices/${ref.id}`, 'DELETE'); } catch (_) {}
 
         results.unenrolled.push({ deviceId: ref.id, serial, name });
         if (serial) serialsForAbm.push(serial);
@@ -7365,21 +7356,24 @@ app.post('/api/simplemdm/groups/:groupId/delete-with-cleanup', async (req, res) 
     }
     results.devicesProcessed = deviceRefs.length;
 
+    // Unassign from ABM
     if (serialsForAbm.length > 0) {
       try {
         const abmResult = await abmUnassignDevices(serialsForAbm);
         if (!abmResult.skipped && abmResult.status >= 200 && abmResult.status < 300) {
           results.abmUnassigned = true;
+          console.log(`[GROUP-DELETE]   🍎 ABM unassigned ${serialsForAbm.length} devices`);
         }
       } catch (abmErr) {
         console.error('[GROUP-DELETE] ABM unassign error:', abmErr.message);
       }
     }
 
+    // Delete the group
     try {
       await smdmRequest(rawKey, `/assignment_groups/${groupId}`, 'DELETE');
       results.groupDeleted = true;
-      console.log(`[GROUP-DELETE] ✓ Group ${groupId} deleted`);
+      console.log(`[GROUP-DELETE] ✓ Group "${groupName}" deleted`);
     } catch (groupErr) {
       results.groupDeleteError = groupErr.message;
       console.error(`[GROUP-DELETE] ✗ Group delete failed: ${groupErr.message}`);
