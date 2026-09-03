@@ -68,50 +68,87 @@
           </button>
         </div>
 
-        <div class="tool-guide-examples" id="try-section">
-          <span class="tool-guide-examples-label">Active Deployments:</span>
-          <span id="try-chips" style="display:inline;">
-            <span style="color:#9ca3af;font-size:0.85rem;">Loading...</span>
-          </span>
-        </div>
+        <div id="active-deployments" style="margin-top:12px;"></div>
       </div>
     </div>
+
 <script>
 (async function loadActiveDeployments() {
   try {
     var res = await fetch('/api/orders/active-deployments', { credentials: 'include' });
     var data = await res.json();
-    var chips = document.getElementById('try-chips');
-    if (data.active && data.active.length > 0) {
-      chips.innerHTML = data.active.map(function(o) {
-        var label = o.orderId + ' — ' + o.customer;
-        var badge = '';
-        var tooltip = '';
-        if (o.rentalEnd) {
-          var endDate = new Date(o.rentalEnd);
-          var daysLeft = Math.ceil((endDate - new Date()) / 86400000);
-          badge = daysLeft <= 1 ? ' 🔴' : daysLeft <= 3 ? ' 🟡' : '';
-          tooltip = 'Ends ' + endDate.toLocaleDateString() + ' (' + daysLeft + 'd left)';
-        } else if (o.activeSims) {
-          tooltip = o.activeSims + ' active SIMs (partner order)';
-        }
-        return '<button class="tool-guide-chip" onclick="document.getElementById(\'search-input\').value=\'' + o.orderId + '\';document.getElementById(\'search-btn\').click();" title="' + tooltip + '">' + label + badge + '</button>';
-      }).join('');
-      document.querySelector('#try-section .tool-guide-examples-label').textContent = 'Active Deployments (' + data.active.length + '):';
-      // Add badge legend
-      var legend = document.getElementById('deploy-legend');
-      if (!legend) {
-        legend = document.createElement('div');
-        legend.id = 'deploy-legend';
-        legend.style.cssText = 'margin-top:8px;font-size:0.75rem;color:#9ca3af;text-align:center;';
-        legend.innerHTML = '🔴 Ending today/tomorrow &nbsp;&nbsp; 🟡 Ending within 3 days';
-        document.getElementById('try-section').appendChild(legend);
-      }
-    } else {
-      chips.innerHTML = '<span style="color:#9ca3af;font-size:0.85rem;">No active deployments right now</span>';
+    var container = document.getElementById('active-deployments');
+    if (!data.active || data.active.length === 0) {
+      container.innerHTML = '<div style="text-align:center;color:#9ca3af;font-size:0.85rem;padding:8px 0;">No active deployments right now</div>';
+      return;
     }
+
+    // Split into IMS (have rental dates) and partner orders
+    var ims = data.active.filter(function(o) { return o.rentalEnd; });
+    var partners = data.active.filter(function(o) { return !o.rentalEnd; });
+
+    var html = '';
+
+    // ── IMS Orders: featured chips with dates ──
+    if (ims.length > 0) {
+      html += '<div style="text-align:center;margin-bottom:6px;">';
+      html += '<div style="font-size:0.78rem;font-weight:600;color:#374151;margin-bottom:6px;">📦 Current Rentals (' + ims.length + ')</div>';
+      html += '<div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;">';
+      ims.forEach(function(o) {
+        var endDate = new Date(o.rentalEnd);
+        var daysLeft = Math.ceil((endDate - new Date()) / 86400000);
+        var badge = daysLeft <= 1 ? '🔴' : daysLeft <= 3 ? '🟡' : '🟢';
+        var dateStr = endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        html += '<button onclick="document.getElementById(\'search-input\').value=\'' + o.orderId + '\';document.getElementById(\'search-btn\').click();" ' +
+          'title="' + o.customer + ' — ends ' + dateStr + ' (' + daysLeft + 'd)" ' +
+          'style="padding:5px 10px;border:1px solid #e5e7eb;border-radius:8px;background:white;cursor:pointer;font-family:inherit;font-size:0.78rem;display:flex;align-items:center;gap:5px;transition:border-color 0.15s,box-shadow 0.15s;" ' +
+          'onmouseover="this.style.borderColor=\'#3166ae\';this.style.boxShadow=\'0 2px 6px rgba(49,102,174,0.15)\'" ' +
+          'onmouseout="this.style.borderColor=\'#e5e7eb\';this.style.boxShadow=\'none\'">' +
+          '<span>' + badge + '</span>' +
+          '<span style="font-weight:600;color:#1e293b;">' + o.orderId + '</span>' +
+          '<span style="color:#64748b;">— ' + o.customer + '</span>' +
+          '<span style="color:#9ca3af;font-size:0.7rem;">' + dateStr + '</span>' +
+        '</button>';
+      });
+      html += '</div>';
+      html += '<div style="margin-top:4px;font-size:0.7rem;color:#9ca3af;">🔴 ending today &nbsp; 🟡 within 3 days &nbsp; 🟢 on track</div>';
+      html += '</div>';
+    }
+
+    // ── Partner Orders: compact grouped summary ──
+    if (partners.length > 0) {
+      // Group by prefix
+      var groups = {};
+      partners.forEach(function(o) {
+        var prefix = o.orderId.match(/^[A-Z]+/i);
+        prefix = prefix ? prefix[0] : 'Other';
+        if (!groups[prefix]) groups[prefix] = [];
+        groups[prefix].push(o);
+      });
+
+      var prefixLabels = { SH: 'ShowGo', SQ: 'Square', LE: 'Legacy', AR: 'Ardent', FE: 'Fello', OR: 'Orders', GSO: 'GSO', JP: 'JP' };
+      html += '<div style="text-align:center;margin-top:' + (ims.length > 0 ? '10' : '0') + 'px;">';
+      html += '<div style="font-size:0.78rem;font-weight:600;color:#374151;margin-bottom:6px;">📡 Active Partner Deployments (' + partners.length + ')</div>';
+      html += '<div style="display:flex;flex-wrap:wrap;gap:6px;justify-content:center;">';
+      Object.keys(groups).sort().forEach(function(prefix) {
+        var count = groups[prefix].length;
+        var label = prefixLabels[prefix] || prefix;
+        html += '<button onclick="document.getElementById(\'search-input\').value=\'' + prefix + '\';document.getElementById(\'search-btn\').click();" ' +
+          'title="' + count + ' active ' + label + ' orders — click to search" ' +
+          'style="padding:4px 10px;border:1px solid #e5e7eb;border-radius:6px;background:#f8fafc;cursor:pointer;font-family:inherit;font-size:0.75rem;transition:border-color 0.15s;" ' +
+          'onmouseover="this.style.borderColor=\'#3166ae\'" onmouseout="this.style.borderColor=\'#e5e7eb\'">' +
+          '<span style="font-weight:600;color:#3166ae;">' + prefix + '</span>' +
+          '<span style="color:#64748b;margin-left:3px;">' + count + '</span>' +
+        '</button>';
+      });
+      html += '</div>';
+      html += '</div>';
+    }
+
+    container.innerHTML = html;
+
   } catch(e) {
-    document.getElementById('try-chips').innerHTML = '<button class="tool-guide-chip" onclick="document.getElementById(\'search-input\').value=this.textContent;document.getElementById(\'search-btn\').click();">FE13916</button><button class="tool-guide-chip" onclick="document.getElementById(\'search-input\').value=this.textContent;document.getElementById(\'search-btn\').click();">Alamo Fireworks</button>';
+    document.getElementById('active-deployments').innerHTML = '';
   }
 })();
 </script>
