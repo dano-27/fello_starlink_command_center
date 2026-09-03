@@ -6799,13 +6799,13 @@ app.post('/api/automation/full-provision', async (req, res) => {
     // Build dock items: order app(s) + webclips
     const dockItems = [];
 
-    // Add first matched non-default app to dock
-    const orderApp = run.apps.find(a => a.status === 'assigned' && !a.default);
-    if (orderApp) {
-      const bundleId = orderApp.bundleId || (appCatalog.find(a => a.id === orderApp.id) || {}).bundleId;
+    // Add ALL assigned apps to dock
+    const orderApps = run.apps.filter(a => a.status === 'assigned');
+    for (const app of orderApps) {
+      const bundleId = app.bundleId || (appCatalog.find(a => a.id === app.id) || {}).bundleId;
       if (bundleId) {
         dockItems.push({ type: 'Application', bundleId });
-        console.log(`[FullProvision]   📱 Dock app: ${orderApp.matched || orderApp.requested} (${bundleId})`);
+        console.log(`[FullProvision]   📱 Dock app: ${app.matched || app.requested} (${bundleId})`);
       }
     }
 
