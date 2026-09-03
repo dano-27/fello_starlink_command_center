@@ -8878,36 +8878,91 @@ app.get('/api/orders/active-deployments', async (req, res) => {
   try {
     const imsToken = process.env.IMS_TOKEN || process.env.IMS_NEXTGEN_TOKEN || '2423|rydhEvIv6ZsEABia67jH5ffhMUJLthtu3YrfySpx93f5cc0e';
     const imsBase = process.env.IMS_BASE_URL || process.env.IMS_NEXTGEN_URL || 'https://ims-v4-migration-prod-876702752852.us-east4.run.app';
-    const ordersResp = await fetch(imsBase + '/api/orders', {
-      headers: { 'Authorization': 'Bearer ' + imsToken, 'Accept': 'application/json' }
-    });
-    if (!ordersResp.ok) throw new Error('IMS API returned ' + ordersResp.status);
-    const allOrders = await ordersResp.json();
-    const orders = Array.isArray(allOrders) ? allOrders : (allOrders.data || []);
-
     const now = new Date();
     const active = [];
+    const seenIds = new Set();
 
-    for (const o of orders) {
-      if (!o.shipments || !o.shipments.length) continue;
-      for (const s of o.shipments) {
-        const start = s.rental_start ? new Date(s.rental_start) : null;
-        const end = s.rental_end ? new Date(s.rental_end) : null;
-        if (start && end && now >= start && now <= end) {
-          active.push({
-            orderId: o.fly_order_id,
-            customer: o.customer_name,
-            rentalStart: s.rental_start,
-            rentalEnd: s.rental_end,
-            status: s.status || o.status,
-          });
-          break; // one match per order is enough
+    // ── Source 1: IMS orders with rental dates ──────────────────────
+    try {
+      const ordersResp = await fetch(imsBase + '/api/orders', {
+        headers: { 'Authorization': 'Bearer ' + imsToken, 'Accept': 'application/json' }
+      });
+      if (ordersResp.ok) {
+        const allOrders = await ordersResp.json();
+        const orders = Array.isArray(allOrders) ? allOrders : (allOrders.data || []);
+
+        for (const o of orders) {
+          if (!o.shipments || !o.shipments.length) continue;
+          for (const s of o.shipments) {
+            const start = s.rental_start ? new Date(s.rental_start) : null;
+            const end = s.rental_end ? new Date(s.rental_end) : null;
+            if (start && end && now >= start && now <= end) {
+              const id = (o.fly_order_id || '').toUpperCase();
+              if (!seenIds.has(id)) {
+                seenIds.add(id);
+                active.push({
+                  orderId: o.fly_order_id,
+                  customer: o.customer_name,
+                  rentalStart: s.rental_start,
+                  rentalEnd: s.rental_end,
+                  status: s.status || o.status,
+                  source: 'ims',
+                });
+              }
+              break;
+            }
+          }
         }
+      }
+    } catch (e) {
+      console.log('[ActiveDeploy] IMS fetch failed:', e.message);
+    }
+
+    // ── Source 2: Webbing branches with active SIMs (partner orders) ─
+    if (typeof webbingDeviceCache !== 'undefined' && webbingDeviceCache.length > 0) {
+      const orderPrefixes = /^(SH|SQ|LE|AR|GSO|JP|FE|OR)\d/i;
+      const branchMap = {};
+
+      for (const d of webbingDeviceCache) {
+        if (d.StatusID !== 3) continue; // only active SIMs
+        const name = d.BranchName || '';
+        if (!orderPrefixes.test(name)) continue;
+
+        if (!branchMap[d.BranchID]) {
+          branchMap[d.BranchID] = { name, activeSims: 0 };
+        }
+        branchMap[d.BranchID].activeSims++;
+      }
+
+      for (const [branchId, info] of Object.entries(branchMap)) {
+        // Extract order ID from branch name (e.g. "SH1234 - Client Name" → "SH1234")
+        const match = info.name.match(/^([A-Z]{2,3}\d+)/i);
+        const orderId = match ? match[1].toUpperCase() : info.name.split(/\s*[-–—]\s*/)[0].trim().toUpperCase();
+
+        if (seenIds.has(orderId)) continue; // already from IMS
+        seenIds.add(orderId);
+
+        // Extract customer name from branch name (after the order ID)
+        const customerMatch = info.name.match(/^[A-Z]{2,3}\d+\s*[-–—]\s*(.+)/i);
+        const customer = customerMatch ? customerMatch[1].trim() : info.name;
+
+        active.push({
+          orderId: orderId,
+          customer: customer,
+          activeSims: info.activeSims,
+          status: 'active',
+          source: 'partner',
+        });
       }
     }
 
-    // Sort by rental_end (soonest ending first)
-    active.sort((a, b) => new Date(a.rentalEnd) - new Date(b.rentalEnd));
+    // Sort: IMS orders by rental_end (soonest first), then partner orders alphabetically
+    active.sort((a, b) => {
+      if (a.rentalEnd && b.rentalEnd) return new Date(a.rentalEnd) - new Date(b.rentalEnd);
+      if (a.rentalEnd) return -1;
+      if (b.rentalEnd) return 1;
+      return a.orderId.localeCompare(b.orderId);
+    });
 
     res.json({ active, count: active.length });
   } catch (err) {

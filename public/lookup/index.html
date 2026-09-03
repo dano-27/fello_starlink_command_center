@@ -84,11 +84,18 @@
     var chips = document.getElementById('try-chips');
     if (data.active && data.active.length > 0) {
       chips.innerHTML = data.active.map(function(o) {
-        var endDate = new Date(o.rentalEnd);
-        var daysLeft = Math.ceil((endDate - new Date()) / 86400000);
         var label = o.orderId + ' — ' + o.customer;
-        var badge = daysLeft <= 1 ? ' 🔴' : daysLeft <= 3 ? ' 🟡' : '';
-        return '<button class="tool-guide-chip" onclick="document.getElementById(\'search-input\').value=\'' + o.orderId + '\';document.getElementById(\'search-btn\').click();" title="Ends ' + endDate.toLocaleDateString() + ' (' + daysLeft + 'd left)">' + label + badge + '</button>';
+        var badge = '';
+        var tooltip = '';
+        if (o.rentalEnd) {
+          var endDate = new Date(o.rentalEnd);
+          var daysLeft = Math.ceil((endDate - new Date()) / 86400000);
+          badge = daysLeft <= 1 ? ' 🔴' : daysLeft <= 3 ? ' 🟡' : '';
+          tooltip = 'Ends ' + endDate.toLocaleDateString() + ' (' + daysLeft + 'd left)';
+        } else if (o.activeSims) {
+          tooltip = o.activeSims + ' active SIMs (partner order)';
+        }
+        return '<button class="tool-guide-chip" onclick="document.getElementById(\'search-input\').value=\'' + o.orderId + '\';document.getElementById(\'search-btn\').click();" title="' + tooltip + '">' + label + badge + '</button>';
       }).join('');
       document.querySelector('#try-section .tool-guide-examples-label').textContent = 'Active Deployments (' + data.active.length + '):';
       // Add badge legend
