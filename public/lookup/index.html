@@ -91,6 +91,15 @@
         return '<button class="tool-guide-chip" onclick="document.getElementById(\'search-input\').value=\'' + o.orderId + '\';document.getElementById(\'search-btn\').click();" title="Ends ' + endDate.toLocaleDateString() + ' (' + daysLeft + 'd left)">' + label + badge + '</button>';
       }).join('');
       document.querySelector('#try-section .tool-guide-examples-label').textContent = 'Active Deployments (' + data.active.length + '):';
+      // Add badge legend
+      var legend = document.getElementById('deploy-legend');
+      if (!legend) {
+        legend = document.createElement('div');
+        legend.id = 'deploy-legend';
+        legend.style.cssText = 'margin-top:8px;font-size:0.75rem;color:#9ca3af;text-align:center;';
+        legend.innerHTML = '🔴 Ending today/tomorrow &nbsp;&nbsp; 🟡 Ending within 3 days';
+        document.getElementById('try-section').appendChild(legend);
+      }
     } else {
       chips.innerHTML = '<span style="color:#9ca3af;font-size:0.85rem;">No active deployments right now</span>';
     }
