@@ -6888,18 +6888,36 @@ app.post('/api/automation/full-provision', async (req, res) => {
 
       for (const serial of cleanSerials) {
         try {
-          // 1. Check enrolled devices first
-          const device = enrolledBySerial.get(serial);
+          // 1. Check enrolled devices from pre-fetch map
+          let device = enrolledBySerial.get(serial);
+          
+          // 1b. Fallback: direct API search if pre-fetch missed it
+          if (!device) {
+            try {
+              const searchResp = await smdmRequest(rawKey, `/devices?search=${serial}`);
+              device = searchResp.data && searchResp.data.find(d =>
+                d.attributes.serial_number && d.attributes.serial_number.toUpperCase() === serial
+              );
+              if (device) console.log(`[FullProvision]   Found ${serial} via direct search (ID: ${device.id})`);
+            } catch (e) { console.log(`[FullProvision]   Direct search failed: ${e.message}`); }
+          }
+
           if (device) {
-            await smdmRequest(rawKey, `/assignment_groups/${groupId}/devices/${device.id}`, 'POST');
+            // Assign to group
+            const assignResp = await smdmRequest(rawKey, `/assignment_groups/${groupId}/devices/${device.id}`, 'POST');
+            console.log(`[FullProvision]   Assignment response for ${serial}: ${JSON.stringify(assignResp).substring(0, 200)}`);
+            
+            // Rename
             sequenceNumber++;
             const newName = `${orderNumber} (${String(sequenceNumber).padStart(2, '0')})`;
             try {
-              await smdmRequest(rawKey, `/devices/${device.id}`, 'PATCH', { name: newName, device_name: newName });
-              console.log(`[FullProvision]   📝 Renamed device ${device.id} → "${newName}"`);
-            } catch (e) { console.log(`[FullProvision]   Rename failed: ${e.message}`); }
+              const renameResp = await smdmRequest(rawKey, `/devices/${device.id}`, 'PATCH', { name: newName, device_name: newName });
+              console.log(`[FullProvision]   📝 Renamed device ${device.id} → "${newName}" (response: ${JSON.stringify(renameResp).substring(0, 200)})`);
+            } catch (e) { 
+              console.log(`[FullProvision]   ⚠ Rename failed for ${device.id}: ${e.message}`);
+            }
             run.serials.push({ serial, deviceId: device.id, name: newName, status: 'assigned', source: 'enrolled' });
-            console.log(`[FullProvision]   ✓ ${serial} → enrolled device ${device.id} → group`);
+            console.log(`[FullProvision]   ✓ ${serial} → device ${device.id} → group ${groupId}`);
             continue;
           }
 
