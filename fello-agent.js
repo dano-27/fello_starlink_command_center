@@ -160,7 +160,23 @@ const handlers = {
     // Security type
     if (security) {
       const secSelect = await page.$('select[name*="security"], select[name*="encryption"]');
-      if (secSelect) await secSelect.selectOption({ label: security });
+      if (secSelect) {
+        // Get all available options to find the right match
+        const options = await secSelect.$$eval('option', opts => opts.map(o => ({ value: o.value, label: o.textContent.trim() })));
+        sendStatus(task.id, 'Security options: ' + options.map(o => o.label || o.value).join(', '));
+        // Try exact label match, then value match, then fuzzy
+        const secLower = security.toLowerCase().replace(/[^a-z0-9]/g, '');
+        const match = options.find(o => o.label.toLowerCase() === security.toLowerCase())
+          || options.find(o => o.value.toLowerCase() === security.toLowerCase())
+          || options.find(o => o.label.toLowerCase().replace(/[^a-z0-9]/g, '').includes(secLower))
+          || options.find(o => o.value.toLowerCase().replace(/[^a-z0-9]/g, '').includes(secLower));
+        if (match) {
+          await secSelect.selectOption(match.value);
+          sendStatus(task.id, 'Selected security: ' + (match.label || match.value));
+        } else {
+          sendStatus(task.id, 'Warning: could not match security "' + security + '"');
+        }
+      }
     }
     // Password
     if (password) {
