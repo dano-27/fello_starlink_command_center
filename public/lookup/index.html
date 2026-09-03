@@ -61,6 +61,13 @@
           </div>
         </div>
 
+        <!-- Full Provision Quick Action -->
+        <div style="margin-top:20px;text-align:center;">
+          <button onclick="openProvisionModal()" style="padding:12px 32px;background:linear-gradient(135deg,#05ac3f,#3166ae);color:white;border:none;border-radius:10px;font-size:0.95rem;font-weight:600;cursor:pointer;font-family:'Montserrat',sans-serif;box-shadow:0 4px 12px rgba(5,172,63,0.3);transition:transform 0.15s,box-shadow 0.15s;" onmouseover="this.style.transform='scale(1.04)';this.style.boxShadow='0 6px 20px rgba(5,172,63,0.4)'" onmouseout="this.style.transform='scale(1)';this.style.boxShadow='0 4px 12px rgba(5,172,63,0.3)'">
+            🚀 Full Order Provision
+          </button>
+        </div>
+
         <div class="tool-guide-examples">
           <span class="tool-guide-examples-label">Try:</span>
           <button class="tool-guide-chip" onclick="document.getElementById('search-input').value=this.textContent;document.getElementById('search-btn').click();">FE13916</button>
@@ -123,6 +130,138 @@ fetch("/api/auth/me").then(function(r){return r.json()}).then(function(u){
   }
 }).catch(function(){});
 </script>
+
+<!-- Full Provision Modal -->
+<div id="provision-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.5);align-items:center;justify-content:center;font-family:'Montserrat',sans-serif;">
+  <div style="background:white;border-radius:16px;width:95%;max-width:560px;max-height:90vh;overflow-y:auto;padding:0;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+    <div style="padding:20px 24px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;background:linear-gradient(135deg,#05ac3f,#3166ae);border-radius:16px 16px 0 0;">
+      <h2 style="color:white;font-size:1.15rem;margin:0;">🚀 Full Order Provision</h2>
+      <button onclick="closeProvisionModal()" style="background:none;border:none;color:white;font-size:1.5rem;cursor:pointer;padding:0 4px;">×</button>
+    </div>
+    <form id="provision-form" onsubmit="submitProvision(event)" style="padding:24px;">
+      <div style="margin-bottom:14px;">
+        <label style="font-size:0.82rem;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Group Name *</label>
+        <input type="text" id="prov-groupName" required placeholder="SH1234 - Client Name" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;font-family:inherit;font-size:0.9rem;">
+      </div>
+      <div style="margin-bottom:14px;">
+        <label style="font-size:0.82rem;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Apps (comma-separated)</label>
+        <input type="text" id="prov-apps" placeholder="Eventbrite, Square POS, Shopify POS" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;font-family:inherit;font-size:0.9rem;">
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+        <div>
+          <label style="font-size:0.82rem;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Custom WiFi SSID</label>
+          <input type="text" id="prov-wifiSsid" placeholder="EventGuest" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;font-family:inherit;font-size:0.9rem;">
+        </div>
+        <div>
+          <label style="font-size:0.82rem;font-weight:600;color:#374151;display:block;margin-bottom:4px;">WiFi Password</label>
+          <input type="password" id="prov-wifiPassword" placeholder="Password" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;font-family:inherit;font-size:0.9rem;">
+        </div>
+      </div>
+      <div style="margin-bottom:14px;">
+        <label style="font-size:0.82rem;font-weight:600;color:#374151;display:block;margin-bottom:4px;">WiFi Security</label>
+        <select id="prov-wifiSecurity" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;font-family:inherit;font-size:0.9rem;background:white;">
+          <option value="WPA2" selected>WPA2</option>
+          <option value="WPA2/WPA3">WPA2/WPA3</option>
+          <option value="WPA3">WPA3</option>
+          <option value="WEP">WEP</option>
+          <option value="None">None</option>
+        </select>
+      </div>
+      <div style="margin-bottom:14px;">
+        <label style="font-size:0.82rem;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Web Clips <span style="font-weight:400;color:#9ca3af;">(name|url, one per line — go on dock)</span></label>
+        <textarea id="prov-webClips" rows="3" placeholder="Check-In Portal|https://checkin.example.com&#10;Event Map|https://map.example.com" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;font-family:inherit;font-size:0.9rem;resize:vertical;"></textarea>
+      </div>
+      <div style="margin-bottom:20px;">
+        <label style="font-size:0.82rem;font-weight:600;color:#374151;display:block;margin-bottom:4px;">Serial Numbers <span style="font-weight:400;color:#9ca3af;">(one per line)</span></label>
+        <textarea id="prov-serials" rows="2" placeholder="ABCD1234EFGH&#10;IJKL5678MNOP" style="width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;font-family:inherit;font-size:0.9rem;resize:vertical;"></textarea>
+      </div>
+      <button type="submit" id="prov-submit-btn" style="width:100%;padding:12px;background:linear-gradient(135deg,#05ac3f,#3166ae);color:white;border:none;border-radius:10px;font-size:1rem;font-weight:600;cursor:pointer;font-family:inherit;">
+        🚀 Provision Order
+      </button>
+      <div id="prov-result" style="margin-top:16px;display:none;"></div>
+    </form>
+  </div>
+</div>
+
+<script>
+function openProvisionModal() {
+  document.getElementById('provision-modal').style.display = 'flex';
+  setTimeout(function(){ document.getElementById('prov-groupName').focus(); }, 100);
+}
+function closeProvisionModal() {
+  document.getElementById('provision-modal').style.display = 'none';
+  document.getElementById('prov-result').style.display = 'none';
+  document.getElementById('provision-form').reset();
+  document.getElementById('prov-submit-btn').disabled = false;
+  document.getElementById('prov-submit-btn').textContent = '🚀 Provision Order';
+}
+document.getElementById('provision-modal').addEventListener('click', function(e) { if (e.target === this) closeProvisionModal(); });
+document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeProvisionModal(); });
+
+async function submitProvision(e) {
+  e.preventDefault();
+  var btn = document.getElementById('prov-submit-btn');
+  var resultDiv = document.getElementById('prov-result');
+  btn.disabled = true;
+  btn.textContent = '⏳ Provisioning...';
+  resultDiv.style.display = 'none';
+
+  var body = { groupName: document.getElementById('prov-groupName').value.trim() };
+  var appsVal = document.getElementById('prov-apps').value.trim();
+  if (appsVal) body.apps = appsVal.split(',').map(function(s){return s.trim()}).filter(Boolean);
+
+  var ssid = document.getElementById('prov-wifiSsid').value.trim();
+  if (ssid) body.wifiNetworks = [{ ssid: ssid, password: document.getElementById('prov-wifiPassword').value, security: document.getElementById('prov-wifiSecurity').value }];
+
+  var clipsVal = document.getElementById('prov-webClips').value.trim();
+  if (clipsVal) {
+    body.webClips = clipsVal.split('\n').map(function(line){
+      var parts = line.split('|').map(function(s){return s.trim()});
+      return parts[0] && parts[1] ? { name: parts[0], url: parts[1] } : null;
+    }).filter(Boolean);
+  }
+
+  var serialsVal = document.getElementById('prov-serials').value.trim();
+  if (serialsVal) body.serials = serialsVal.split('\n').map(function(s){return s.trim()}).filter(Boolean);
+
+  try {
+    var res = await fetch('/api/automation/full-provision', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+      body: JSON.stringify(body)
+    });
+    var data = await res.json();
+    if (res.ok && data.success) {
+      var s = data.summary || {};
+      resultDiv.innerHTML = '<div style="background:#f0fdf4;border:1px solid #86efac;border-radius:10px;padding:16px;">' +
+        '<div style="font-weight:700;color:#166534;font-size:1rem;margin-bottom:8px;">✅ Provisioned Successfully</div>' +
+        '<div style="font-size:0.85rem;color:#374151;line-height:1.7;">' +
+          '<div><strong>Group:</strong> ' + (data.group ? data.group.name : '') + ' <span style="color:#9ca3af;">(ID: ' + (data.group ? data.group.id : '') + ')</span></div>' +
+          '<div><strong>Apps:</strong> ' + (s.appsAssigned || 0) + ' assigned</div>' +
+          '<div><strong>Profiles:</strong> ' + (s.profilesAssigned || 0) + ' assigned</div>' +
+          '<div><strong>Web Clips:</strong> ' + (s.webClipsCreated || 0) + '</div>' +
+          '<div><strong>Dock Items:</strong> ' + (s.dockItems || 0) + '</div>' +
+          '<div><strong>Serials:</strong> ' + (s.serialsAssigned || 0) + '</div>' +
+          (data.errors && data.errors.length ? '<div style="color:#dc2626;margin-top:6px;"><strong>Warnings:</strong> ' + data.errors.join(', ') + '</div>' : '') +
+        '</div></div>';
+      resultDiv.style.display = 'block';
+      btn.textContent = '✅ Done — Provision Another?';
+      btn.disabled = false;
+      document.getElementById('provision-form').reset();
+    } else {
+      resultDiv.innerHTML = '<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:10px;padding:16px;color:#991b1b;font-weight:600;">❌ ' + (data.error || 'Unknown error') + '</div>';
+      resultDiv.style.display = 'block';
+      btn.textContent = '🚀 Retry';
+      btn.disabled = false;
+    }
+  } catch(err) {
+    resultDiv.innerHTML = '<div style="background:#fef2f2;border:1px solid #fca5a5;border-radius:10px;padding:16px;color:#991b1b;">❌ Network error: ' + err.message + '</div>';
+    resultDiv.style.display = 'block';
+    btn.textContent = '🚀 Retry';
+    btn.disabled = false;
+  }
+}
+</script>
+
 <script src="/ai-assistant.js"></script>
 </body>
 </html>
