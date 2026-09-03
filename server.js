@@ -7342,9 +7342,8 @@ app.post('/api/simplemdm/groups/:groupId/delete-with-cleanup', async (req, res) 
           results.errors.push({ deviceId: ref.id, serial, name, error: `Wipe failed: ${wipeErr.message}` });
         }
 
-        // Unenroll and delete from SimpleMDM
-        try { await smdmRequest(rawKey, `/devices/${ref.id}/unenroll`, 'POST'); } catch (_) {}
-        try { await smdmRequest(rawKey, `/devices/${ref.id}`, 'DELETE'); } catch (_) {}
+        // Do NOT unenroll or delete — the factory reset will unenroll the device
+        // Unenrolling before the wipe command reaches the device would cancel it
 
         results.unenrolled.push({ deviceId: ref.id, serial, name });
         if (serial) serialsForAbm.push(serial);
