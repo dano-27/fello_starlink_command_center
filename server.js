@@ -6968,14 +6968,82 @@ app.post('/api/automation/full-provision', async (req, res) => {
         }
       }
 
-      // Trigger DEP sync so newly assigned devices appear
-      try {
-        await fetch(`https://a.simplemdm.com/api/v1/dep_servers/${depServerId}/sync`, {
-          method: 'POST',
-          headers: { Authorization: 'Basic ' + Buffer.from(rawKey + ':').toString('base64') },
-        });
-        console.log(`[FullProvision]   ✓ DEP sync triggered`);
-      } catch (e) { console.log(`[FullProvision]   DEP sync failed: ${e.message}`); }
+      // Trigger DEP sync so newly ABM-assigned devices appear in SimpleMDM
+      const abmAssignedSerials = run.serials.filter(s => s.status === 'assigned_to_dep' && s.source === 'abm').map(s => s.serial);
+      
+      if (abmAssignedSerials.length > 0) {
+        console.log(`[FullProvision]   ${abmAssignedSerials.length} devices assigned via ABM — triggering DEP sync and waiting...`);
+        
+        // Trigger DEP sync
+        try {
+          await fetch(`https://a.simplemdm.com/api/v1/dep_servers/${depServerId}/sync`, {
+            method: 'POST',
+            headers: { Authorization: 'Basic ' + Buffer.from(rawKey + ':').toString('base64') },
+          });
+          console.log(`[FullProvision]   ✓ DEP sync triggered`);
+        } catch (e) { console.log(`[FullProvision]   DEP sync failed: ${e.message}`); }
+
+        // Wait for sync to propagate, then retry assigning ABM devices to the group
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          const waitSec = attempt * 10; // 10s, 20s, 30s
+          console.log(`[FullProvision]   Waiting ${waitSec}s for DEP sync (attempt ${attempt}/3)...`);
+          await new Promise(r => setTimeout(r, waitSec * 1000));
+
+          // Re-trigger sync on retries
+          if (attempt > 1) {
+            try {
+              await fetch(`https://a.simplemdm.com/api/v1/dep_servers/${depServerId}/sync`, {
+                method: 'POST',
+                headers: { Authorization: 'Basic ' + Buffer.from(rawKey + ':').toString('base64') },
+              });
+            } catch (e) {}
+          }
+
+          let allFound = true;
+          for (const serial of abmAssignedSerials) {
+            // Check if device now appears in SimpleMDM
+            try {
+              const devResp = await smdmRequest(rawKey, `/devices?search=${serial}`);
+              const device = devResp.data && devResp.data.find(d =>
+                d.attributes.serial_number && d.attributes.serial_number.toUpperCase() === serial
+              );
+              if (device) {
+                // Found! Assign to group and rename
+                await smdmRequest(rawKey, `/assignment_groups/${groupId}/devices/${device.id}`, 'POST');
+                sequenceNumber++;
+                const newName = `${orderNumber} (${String(sequenceNumber).padStart(2, '0')})`;
+                try {
+                  await smdmRequest(rawKey, `/devices/${device.id}`, 'PATCH', { name: newName, device_name: newName });
+                  console.log(`[FullProvision]   📝 Renamed device ${device.id} → "${newName}"`);
+                } catch (e) {}
+                // Update the serial entry
+                const idx = run.serials.findIndex(s => s.serial === serial && s.source === 'abm');
+                if (idx >= 0) {
+                  run.serials[idx] = { serial, deviceId: device.id, name: newName, status: 'assigned', source: 'abm_synced' };
+                }
+                console.log(`[FullProvision]   ✓ ${serial} → DEP synced → device ${device.id} → group (attempt ${attempt})`);
+              } else {
+                allFound = false;
+              }
+            } catch (e) {
+              allFound = false;
+            }
+          }
+          if (allFound) {
+            console.log(`[FullProvision]   ✓ All ABM devices synced and assigned on attempt ${attempt}`);
+            break;
+          }
+        }
+      } else {
+        // No ABM assignments — still trigger DEP sync for good measure
+        try {
+          await fetch(`https://a.simplemdm.com/api/v1/dep_servers/${depServerId}/sync`, {
+            method: 'POST',
+            headers: { Authorization: 'Basic ' + Buffer.from(rawKey + ':').toString('base64') },
+          });
+          console.log(`[FullProvision]   ✓ DEP sync triggered`);
+        } catch (e) { console.log(`[FullProvision]   DEP sync failed: ${e.message}`); }
+      }
 
       // Push apps to group after device assignment
       try {
