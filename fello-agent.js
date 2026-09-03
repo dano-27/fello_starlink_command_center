@@ -39,6 +39,18 @@ const CONFIG = {
   aiMaxSteps: 20,
 };
 
+// Load local config file (keeps secrets out of git)
+try {
+  const fs = require('fs');
+  const path = require('path');
+  const cfgPath = path.join(__dirname, 'agent-config.json');
+  if (fs.existsSync(cfgPath)) {
+    const local = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+    Object.assign(CONFIG, local);
+    console.log('[Config] Loaded agent-config.json');
+  }
+} catch (e) { console.log('[Config] No agent-config.json found, using env vars'); }
+
 let ws = null;
 let browser = null;
 let page = null;
