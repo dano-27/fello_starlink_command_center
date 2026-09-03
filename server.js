@@ -6926,28 +6926,42 @@ app.post('/api/automation/full-provision', async (req, res) => {
             continue;
           }
 
-          // 3. Not found — try to assign in ABM and trigger DEP sync
+          // 3. Not found — use ABM API to look up and assign to Fello SimpleMDM
           console.log(`[FullProvision]   ${serial} not in enrolled/DEP — checking ABM...`);
-          try {
-            // Attempt ABM assignment via SimpleMDM
-            const abmResp = await fetch(`https://a.simplemdm.com/api/v1/dep_servers/${depServerId}/dep_devices`, {
-              method: 'POST',
-              headers: {
-                Authorization: 'Basic ' + Buffer.from(rawKey + ':').toString('base64'),
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({ serial_numbers: [serial] }),
-            });
-            if (abmResp.ok || abmResp.status === 201) {
-              run.serials.push({ serial, status: 'assigned_to_dep', source: 'abm' });
-              console.log(`[FullProvision]   ✓ ${serial} assigned to DEP via ABM`);
-            } else {
-              run.serials.push({ serial, status: 'not_found' });
-              console.log(`[FullProvision]   ⚠ ${serial} not found in SimpleMDM, DEP, or ABM`);
+          if (abmPrivateKey) {
+            try {
+              const abmDevice = await abmLookupDevice(serial);
+              if (abmDevice) {
+                const abmStatus = abmDevice.attributes?.status;
+                console.log(`[FullProvision]   Found in ABM: status=${abmStatus}`);
+                
+                if (abmStatus === 'UNASSIGNED' || abmStatus === 'ASSIGNED') {
+                  // Assign to Fello SimpleMDM via ABM API
+                  const assignResult = await abmAssignToSimpleMdm([serial]);
+                  console.log(`[FullProvision]   ABM assign response: ${assignResult.status}`);
+                  
+                  if (assignResult.status >= 200 && assignResult.status < 300) {
+                    run.serials.push({ serial, status: 'assigned_to_dep', source: 'abm' });
+                    console.log(`[FullProvision]   ✓ ${serial} assigned to Fello SimpleMDM via ABM — will appear after DEP sync`);
+                  } else {
+                    run.serials.push({ serial, status: 'abm_assign_failed', error: JSON.stringify(assignResult.data) });
+                    console.log(`[FullProvision]   ⚠ ${serial} ABM assignment failed: ${JSON.stringify(assignResult.data)}`);
+                  }
+                } else {
+                  run.serials.push({ serial, status: 'abm_status_' + (abmStatus || 'unknown').toLowerCase() });
+                  console.log(`[FullProvision]   ⚠ ${serial} ABM status: ${abmStatus} — cannot auto-assign`);
+                }
+              } else {
+                run.serials.push({ serial, status: 'not_found' });
+                console.log(`[FullProvision]   ⚠ ${serial} not found in SimpleMDM, DEP, or ABM`);
+              }
+            } catch (abmErr) {
+              run.serials.push({ serial, status: 'abm_error', error: abmErr.message });
+              console.log(`[FullProvision]   ⚠ ${serial} ABM error: ${abmErr.message}`);
             }
-          } catch (abmErr) {
-            run.serials.push({ serial, status: 'not_found', error: abmErr.message });
-            console.log(`[FullProvision]   ⚠ ${serial} ABM check failed: ${abmErr.message}`);
+          } else {
+            run.serials.push({ serial, status: 'not_found', error: 'ABM not configured' });
+            console.log(`[FullProvision]   ⚠ ${serial} not found — ABM key not configured`);
           }
         } catch (e) {
           run.serials.push({ serial, status: 'error', error: e.message });
