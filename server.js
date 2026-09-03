@@ -6912,10 +6912,21 @@ app.post('/api/automation/full-provision', async (req, res) => {
             const newName = `${orderNumber} (${String(sequenceNumber).padStart(2, '0')})`;
             try {
               const renameResp = await smdmRequest(rawKey, `/devices/${device.id}`, 'PATCH', { name: newName, device_name: newName });
-              console.log(`[FullProvision]   📝 Renamed device ${device.id} → "${newName}" (response: ${JSON.stringify(renameResp).substring(0, 200)})`);
+              console.log(`[FullProvision]   📝 Renamed device ${device.id} → "${newName}"`);
             } catch (e) { 
               console.log(`[FullProvision]   ⚠ Rename failed for ${device.id}: ${e.message}`);
             }
+
+            // Also assign in ABM so DEP re-enrollment works on wipe/reset
+            if (abmPrivateKey) {
+              try {
+                const abmResult = await abmAssignToSimpleMdm([serial]);
+                console.log(`[FullProvision]   🍎 ABM assign ${serial}: status ${abmResult.status}`);
+              } catch (e) {
+                console.log(`[FullProvision]   ⚠ ABM assign failed for ${serial}: ${e.message}`);
+              }
+            }
+
             run.serials.push({ serial, deviceId: device.id, name: newName, status: 'assigned', source: 'enrolled' });
             console.log(`[FullProvision]   ✓ ${serial} → device ${device.id} → group ${groupId}`);
             continue;
