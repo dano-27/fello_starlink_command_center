@@ -313,6 +313,7 @@ function describeAction(action) {
   if (p.includes('/agent/status')) return `🤖 Viewed automation agent status`;
   if (p.includes('/simplemdm/homescreen-layout')) return `📱 Created Home Screen Layout profile`;
   if (p.includes('/simplemdm/apps/catalog')) return `📱 Viewed SimpleMDM app catalog`;
+  if (p.includes('/automation/full-provision')) return `🚀 Full Order Provision: "${b?.groupName || 'unknown'}"`;
 
   // ── Generic fallback with more context ──
   const lastSegments = p.split('/').filter(Boolean).slice(-2).join('/');
@@ -4884,6 +4885,36 @@ function wifiPayload(ssid, password, securityType, hidden) {
   return { name: `Wi-Fi: ${ssid}`, xml };
 }
 
+function webClipPayload(name, url) {
+  const uuid = crypto.randomUUID();
+  const slug = name.replace(/[^a-zA-Z0-9]/g, '').toLowerCase().slice(0, 30);
+  return {
+    name: `WebClip: ${name}`,
+    xml: `        <dict>
+            <key>Label</key>
+            <string>${escapeXml(name)}</string>
+            <key>URL</key>
+            <string>${escapeXml(url)}</string>
+            <key>IsRemovable</key>
+            <false/>
+            <key>Precomposed</key>
+            <true/>
+            <key>FullScreen</key>
+            <true/>
+            <key>PayloadDisplayName</key>
+            <string>WebClip: ${escapeXml(name)}</string>
+            <key>PayloadIdentifier</key>
+            <string>com.fello.webclip.${slug}</string>
+            <key>PayloadType</key>
+            <string>com.apple.webClip.managed</string>
+            <key>PayloadUUID</key>
+            <string>${uuid}</string>
+            <key>PayloadVersion</key>
+            <integer>1</integer>
+        </dict>`
+  };
+}
+
 function passcodePayload(mode) {
   const uuid = crypto.randomUUID();
   // Check-in/Kiosk modes get a simple 6-digit passcode requirement
@@ -5794,6 +5825,20 @@ app.post('/api/automation/provision', async (req, res) => {
         bundledPayloads.push(wallpaperPayload(dcrData.wallpaperImage, dcrData.wallpaperScreen || 'both'));
       }
 
+      // Web clips — auto-generate payloads and add to bundle
+      if (dcrData.webClips && dcrData.webClips.length > 0) {
+        const webClipUrls = dcrData.webClipUrls || [];
+        dcrData.webClips.forEach((name, i) => {
+          const url = webClipUrls[i] || '';
+          if (name && url) {
+            bundledPayloads.push(webClipPayload(name, url));
+            console.log(`[PROVISION]   🔗 WebClip: ${name} → ${url}`);
+          } else if (name) {
+            manualSetupNeeded.push(`WebClip "${name}" needs a URL`);
+          }
+        });
+      }
+
       // ═══ Upload bundled mobileconfig if there are payloads ═══
       if (bundledPayloads.length > 0) {
         const profileName = `${eventName} — Custom Config`;
@@ -5821,11 +5866,6 @@ app.post('/api/automation/provision', async (req, res) => {
       // Custom wallpaper without image
       if (dcrData.customWallpaper === 'Yes' && !dcrData.wallpaperImage) {
         manualSetupNeeded.push('Custom wallpaper requested — upload image via Command Center');
-      }
-
-      // Web clips (Kiosk — could be bundled but need icon assets)
-      if (dcrData.webClips && dcrData.webClips.length > 0) {
-        manualSetupNeeded.push(`Web clips need manual setup: ${dcrData.webClips.join(', ')}`);
       }
 
       // App login credentials
@@ -5883,13 +5923,21 @@ app.post('/api/automation/provision', async (req, res) => {
             const dockBundleId = catalogEntry?.bundleId;
             if (dockBundleId) {
               const layoutName = `Home Screen - ${groupName}`;
-              console.log(`[PROVISION]   🏠 Auto-generating Home Screen Layout: dock=${dockApp.matched} (${dockBundleId})`);
-              const layoutXml = generateHomescreenMobileconfig(layoutName, dockBundleId, dockApp.matched);
+              // Build dock items: main app + any webclips
+              const dockItems = [{ type: 'Application', bundleId: dockBundleId }];
+              if (dcrData.webClips && dcrData.webClipUrls) {
+                dcrData.webClips.forEach((name, i) => {
+                  const url = dcrData.webClipUrls[i];
+                  if (name && url) dockItems.push({ type: 'WebClip', url, label: name });
+                });
+              }
+              console.log(`[PROVISION]   🏠 Auto-generating Home Screen Layout: ${dockItems.length} dock items`);
+              const layoutXml = generateHomescreenMobileconfig(layoutName, dockItems);
               const uploaded = await uploadCustomProfile(rawKey, layoutName, layoutXml);
               // Assign to group
               await smdmRequest(rawKey, `/assignment_groups/${groupId}/profiles/${uploaded.id}`, 'POST');
-              run.layoutMatched = { name: layoutName, id: uploaded.id, generated: true, dockApp: dockApp.matched };
-              console.log(`[PROVISION]   ✓ Layout: "${layoutName}" (auto-generated, dock: ${dockApp.matched})`);
+              run.layoutMatched = { name: layoutName, id: uploaded.id, generated: true, dockApp: dockApp.matched, dockItems: dockItems.length };
+              console.log(`[PROVISION]   ✓ Layout: "${layoutName}" (auto-generated, ${dockItems.length} dock items)`);
             } else {
               console.log(`[PROVISION]   ℹ No bundle ID found for dock app "${dockApp.matched}" — skipping layout`);
             }
@@ -6366,10 +6414,37 @@ const HOMESCREEN_OTHER_APPS = [
   'com.apple.mobilephone', 'com.apple.MobileSMS',
 ];
 
-function generateHomescreenMobileconfig(profileName, dockAppBundle, dockAppName) {
+function generateHomescreenMobileconfig(profileName, dockAppBundleOrItems, dockAppName) {
   const uuid1 = crypto.randomUUID();
   const uuid2 = crypto.randomUUID();
   const identifier = `com.fello.homescreen.${Date.now()}`;
+
+  // Support both old signature (bundleId, name) and new signature (array of dock items)
+  let dockItems;
+  if (Array.isArray(dockAppBundleOrItems)) {
+    dockItems = dockAppBundleOrItems; // [{ type: 'Application', bundleId }, { type: 'WebClip', url, label }]
+  } else {
+    dockItems = [{ type: 'Application', bundleId: dockAppBundleOrItems }];
+  }
+
+  // Generate dock XML for each item
+  const dockXml = dockItems.map(item => {
+    if (item.type === 'WebClip') {
+      return `                <dict>
+                    <key>URL</key>
+                    <string>${escapeXml(item.url)}</string>
+                    <key>Type</key>
+                    <string>WebClip</string>
+                </dict>`;
+    } else {
+      return `                <dict>
+                    <key>BundleID</key>
+                    <string>${item.bundleId}</string>
+                    <key>Type</key>
+                    <string>Application</string>
+                </dict>`;
+    }
+  }).join('\n');
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -6392,12 +6467,7 @@ function generateHomescreenMobileconfig(profileName, dockAppBundle, dockAppName)
             <string>Configures the home screen layout for ${profileName}</string>
             <key>Dock</key>
             <array>
-                <dict>
-                    <key>BundleID</key>
-                    <string>${dockAppBundle}</string>
-                    <key>Type</key>
-                    <string>Application</string>
-                </dict>
+${dockXml}
             </array>
             <key>Pages</key>
             <array>
@@ -6576,6 +6646,245 @@ app.post('/api/simplemdm/homescreen-layout', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+// POST /api/automation/full-provision — One-click full order provisioning
+app.post('/api/automation/full-provision', async (req, res) => {
+  if (!req.user || req.user.role !== 'admin') return res.status(403).json({ error: 'Admin only' });
+
+  const {
+    groupName,
+    account = 'fello',
+    apps = [],             // array of app name strings for fuzzy matching
+    appBundleIds = [],     // array of explicit bundle IDs
+    wifiNetworks = [],     // [{ ssid, password, security, hidden }]
+    webClips = [],         // [{ name, url }]
+    serials = [],          // array of serial number strings
+  } = req.body;
+
+  if (!groupName || !groupName.trim()) return res.status(400).json({ error: 'groupName is required' });
+
+  const rawKey = getMdmAccountKey(account);
+  const cleanName = groupName.trim();
+  const run = { group: null, apps: [], profiles: [], webClips: [], layout: null, serials: [], errors: [] };
+
+  try {
+    console.log(`[FullProvision] ═══════════════════════════════════════`);
+    console.log(`[FullProvision] Starting: "${cleanName}"`);
+
+    // ── Step 1: Create assignment group ──────────────────────────────
+    console.log(`[FullProvision] Step 1: Creating group...`);
+    const groupResp = await smdmRequest(rawKey, '/assignment_groups', 'POST', { name: cleanName, auto_deploy: true });
+    const groupId = groupResp.data.id;
+    run.group = { id: groupId, name: cleanName };
+    console.log(`[FullProvision]   ✓ Group created: ${groupId}`);
+
+    // ── Step 2: Assign apps ─────────────────────────────────────────
+    console.log(`[FullProvision] Step 2: Assigning apps...`);
+    
+    // Always assign default apps
+    for (const da of DEFAULT_APPS) {
+      try {
+        await smdmRequest(rawKey, `/assignment_groups/${groupId}/apps/${da.id}`, 'POST');
+        run.apps.push({ name: da.name, id: da.id, status: 'assigned', default: true });
+        console.log(`[FullProvision]   ✓ Default: ${da.name} (${da.id})`);
+      } catch (e) {
+        run.apps.push({ name: da.name, id: da.id, status: 'error', error: e.message, default: true });
+      }
+    }
+
+    // Fetch app catalog for fuzzy matching
+    const appCatalog = await fetchAllApps(rawKey);
+
+    // Match requested apps by name
+    for (const appName of apps) {
+      if (!appName || !appName.trim()) continue;
+      const match = fuzzyMatchApp(appName.trim(), appCatalog);
+      if (match) {
+        try {
+          await smdmRequest(rawKey, `/assignment_groups/${groupId}/apps/${match.id}`, 'POST');
+          run.apps.push({ requested: appName, matched: match.name, id: match.id, bundleId: match.bundleId, status: 'assigned' });
+          console.log(`[FullProvision]   ✓ Matched: "${appName}" → ${match.name} (${match.id})`);
+        } catch (e) {
+          run.apps.push({ requested: appName, matched: match.name, id: match.id, status: 'error', error: e.message });
+        }
+      } else {
+        run.apps.push({ requested: appName, status: 'not_found' });
+        console.log(`[FullProvision]   ⚠ Not found: "${appName}"`);
+      }
+    }
+
+    // Match by explicit bundle IDs
+    for (const bid of appBundleIds) {
+      if (!bid || !bid.trim()) continue;
+      const match = appCatalog.find(a => a.bundleId === bid.trim());
+      if (match) {
+        try {
+          await smdmRequest(rawKey, `/assignment_groups/${groupId}/apps/${match.id}`, 'POST');
+          run.apps.push({ bundleId: bid, matched: match.name, id: match.id, status: 'assigned' });
+          console.log(`[FullProvision]   ✓ BundleID: ${bid} → ${match.name} (${match.id})`);
+        } catch (e) {
+          run.apps.push({ bundleId: bid, matched: match.name, id: match.id, status: 'error', error: e.message });
+        }
+      } else {
+        run.apps.push({ bundleId: bid, status: 'not_found' });
+      }
+    }
+
+    // Push apps to devices
+    try { await smdmRequest(rawKey, `/assignment_groups/${groupId}/push_apps`, 'POST'); } catch {}
+
+    // ── Step 3: Assign default profiles ─────────────────────────────
+    console.log(`[FullProvision] Step 3: Assigning profiles...`);
+    const profilesToAssign = [
+      { id: PROFILE_IDS.DEFAULT_RESTRICTIONS, name: 'Default Restrictions' },
+      { id: PROFILE_IDS.FELLO_WIFI, name: 'Fello WiFi' },
+    ];
+
+    // Custom WiFi networks — generate and upload mobileconfig
+    if (wifiNetworks.length > 0) {
+      const bundledPayloads = [];
+      for (const wifi of wifiNetworks) {
+        if (!wifi.ssid) continue;
+        bundledPayloads.push(wifiPayload(wifi.ssid, wifi.password || '', wifi.security || 'WPA2', wifi.hidden));
+        console.log(`[FullProvision]   📶 Custom WiFi: ${wifi.ssid}`);
+      }
+
+      // WebClip payloads — bundle into the custom config
+      for (const clip of webClips) {
+        if (!clip.name || !clip.url) continue;
+        bundledPayloads.push(webClipPayload(clip.name, clip.url));
+        run.webClips.push({ name: clip.name, url: clip.url, status: 'bundled' });
+        console.log(`[FullProvision]   🔗 WebClip: ${clip.name} → ${clip.url}`);
+      }
+
+      if (bundledPayloads.length > 0) {
+        const configName = `${cleanName} — Custom Config`;
+        const mobileconfigXml = buildMobileconfig(cleanName, {}, bundledPayloads);
+        const uploaded = await uploadCustomProfile(rawKey, configName, mobileconfigXml);
+        profilesToAssign.push({ id: uploaded.id, name: configName });
+        console.log(`[FullProvision]   ✓ Custom config uploaded: ${configName} (${uploaded.id})`);
+      }
+    } else if (webClips.length > 0) {
+      // WebClips only (no custom WiFi) — still need a bundled profile
+      const bundledPayloads = [];
+      for (const clip of webClips) {
+        if (!clip.name || !clip.url) continue;
+        bundledPayloads.push(webClipPayload(clip.name, clip.url));
+        run.webClips.push({ name: clip.name, url: clip.url, status: 'bundled' });
+        console.log(`[FullProvision]   🔗 WebClip: ${clip.name} → ${clip.url}`);
+      }
+      if (bundledPayloads.length > 0) {
+        const configName = `${cleanName} — Web Clips`;
+        const mobileconfigXml = buildMobileconfig(cleanName, {}, bundledPayloads);
+        const uploaded = await uploadCustomProfile(rawKey, configName, mobileconfigXml);
+        profilesToAssign.push({ id: uploaded.id, name: configName });
+        console.log(`[FullProvision]   ✓ WebClip config uploaded: ${configName} (${uploaded.id})`);
+      }
+    }
+
+    // Assign all profiles to group
+    for (const prof of profilesToAssign) {
+      try {
+        await smdmRequest(rawKey, `/assignment_groups/${groupId}/profiles/${prof.id}`, 'POST');
+        run.profiles.push({ id: prof.id, name: prof.name, status: 'assigned' });
+        console.log(`[FullProvision]   ✓ Profile assigned: ${prof.name} (${prof.id})`);
+      } catch (e) {
+        run.profiles.push({ id: prof.id, name: prof.name, status: 'error', error: e.message });
+      }
+    }
+
+    // ── Step 4: Home Screen Layout ──────────────────────────────────
+    console.log(`[FullProvision] Step 4: Generating Home Screen Layout...`);
+    
+    // Build dock items: order app(s) + webclips
+    const dockItems = [];
+
+    // Add first matched non-default app to dock
+    const orderApp = run.apps.find(a => a.status === 'assigned' && !a.default);
+    if (orderApp) {
+      const bundleId = orderApp.bundleId || (appCatalog.find(a => a.id === orderApp.id) || {}).bundleId;
+      if (bundleId) {
+        dockItems.push({ type: 'Application', bundleId });
+        console.log(`[FullProvision]   📱 Dock app: ${orderApp.matched || orderApp.requested} (${bundleId})`);
+      }
+    }
+
+    // Add webclips to dock
+    for (const clip of webClips) {
+      if (clip.name && clip.url) {
+        dockItems.push({ type: 'WebClip', url: clip.url, label: clip.name });
+        console.log(`[FullProvision]   🔗 Dock webclip: ${clip.name}`);
+      }
+    }
+
+    // Fallback: if no dock items, put Fello Connect on dock
+    if (dockItems.length === 0) {
+      dockItems.push({ type: 'Application', bundleId: 'com.fello.FelloRemote' });
+    }
+
+    try {
+      const layoutName = `Home Screen - ${cleanName}`;
+      const layoutXml = generateHomescreenMobileconfig(layoutName, dockItems);
+      const uploaded = await uploadCustomProfile(rawKey, layoutName, layoutXml);
+      await smdmRequest(rawKey, `/assignment_groups/${groupId}/profiles/${uploaded.id}`, 'POST');
+      run.layout = { id: uploaded.id, name: layoutName, dockItems: dockItems.length };
+      console.log(`[FullProvision]   ✓ Layout created: ${layoutName} (${uploaded.id}) — ${dockItems.length} dock items`);
+    } catch (e) {
+      run.layout = { error: e.message };
+      run.errors.push(`Layout: ${e.message}`);
+    }
+
+    // ── Step 5: Assign serial numbers ───────────────────────────────
+    const cleanSerials = serials.filter(s => s && s.trim()).map(s => s.trim().toUpperCase());
+    if (cleanSerials.length > 0) {
+      console.log(`[FullProvision] Step 5: Assigning ${cleanSerials.length} serials...`);
+      for (const serial of cleanSerials) {
+        try {
+          // Find device by serial
+          const devResp = await smdmRequest(rawKey, `/devices?search=${serial}`);
+          const device = devResp.data && devResp.data.find(d =>
+            d.attributes.serial_number && d.attributes.serial_number.toUpperCase() === serial
+          );
+          if (device) {
+            await smdmRequest(rawKey, `/assignment_groups/${groupId}/devices/${device.id}`, 'POST');
+            run.serials.push({ serial, deviceId: device.id, status: 'assigned' });
+            console.log(`[FullProvision]   ✓ ${serial} → device ${device.id}`);
+          } else {
+            run.serials.push({ serial, status: 'not_found' });
+            console.log(`[FullProvision]   ⚠ ${serial} not found in SimpleMDM`);
+          }
+        } catch (e) {
+          run.serials.push({ serial, status: 'error', error: e.message });
+        }
+      }
+    }
+
+    console.log(`[FullProvision] ═══════════════════════════════════════`);
+    console.log(`[FullProvision] Complete: ${run.apps.filter(a => a.status === 'assigned').length} apps, ${run.profiles.filter(p => p.status === 'assigned').length} profiles, ${run.webClips.length} webclips, ${run.serials.filter(s => s.status === 'assigned').length} serials`);
+
+    res.json({
+      success: true,
+      group: run.group,
+      apps: run.apps,
+      profiles: run.profiles,
+      webClips: run.webClips,
+      layout: run.layout,
+      serials: run.serials,
+      errors: run.errors,
+      summary: {
+        appsAssigned: run.apps.filter(a => a.status === 'assigned').length,
+        profilesAssigned: run.profiles.filter(p => p.status === 'assigned').length,
+        webClipsCreated: run.webClips.length,
+        serialsAssigned: run.serials.filter(s => s.status === 'assigned').length,
+        dockItems: dockItems.length,
+      },
+    });
+  } catch (err) {
+    console.error(`[FullProvision] Fatal error:`, err.message);
+    res.status(500).json({ error: err.message, partialResult: run });
+  }
+});
+
 
 // ── App Store Icon Enrichment ────────────────────────────────────────
 const iconCache = {}; // itunes_store_id -> icon URL
@@ -11599,6 +11908,23 @@ app.get('/api/agent/actions', (req, res) => {
         { key: 'instruction', label: 'What should the AI do?', type: 'textarea', required: true, placeholder: 'e.g. Go to SimpleMDM profiles and create a WiFi profile called "Guest WiFi" with SSID "FelloGuest" and WPA2 password "Welcome2026"' },
         { key: 'startUrl', label: 'Start URL (optional)', type: 'text', required: false, placeholder: 'https://a.simplemdm.com/admin/...' },
         { key: 'maxSteps', label: 'Max Steps', type: 'number', required: false, default: 20 },
+      ]
+    },
+    {
+      id: 'full_provision',
+      name: '🚀 Full Order Provision',
+      icon: '🚀',
+      description: 'One-click: create group, assign apps, WiFi, webclips, and home screen layout — runs instantly via server API',
+      serverDirect: true,  // Calls server API directly, no Mac mini needed
+      apiEndpoint: '/api/automation/full-provision',
+      params: [
+        { key: 'groupName', label: 'Group Name', type: 'text', required: true, placeholder: 'SH1234 - Client Name' },
+        { key: 'apps', label: 'Apps (comma-separated names)', type: 'text', required: false, placeholder: 'Eventbrite, Square POS, Shopify POS' },
+        { key: 'wifiSsid', label: 'Custom WiFi SSID', type: 'text', required: false, placeholder: 'EventGuest' },
+        { key: 'wifiPassword', label: 'Custom WiFi Password', type: 'password', required: false },
+        { key: 'wifiSecurity', label: 'WiFi Security', type: 'select', options: ['WPA2', 'WPA2/WPA3', 'WPA3', 'WEP', 'None'], default: 'WPA2' },
+        { key: 'webClips', label: 'Web Clips (name|url, one per line)', type: 'textarea', required: false, placeholder: 'Check-In Portal|https://checkin.example.com\nEvent Map|https://map.example.com' },
+        { key: 'serials', label: 'Serial Numbers (one per line)', type: 'textarea', required: false, placeholder: 'ABCD1234EFGH\nIJKL5678MNOP' },
       ]
     },
   ]});

@@ -739,6 +739,62 @@
                 });
             }
 
+            // ── Server-direct actions (call API directly, no Mac mini needed) ──
+            if (action && action.serverDirect && action.apiEndpoint) {
+                try {
+                    // Transform form params into API-friendly format
+                    const apiBody = { ...params };
+                    
+                    // Parse comma-separated apps into array
+                    if (apiBody.apps && typeof apiBody.apps === 'string') {
+                        apiBody.apps = apiBody.apps.split(',').map(s => s.trim()).filter(Boolean);
+                    }
+                    
+                    // Parse pipe-delimited webclips (name|url per line) into array of objects
+                    if (apiBody.webClips && typeof apiBody.webClips === 'string') {
+                        apiBody.webClips = apiBody.webClips.split('\n').map(line => {
+                            const [name, url] = line.split('|').map(s => s.trim());
+                            return name && url ? { name, url } : null;
+                        }).filter(Boolean);
+                    }
+                    
+                    // Parse newline-separated serials into array
+                    if (apiBody.serials && typeof apiBody.serials === 'string') {
+                        apiBody.serials = apiBody.serials.split('\n').map(s => s.trim()).filter(Boolean);
+                    }
+                    
+                    // Build wifiNetworks from individual fields
+                    if (apiBody.wifiSsid) {
+                        apiBody.wifiNetworks = [{ ssid: apiBody.wifiSsid, password: apiBody.wifiPassword || '', security: apiBody.wifiSecurity || 'WPA2' }];
+                    }
+                    delete apiBody.wifiSsid; delete apiBody.wifiPassword; delete apiBody.wifiSecurity;
+
+                    showToast('🚀 Running provisioning...', 'info');
+                    const res = await fetch(action.apiEndpoint, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        credentials: 'include',
+                        body: JSON.stringify(apiBody)
+                    });
+
+                    const result = await res.json();
+                    if (res.ok && result.success) {
+                        const s = result.summary || {};
+                        showToast(`✅ Provisioned: ${s.appsAssigned || 0} apps, ${s.profilesAssigned || 0} profiles, ${s.webClipsCreated || 0} webclips, ${s.dockItems || 0} dock items`);
+                        // Show result in a details section
+                        alert(`✅ Full Provision Complete!\n\nGroup: ${result.group?.name} (ID: ${result.group?.id})\nApps: ${s.appsAssigned}\nProfiles: ${s.profilesAssigned}\nWeb Clips: ${s.webClipsCreated}\nDock Items: ${s.dockItems}\nSerials: ${s.serialsAssigned || 0}\n\n${result.errors?.length ? 'Warnings: ' + result.errors.join(', ') : 'No errors'}`);
+                        e.target.reset();
+                        renderDynamicParams();
+                    } else {
+                        showToast(`❌ Error: ${result.error || 'Unknown error'}`, 'error');
+                    }
+                } catch(err) {
+                    showToast(`❌ Request failed: ${err.message}`, 'error');
+                }
+                return;
+            }
+
+            // ── Standard agent tasks (sent to Mac mini) ──
             const payload = { action: actionId, description, params };
 
             try {
