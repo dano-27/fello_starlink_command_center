@@ -6840,6 +6840,12 @@ app.post('/api/automation/full-provision', async (req, res) => {
       console.log(`[FullProvision] Step 5: Assigning ${cleanSerials.length} serials via full DEP flow...`);
       const depServerId = MDM_ACCOUNTS[account]?.depServerId || '10650';
 
+      // Extract order number from group name for device naming (e.g. "SH1234 - Client" → "SH1234")
+      const orderMatch = cleanName.match(/^([A-Z]{2,3}\d+)/i);
+      const orderNumber = orderMatch ? orderMatch[1].toUpperCase() : cleanName.split(/\s*[-–—]\s*/)[0].trim();
+      let sequenceNumber = 0;
+      console.log(`[FullProvision]   Device naming: "${orderNumber} (XX)"`);
+
       // Pre-fetch enrolled devices
       const enrolledBySerial = new Map();
       try {
@@ -6886,7 +6892,13 @@ app.post('/api/automation/full-provision', async (req, res) => {
           const device = enrolledBySerial.get(serial);
           if (device) {
             await smdmRequest(rawKey, `/assignment_groups/${groupId}/devices/${device.id}`, 'POST');
-            run.serials.push({ serial, deviceId: device.id, status: 'assigned', source: 'enrolled' });
+            sequenceNumber++;
+            const newName = `${orderNumber} (${String(sequenceNumber).padStart(2, '0')})`;
+            try {
+              await smdmRequest(rawKey, `/devices/${device.id}`, 'PATCH', { name: newName, device_name: newName });
+              console.log(`[FullProvision]   📝 Renamed device ${device.id} → "${newName}"`);
+            } catch (e) { console.log(`[FullProvision]   Rename failed: ${e.message}`); }
+            run.serials.push({ serial, deviceId: device.id, name: newName, status: 'assigned', source: 'enrolled' });
             console.log(`[FullProvision]   ✓ ${serial} → enrolled device ${device.id} → group`);
             continue;
           }
@@ -6898,7 +6910,13 @@ app.post('/api/automation/full-provision', async (req, res) => {
             if (linkedDevice && linkedDevice.id) {
               // DEP device is enrolled — assign to group
               await smdmRequest(rawKey, `/assignment_groups/${groupId}/devices/${linkedDevice.id}`, 'POST');
-              run.serials.push({ serial, deviceId: linkedDevice.id, status: 'assigned', source: 'dep_enrolled' });
+              sequenceNumber++;
+              const newName = `${orderNumber} (${String(sequenceNumber).padStart(2, '0')})`;
+              try {
+                await smdmRequest(rawKey, `/devices/${linkedDevice.id}`, 'PATCH', { name: newName, device_name: newName });
+                console.log(`[FullProvision]   📝 Renamed device ${linkedDevice.id} → "${newName}"`);
+              } catch (e) { console.log(`[FullProvision]   Rename failed: ${e.message}`); }
+              run.serials.push({ serial, deviceId: linkedDevice.id, name: newName, status: 'assigned', source: 'dep_enrolled' });
               console.log(`[FullProvision]   ✓ ${serial} → DEP → enrolled device ${linkedDevice.id} → group`);
             } else {
               // In DEP but not yet enrolled
