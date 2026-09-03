@@ -10527,6 +10527,34 @@ app.get('/api/debug/abm-devices', async (req, res) => {
   }
 });
 
+// POST /api/abm/assign — Assign device serials to Fello SimpleMDM in ABM
+app.post('/api/abm/assign', async (req, res) => {
+  const { serials } = req.body;
+  if (!serials || !Array.isArray(serials) || serials.length === 0) {
+    return res.status(400).json({ error: 'serials array required' });
+  }
+  if (!abmPrivateKey) {
+    return res.status(500).json({ error: 'ABM private key not configured' });
+  }
+  try {
+    const result = await abmAssignToSimpleMdm(serials.map(s => s.trim().toUpperCase()));
+    console.log(`[ABM] Assign ${serials.length} devices: status ${result.status}`);
+    
+    // Also trigger DEP sync so devices appear in SimpleMDM
+    const rawKey = getMdmAccountKey('fello');
+    const depServerId = MDM_ACCOUNTS['fello']?.depServerId || '10650';
+    await fetch(`https://a.simplemdm.com/api/v1/dep_servers/${depServerId}/sync`, {
+      method: 'POST',
+      headers: { Authorization: 'Basic ' + Buffer.from(rawKey + ':').toString('base64') },
+    });
+    console.log(`[ABM] DEP sync triggered after assignment`);
+    
+    res.json({ success: result.status >= 200 && result.status < 300, abmStatus: result.status, data: result.data, depSynced: true });
+  } catch (err) {
+    console.error('[ABM] Assign error:', err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 app.get('/api/debug/dep-devices', async (req, res) => {
   try {
