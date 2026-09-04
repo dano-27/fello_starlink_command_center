@@ -6848,174 +6848,137 @@ app.post('/api/automation/full-provision', async (req, res) => {
       run.errors.push(`Layout: ${e.message}`);
     }
 
-    // ── Step 5: Assign serial numbers (DEP + enrolled + ABM) ─────────
+    // ── Step 5: Assign serial numbers ─────────────────────────────────
     const cleanSerials = serials.filter(s => s && s.trim()).map(s => s.trim().toUpperCase());
     if (cleanSerials.length > 0) {
-      console.log(`[FullProvision] Step 5: Assigning ${cleanSerials.length} serials via full DEP flow...`);
+      console.log(`[FullProvision] Step 5: Assigning ${cleanSerials.length} serials...`);
       const depServerId = MDM_ACCOUNTS[account]?.depServerId || '10650';
 
-      // Extract order number from group name for device naming (e.g. "SH1234 - Client" → "SH1234")
+      // Extract order number from group name for device naming
       const orderMatch = cleanName.match(/^([A-Z]{2,3}\d+)/i);
       const orderNumber = orderMatch ? orderMatch[1].toUpperCase() : cleanName.split(/\s*[-–—]\s*/)[0].trim();
       let sequenceNumber = 0;
       console.log(`[FullProvision]   Device naming: "${orderNumber} (XX)"`);
 
-      // Pre-fetch enrolled devices
-      const enrolledBySerial = new Map();
-      try {
-        let hasMore = true, startingAfter = '';
-        while (hasMore) {
-          const url = `https://a.simplemdm.com/api/v1/devices?limit=100${startingAfter ? `&starting_after=${startingAfter}` : ''}`;
-          const resp = await fetch(url, { headers: { Authorization: 'Basic ' + Buffer.from(rawKey + ':').toString('base64') } });
-          const data = resp.ok ? await resp.json() : { data: [], has_more: false };
-          for (const d of (data.data || [])) {
-            const sn = d.attributes?.serial_number?.toUpperCase();
-            if (sn) enrolledBySerial.set(sn, d);
-          }
-          hasMore = data.has_more === true;
-          const items = data.data || [];
-          startingAfter = items.length > 0 ? items[items.length - 1].id : '';
-          if (!startingAfter) break;
-        }
-        console.log(`[FullProvision]   Pre-fetched ${enrolledBySerial.size} enrolled devices`);
-      } catch (e) { console.log(`[FullProvision]   Enrolled fetch failed: ${e.message}`); }
-
-      // Pre-fetch DEP devices
-      const depBySerial = new Map();
-      try {
-        let hasMore = true, depCursor = '';
-        while (hasMore) {
-          const depUrl = `https://a.simplemdm.com/api/v1/dep_servers/${depServerId}/dep_devices?limit=100${depCursor ? `&starting_after=${depCursor}` : ''}`;
-          const depResp = await fetch(depUrl, { headers: { Authorization: 'Basic ' + Buffer.from(rawKey + ':').toString('base64') } });
-          const depData = depResp.ok ? await depResp.json() : { data: [], has_more: false };
-          for (const d of (depData.data || [])) {
-            const sn = d.attributes?.serial_number?.toUpperCase();
-            if (sn) depBySerial.set(sn, d);
-          }
-          hasMore = depData.has_more === true;
-          const items = depData.data || [];
-          depCursor = items.length > 0 ? items[items.length - 1].id : '';
-          if (!depCursor) break;
-        }
-        console.log(`[FullProvision]   Pre-fetched ${depBySerial.size} DEP devices`);
-      } catch (e) { console.log(`[FullProvision]   DEP fetch failed: ${e.message}`); }
+      const abmPending = []; // Serials that need ABM assign + DEP sync
 
       for (const serial of cleanSerials) {
         try {
-          // 1. Check enrolled devices from pre-fetch map
-          let device = enrolledBySerial.get(serial);
-          
-          // 1b. Fallback: direct API search if pre-fetch missed it
-          if (!device) {
-            try {
-              const searchResp = await smdmRequest(rawKey, `/devices?search=${serial}`);
-              device = searchResp.data && searchResp.data.find(d =>
-                d.attributes.serial_number && d.attributes.serial_number.toUpperCase() === serial
-              );
-              if (device) console.log(`[FullProvision]   Found ${serial} via direct search (ID: ${device.id})`);
-            } catch (e) { console.log(`[FullProvision]   Direct search failed: ${e.message}`); }
+          console.log(`[FullProvision]   Processing ${serial}...`);
+
+          // Search for device directly in SimpleMDM
+          let device = null;
+          try {
+            const searchResp = await smdmRequest(rawKey, `/devices?search=${serial}`);
+            device = (searchResp.data || []).find(d =>
+              d.attributes?.serial_number?.toUpperCase() === serial
+            );
+          } catch (e) {
+            console.log(`[FullProvision]   Search error: ${e.message}`);
           }
 
           if (device) {
-            // Assign to group
-            const assignResp = await smdmRequest(rawKey, `/assignment_groups/${groupId}/devices/${device.id}`, 'POST');
-            console.log(`[FullProvision]   Assignment response for ${serial}: ${JSON.stringify(assignResp).substring(0, 200)}`);
+            // Device is enrolled — assign to group, rename, ABM assign
+            console.log(`[FullProvision]   Found enrolled device ${device.id} for ${serial}`);
             
-            // Rename
+            await smdmRequest(rawKey, `/assignment_groups/${groupId}/devices/${device.id}`, 'POST');
+            console.log(`[FullProvision]   ✓ Assigned ${serial} (device ${device.id}) → group ${groupId}`);
+
             sequenceNumber++;
             const newName = `${orderNumber} (${String(sequenceNumber).padStart(2, '0')})`;
             try {
-              const renameResp = await smdmRequest(rawKey, `/devices/${device.id}`, 'PATCH', { name: newName, device_name: newName });
-              console.log(`[FullProvision]   📝 Renamed device ${device.id} → "${newName}"`);
-            } catch (e) { 
-              console.log(`[FullProvision]   ⚠ Rename failed for ${device.id}: ${e.message}`);
+              await smdmRequest(rawKey, `/devices/${device.id}`, 'PATCH', { name: newName, device_name: newName });
+              console.log(`[FullProvision]   📝 Renamed → "${newName}"`);
+            } catch (e) {
+              console.log(`[FullProvision]   ⚠ Rename failed: ${e.message}`);
             }
 
-            // Also assign in ABM so DEP re-enrollment works on wipe/reset
+            // Assign in ABM for DEP re-enrollment
             if (abmPrivateKey) {
               try {
                 const abmResult = await abmAssignToSimpleMdm([serial]);
-                console.log(`[FullProvision]   🍎 ABM assign ${serial}: status ${abmResult.status}`);
+                console.log(`[FullProvision]   🍎 ABM assign: status ${abmResult.status}`);
               } catch (e) {
-                console.log(`[FullProvision]   ⚠ ABM assign failed for ${serial}: ${e.message}`);
+                console.log(`[FullProvision]   ⚠ ABM assign failed: ${e.message}`);
               }
             }
 
             run.serials.push({ serial, deviceId: device.id, name: newName, status: 'assigned', source: 'enrolled' });
-            console.log(`[FullProvision]   ✓ ${serial} → device ${device.id} → group ${groupId}`);
             continue;
           }
 
-          // 2. Check DEP devices
-          const depDevice = depBySerial.get(serial);
+          // Not found in enrolled — check DEP
+          let depDevice = null;
+          try {
+            const depResp = await smdmRequest(rawKey, `/dep_servers/${depServerId}/dep_devices?search=${serial}`);
+            depDevice = (depResp.data || []).find(d =>
+              d.attributes?.serial_number?.toUpperCase() === serial
+            );
+          } catch (e) {
+            console.log(`[FullProvision]   DEP search error: ${e.message}`);
+          }
+
           if (depDevice) {
             const linkedDevice = depDevice.relationships?.device?.data;
             if (linkedDevice && linkedDevice.id) {
-              // DEP device is enrolled — assign to group
+              // DEP device is enrolled — assign to group and rename
+              console.log(`[FullProvision]   Found DEP-enrolled device ${linkedDevice.id} for ${serial}`);
               await smdmRequest(rawKey, `/assignment_groups/${groupId}/devices/${linkedDevice.id}`, 'POST');
+              
               sequenceNumber++;
               const newName = `${orderNumber} (${String(sequenceNumber).padStart(2, '0')})`;
               try {
                 await smdmRequest(rawKey, `/devices/${linkedDevice.id}`, 'PATCH', { name: newName, device_name: newName });
-                console.log(`[FullProvision]   📝 Renamed device ${linkedDevice.id} → "${newName}"`);
-              } catch (e) { console.log(`[FullProvision]   Rename failed: ${e.message}`); }
+                console.log(`[FullProvision]   📝 Renamed → "${newName}"`);
+              } catch (e) { console.log(`[FullProvision]   ⚠ Rename failed: ${e.message}`); }
+              
               run.serials.push({ serial, deviceId: linkedDevice.id, name: newName, status: 'assigned', source: 'dep_enrolled' });
-              console.log(`[FullProvision]   ✓ ${serial} → DEP → enrolled device ${linkedDevice.id} → group`);
             } else {
-              // In DEP but not yet enrolled
               run.serials.push({ serial, status: 'pending_enrollment', source: 'dep' });
-              console.log(`[FullProvision]   ⚠ ${serial} in DEP but not enrolled yet — will auto-assign on enrollment`);
+              console.log(`[FullProvision]   ⚠ ${serial} in DEP but not enrolled — will auto-assign on enrollment`);
             }
             continue;
           }
 
-          // 3. Not found — use ABM API to look up and assign to Fello SimpleMDM
-          console.log(`[FullProvision]   ${serial} not in enrolled/DEP — checking ABM...`);
+          // Not found anywhere in SimpleMDM — try ABM
+          console.log(`[FullProvision]   ${serial} not in SimpleMDM — queuing for ABM...`);
           if (abmPrivateKey) {
             try {
               const abmDevice = await abmLookupDevice(serial);
               if (abmDevice) {
                 const abmStatus = abmDevice.attributes?.status;
                 console.log(`[FullProvision]   Found in ABM: status=${abmStatus}`);
-                
                 if (abmStatus === 'UNASSIGNED' || abmStatus === 'ASSIGNED') {
-                  // Assign to Fello SimpleMDM via ABM API
                   const assignResult = await abmAssignToSimpleMdm([serial]);
-                  console.log(`[FullProvision]   ABM assign response: ${assignResult.status}`);
-                  
                   if (assignResult.status >= 200 && assignResult.status < 300) {
+                    abmPending.push(serial);
                     run.serials.push({ serial, status: 'assigned_to_dep', source: 'abm' });
-                    console.log(`[FullProvision]   ✓ ${serial} assigned to Fello SimpleMDM via ABM — will appear after DEP sync`);
+                    console.log(`[FullProvision]   ✓ ${serial} assigned to Fello SimpleMDM via ABM`);
                   } else {
                     run.serials.push({ serial, status: 'abm_assign_failed', error: JSON.stringify(assignResult.data) });
-                    console.log(`[FullProvision]   ⚠ ${serial} ABM assignment failed: ${JSON.stringify(assignResult.data)}`);
                   }
                 } else {
                   run.serials.push({ serial, status: 'abm_status_' + (abmStatus || 'unknown').toLowerCase() });
-                  console.log(`[FullProvision]   ⚠ ${serial} ABM status: ${abmStatus} — cannot auto-assign`);
                 }
               } else {
                 run.serials.push({ serial, status: 'not_found' });
-                console.log(`[FullProvision]   ⚠ ${serial} not found in SimpleMDM, DEP, or ABM`);
+                console.log(`[FullProvision]   ⚠ ${serial} not found anywhere`);
               }
             } catch (abmErr) {
               run.serials.push({ serial, status: 'abm_error', error: abmErr.message });
-              console.log(`[FullProvision]   ⚠ ${serial} ABM error: ${abmErr.message}`);
             }
           } else {
             run.serials.push({ serial, status: 'not_found', error: 'ABM not configured' });
-            console.log(`[FullProvision]   ⚠ ${serial} not found — ABM key not configured`);
           }
         } catch (e) {
           run.serials.push({ serial, status: 'error', error: e.message });
+          console.error(`[FullProvision]   ✗ ${serial}: ${e.message}`);
         }
       }
 
       // Trigger DEP sync so newly ABM-assigned devices appear in SimpleMDM
-      const abmAssignedSerials = run.serials.filter(s => s.status === 'assigned_to_dep' && s.source === 'abm').map(s => s.serial);
-      
-      if (abmAssignedSerials.length > 0) {
-        console.log(`[FullProvision]   ${abmAssignedSerials.length} devices assigned via ABM — triggering DEP sync and waiting...`);
+      if (abmPending.length > 0) {
+        console.log(`[FullProvision]   ${abmPending.length} devices assigned via ABM — triggering DEP sync and waiting...`);
         
         // Trigger DEP sync
         try {
@@ -7043,7 +7006,7 @@ app.post('/api/automation/full-provision', async (req, res) => {
           }
 
           let allFound = true;
-          for (const serial of abmAssignedSerials) {
+          for (const serial of abmPending) {
             // Check if device now appears in SimpleMDM
             try {
               const devResp = await smdmRequest(rawKey, `/devices?search=${serial}`);
