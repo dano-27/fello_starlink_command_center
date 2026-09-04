@@ -6414,7 +6414,7 @@ const HOMESCREEN_OTHER_APPS = [
   'com.apple.mobilephone', 'com.apple.MobileSMS',
 ];
 
-function generateHomescreenMobileconfig(profileName, dockAppBundleOrItems, dockAppName) {
+function generateHomescreenMobileconfig(profileName, dockAppBundleOrItems, dockAppName, extraPageApps) {
   const uuid1 = crypto.randomUUID();
   const uuid2 = crypto.randomUUID();
   const identifier = `com.fello.homescreen.${Date.now()}`;
@@ -6426,6 +6426,9 @@ function generateHomescreenMobileconfig(profileName, dockAppBundleOrItems, dockA
   } else {
     dockItems = [{ type: 'Application', bundleId: dockAppBundleOrItems }];
   }
+
+  // Extra apps to put on page 1 (provisioned third-party apps not already on dock)
+  const page1ExtraApps = (extraPageApps || []).filter(a => a.bundleId);
 
   // Generate dock XML for each item
   const dockXml = dockItems.map(item => {
@@ -6445,6 +6448,29 @@ function generateHomescreenMobileconfig(profileName, dockAppBundleOrItems, dockA
                 </dict>`;
     }
   }).join('\n');
+
+  // Build page 1: SimpleMDM + Fello Connect + Settings + all provisioned apps
+  const page1AppBundles = [
+    HOMESCREEN_ALWAYS_APPS.simpleMdm.bundle,
+    HOMESCREEN_ALWAYS_APPS.felloConnect.bundle,
+    HOMESCREEN_ALWAYS_APPS.settings.bundle,
+  ];
+  // Add provisioned third-party apps to page 1
+  const dockBundleIds = new Set(dockItems.filter(d => d.type === 'Application').map(d => d.bundleId));
+  for (const app of page1ExtraApps) {
+    if (!page1AppBundles.includes(app.bundleId) && !dockBundleIds.has(app.bundleId)) {
+      page1AppBundles.push(app.bundleId);
+    }
+  }
+
+  const page1Xml = page1AppBundles.map(bid => 
+    `                    <dict>
+                        <key>BundleID</key>
+                        <string>${bid}</string>
+                        <key>Type</key>
+                        <string>Application</string>
+                    </dict>`
+  ).join('\n');
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -6472,24 +6498,7 @@ ${dockXml}
             <key>Pages</key>
             <array>
                 <array>
-                    <dict>
-                        <key>BundleID</key>
-                        <string>${HOMESCREEN_ALWAYS_APPS.simpleMdm.bundle}</string>
-                        <key>Type</key>
-                        <string>Application</string>
-                    </dict>
-                    <dict>
-                        <key>BundleID</key>
-                        <string>${HOMESCREEN_ALWAYS_APPS.felloConnect.bundle}</string>
-                        <key>Type</key>
-                        <string>Application</string>
-                    </dict>
-                    <dict>
-                        <key>BundleID</key>
-                        <string>${HOMESCREEN_ALWAYS_APPS.settings.bundle}</string>
-                        <key>Type</key>
-                        <string>Application</string>
-                    </dict>
+${page1Xml}
                 </array>
                 <array>
                     <dict>
@@ -6824,11 +6833,16 @@ app.post('/api/automation/full-provision', async (req, res) => {
 
     try {
       const layoutName = `Home Screen - ${cleanName}`;
-      const layoutXml = generateHomescreenMobileconfig(layoutName, dockItems);
+      // Collect all assigned app bundle IDs for page 1
+      const page1Apps = run.apps
+        .filter(a => a.status === 'assigned')
+        .map(a => ({ bundleId: a.bundleId || (appCatalog.find(c => c.id === a.id) || {}).bundleId }))
+        .filter(a => a.bundleId);
+      const layoutXml = generateHomescreenMobileconfig(layoutName, dockItems, null, page1Apps);
       const uploaded = await uploadCustomProfile(rawKey, layoutName, layoutXml);
       await smdmRequest(rawKey, `/assignment_groups/${groupId}/profiles/${uploaded.id}`, 'POST');
-      run.layout = { id: uploaded.id, name: layoutName, dockItems: dockItems.length };
-      console.log(`[FullProvision]   ✓ Layout created: ${layoutName} (${uploaded.id}) — ${dockItems.length} dock items`);
+      run.layout = { id: uploaded.id, name: layoutName, dockItems: dockItems.length, page1Apps: page1Apps.length };
+      console.log(`[FullProvision]   ✓ Layout created: ${layoutName} (${uploaded.id}) — ${dockItems.length} dock items, ${page1Apps.length} page 1 apps`);
     } catch (e) {
       run.layout = { error: e.message };
       run.errors.push(`Layout: ${e.message}`);
