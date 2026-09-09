@@ -205,12 +205,25 @@
     `;
 
     try {
+      let contextStr = '';
+      if (window._currentBranchName) {
+        contextStr += `\n\n[CONTEXT: User is currently viewing order ${window._currentBranchName}.`;
+        if (window._usageResults && window._usageResults.totals) {
+          const gb = (window._usageResults.totals.totalUsage / 1024).toFixed(3);
+          contextStr += ` Live Webbing data usage for this order is ${gb} GB.`;
+        }
+        if (window._lastOrderData && window._lastOrderData.crmOrder && window._lastOrderData.crmOrder.totalGbAmount) {
+          contextStr += ` Total data allocation is ${window._lastOrderData.crmOrder.totalGbAmount} GB.`;
+        }
+        contextStr += ']';
+      }
+
       const response = await fetch('/api/ai/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'same-origin',
         body: JSON.stringify({ 
-          message: query + '\n\nProvide a comprehensive, detailed report. Use headers, tables, and bullet points for clarity. This will be displayed on a full page, not a chat bubble, so you can be thorough.',
+          message: query + '\n\nProvide a comprehensive, detailed report. Use headers, tables, and bullet points for clarity. This will be displayed on a full page, not a chat bubble, so you can be thorough.' + contextStr,
           history: [] 
         })
       });

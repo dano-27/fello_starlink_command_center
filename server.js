@@ -3138,6 +3138,14 @@ app.get('/api/public/share/:token/usage', async (req, res) => {
     results.overageGB = data.totalGbAmount > 0 ? Math.max(0, Math.round((results.totalUsageGB - data.totalGbAmount) * 1000) / 1000) : 0;
     results.usagePercent = data.totalGbAmount > 0 ? Math.min(100, Math.round((results.totalUsageGB / data.totalGbAmount) * 100)) : 0;
     
+    // Save to cache for AI context
+    data.cachedUsage = {
+      totalUsageBytes: results.totalUsageMB * 1024 * 1024,
+      totalAllocationBytes: results.totalGbAmount * 1024 * 1024 * 1024,
+      deviceCount: results.devices.length
+    };
+    saveShareTokens();
+
     console.log('[Share] Usage for ' + data.orderId + ': ' + results.totalUsageGB + ' GB / ' + data.totalGbAmount + ' GB, ' + results.devices.length + ' devices');
     
     res.json(results);
@@ -9920,6 +9928,24 @@ app.get('/api/webbing/branches/:branchId/usage', async (req, res) => {
     }
 
     results.sort((a, b) => b.TotalUsage - a.TotalUsage);
+
+    // Update Pulse link cachedUsage if one exists for this branch/order so AI gets live data
+    if (devicesToProcess.length > 0) {
+      const branchName = devicesToProcess[0].BranchName;
+      if (branchName) {
+        const orderId = branchName.toUpperCase();
+        const tokenEntry = Object.entries(shareTokens).find(([_, d]) => d.orderId === orderId);
+        if (tokenEntry) {
+          const [token, tokenData] = tokenEntry;
+          tokenData.cachedUsage = {
+            totalUsageBytes: totalUsageMB * 1024 * 1024,
+            totalAllocationBytes: (tokenData.totalGbAmount || 0) * 1024 * 1024 * 1024,
+            deviceCount: devicesToProcess.length
+          };
+          saveShareTokens();
+        }
+      }
+    }
 
     res.json({
       totals: {
