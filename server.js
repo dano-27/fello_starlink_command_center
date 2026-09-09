@@ -305,15 +305,15 @@ function describeAction(action) {
   if (p.includes('/agent/tasks') && p.includes('/retry')) return `🤖 Retried automation task`;
   if (p.includes('/agent/tasks/clear')) return `🤖 Cleared automation task history`;
   if (p.includes('/agent/tasks') && m === 'POST') {
-    const action = b?.action || '';
-    if (action === 'ai_task') return `🧠 Queued AI task: "${(b?.params?.instruction || '').substring(0, 60)}"`;
-    return `🤖 ${tc || 'Queued automation task'}`;
+    const action = body?.action || '';
+    if (action === 'ai_task') return `🧠 Queued AI task: "${(body?.params?.instruction || '').substring(0, 60)}"`;
+    return `🤖 Queued automation task`;
   }
   if (p.includes('/agent/tasks') && m === 'DELETE') return `🤖 Cancelled automation task`;
   if (p.includes('/agent/status')) return `🤖 Viewed automation agent status`;
   if (p.includes('/simplemdm/homescreen-layout')) return `📱 Created Home Screen Layout profile`;
   if (p.includes('/simplemdm/apps/catalog')) return `📱 Viewed SimpleMDM app catalog`;
-  if (p.includes('/automation/full-provision')) return `🚀 Full Order Provision: "${b?.groupName || 'unknown'}"`;
+  if (p.includes('/automation/full-provision')) return `🚀 Full Order Provision: "${body?.groupName || 'unknown'}"`;
 
   // ── Generic fallback with more context ──
   const lastSegments = p.split('/').filter(Boolean).slice(-2).join('/');
@@ -806,7 +806,11 @@ app.get('/api/audit/sessions', (req, res) => {
       } else if (e.method === 'LOGOUT') {
         session.logoutTime = e.timestamp;
       } else {
-        session.actions.push(e);
+        try {
+          session.actions.push(e);
+        } catch (pushErr) {
+          console.error('[Audit] Error processing entry:', pushErr.message);
+        }
       }
     }
 
@@ -824,7 +828,7 @@ app.get('/api/audit/sessions', (req, res) => {
         const enrichedAction = {
           method: action.method, path: action.path, timestamp: action.timestamp,
           status: action.status, durationMs: action.durationMs,
-          description: describeAction(action),
+          description: (() => { try { return describeAction(action); } catch { return `${action.method || ''} ${action.path || ''}`; } })(),
           isError: action.status && action.status >= 400,
           taskContext: action.taskContext, body: action.body
         };
