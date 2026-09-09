@@ -100,18 +100,18 @@ function buildContext() {
     const tokens = dataSources.getShareTokens();
     const pulseOrders = {};
     for (const [token, data] of Object.entries(tokens)) {
-      const usage = data.cachedUsage || {};
-      const totalBytes = usage.totalUsageBytes || 0;
-      const allocBytes = usage.totalAllocationBytes || 0;
-      const pct = allocBytes > 0 ? (totalBytes / allocBytes * 100) : null;
+      const usage = data.cachedUsage;
+      const totalBytes = usage ? usage.totalUsageBytes : null;
+      const allocBytes = usage ? usage.totalAllocationBytes : (data.totalGbAmount ? data.totalGbAmount * 1024 * 1024 * 1024 : 0);
+      const pct = (totalBytes !== null && allocBytes > 0) ? (totalBytes / allocBytes * 100) : null;
       pulseOrders[data.orderId] = {
         createdBy: data.createdBy,
         expiresAt: data.expiresAt,
         daysUntilExpiry: data.expiresAt ? Math.round((new Date(data.expiresAt) - now) / 86400000) : null,
-        usageGb: (totalBytes / (1024 ** 3)).toFixed(2),
-        allocationGb: (allocBytes / (1024 ** 3)).toFixed(1),
+        usageGb: totalBytes !== null ? (totalBytes / (1024 ** 3)).toFixed(2) : null,
+        allocationGb: allocBytes > 0 ? (allocBytes / (1024 ** 3)).toFixed(1) : null,
         usagePercent: pct !== null ? pct.toFixed(1) : null,
-        deviceCount: usage.deviceCount || null,
+        deviceCount: usage ? usage.deviceCount : null,
         riskLevel: pct >= 95 ? 'CRITICAL' : pct >= 80 ? 'WARNING' : pct !== null ? 'OK' : 'NO_DATA'
       };
     }
