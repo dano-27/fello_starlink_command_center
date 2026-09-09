@@ -364,7 +364,7 @@ async function chat(userMessage, history = []) {
 
   // Retry with exponential backoff
   const MAX_RETRIES = 2;
-  const MODELS = ['gemini-3.7-flash', 'gemini-3.6-flash'];
+  const MODELS = ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash'];
   let lastError = null;
 
   for (const modelName of MODELS) {
@@ -675,7 +675,7 @@ RULES:
  * Shared Gemini call with model fallback and timeout
  */
 async function callGemini(prompt, maxTokens = 1024) {
-  const MODELS = ['gemini-3.7-flash', 'gemini-3.6-flash'];
+  const MODELS = ['gemini-3.8-flash', 'gemini-3.7-flash', 'gemini-3.6-flash'];
   let lastError = null;
 
   for (const modelName of MODELS) {
