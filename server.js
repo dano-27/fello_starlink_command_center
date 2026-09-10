@@ -6959,125 +6959,26 @@ app.post('/api/automation/full-provision', async (req, res) => {
             continue;
           }
 
-          // Not found anywhere in SimpleMDM — try ABM
-          console.log(`[FullProvision]   ${serial} not in SimpleMDM — queuing for ABM...`);
-          if (abmPrivateKey) {
-            try {
-              const abmDevice = await abmLookupDevice(serial);
-              if (abmDevice) {
-                const abmStatus = abmDevice.attributes?.status;
-                console.log(`[FullProvision]   Found in ABM: status=${abmStatus}`);
-                if (abmStatus === 'UNASSIGNED' || abmStatus === 'ASSIGNED') {
-                  const assignResult = await abmAssignToSimpleMdm([serial]);
-                  if (assignResult.status >= 200 && assignResult.status < 300) {
-                    abmPending.push(serial);
-                    run.serials.push({ serial, status: 'assigned_to_dep', source: 'abm' });
-                    
-                    // Save for webhook
-                    sequenceNumber++;
-                    const newName = `${orderNumber} (${String(sequenceNumber).padStart(2, '0')})`;
-                    pendingEnrollments[serial] = {
-                      groupId, groupName, plannedName: newName, assignedAt: new Date().toISOString()
-                    };
-                    savePendingEnrollments();
-                    
-                    console.log(`[FullProvision]   ✓ ${serial} assigned to Fello SimpleMDM via ABM (saved for webhook)`);
-                  } else {
-                    run.serials.push({ serial, status: 'abm_assign_failed', error: JSON.stringify(assignResult.data) });
-                  }
-                } else {
-                  run.serials.push({ serial, status: 'abm_status_' + (abmStatus || 'unknown').toLowerCase() });
-                }
-              } else {
-                run.serials.push({ serial, status: 'not_found' });
-                console.log(`[FullProvision]   ⚠ ${serial} not found anywhere`);
-              }
-            } catch (abmErr) {
-              run.serials.push({ serial, status: 'abm_error', error: abmErr.message });
-            }
-          } else {
-            run.serials.push({ serial, status: 'not_found', error: 'ABM not configured' });
-          }
+          // Not found anywhere in SimpleMDM
+          console.log(`[FullProvision]   ${serial} not found in SimpleMDM (neither enrolled nor DEP). Ensure it is assigned to SimpleMDM in Apple Business Manager.`);
+          run.serials.push({ serial, status: 'not_found', error: 'Not found in SimpleMDM DEP or enrolled devices' });
+
         } catch (e) {
           run.serials.push({ serial, status: 'error', error: e.message });
           console.error(`[FullProvision]   ✗ ${serial}: ${e.message}`);
         }
       }
 
-      // Trigger DEP sync so newly ABM-assigned devices appear in SimpleMDM
-      if (abmPending.length > 0) {
-        console.log(`[FullProvision]   ${abmPending.length} devices assigned via ABM — triggering DEP sync and waiting...`);
-        
-        // Trigger DEP sync
-        try {
-          await fetch(`https://a.simplemdm.com/api/v1/dep_servers/${depServerId}/sync`, {
-            method: 'POST',
-            headers: { Authorization: 'Basic ' + Buffer.from(rawKey + ':').toString('base64') },
-          });
-          console.log(`[FullProvision]   ✓ DEP sync triggered`);
-        } catch (e) { console.log(`[FullProvision]   DEP sync failed: ${e.message}`); }
+      // Always trigger DEP sync for good measure
+      try {
+        await fetch(`https://a.simplemdm.com/api/v1/dep_servers/${depServerId}/sync`, {
+          method: 'POST',
+          headers: { Authorization: 'Basic ' + Buffer.from(rawKey + ':').toString('base64') },
+        });
+        console.log(`[FullProvision]   ✓ DEP sync triggered`);
+      } catch (e) { console.log(`[FullProvision]   DEP sync failed: ${e.message}`); }
 
-        // Wait for sync to propagate, then retry assigning ABM devices to the group
-        for (let attempt = 1; attempt <= 3; attempt++) {
-          const waitSec = attempt * 10; // 10s, 20s, 30s
-          console.log(`[FullProvision]   Waiting ${waitSec}s for DEP sync (attempt ${attempt}/3)...`);
-          await new Promise(r => setTimeout(r, waitSec * 1000));
-
-          // Re-trigger sync on retries
-          if (attempt > 1) {
-            try {
-              await fetch(`https://a.simplemdm.com/api/v1/dep_servers/${depServerId}/sync`, {
-                method: 'POST',
-                headers: { Authorization: 'Basic ' + Buffer.from(rawKey + ':').toString('base64') },
-              });
-            } catch (e) {}
-          }
-
-          let allFound = true;
-          for (const serial of abmPending) {
-            // Check if device now appears in SimpleMDM
-            try {
-              const devResp = await smdmRequest(rawKey, `/devices?search=${serial}`);
-              const device = devResp.data && devResp.data.find(d =>
-                d.attributes.serial_number && d.attributes.serial_number.toUpperCase() === serial
-              );
-              if (device) {
-                // Found! Assign to group and rename
-                await smdmRequest(rawKey, `/assignment_groups/${groupId}/devices/${device.id}`, 'POST');
-                sequenceNumber++;
-                const newName = `${orderNumber} (${String(sequenceNumber).padStart(2, '0')})`;
-                try {
-                  await smdmRequest(rawKey, `/devices/${device.id}`, 'PATCH', { name: newName, device_name: newName });
-                  console.log(`[FullProvision]   📝 Renamed device ${device.id} → "${newName}"`);
-                } catch (e) {}
-                // Update the serial entry
-                const idx = run.serials.findIndex(s => s.serial === serial && s.source === 'abm');
-                if (idx >= 0) {
-                  run.serials[idx] = { serial, deviceId: device.id, name: newName, status: 'assigned', source: 'abm_synced' };
-                }
-                console.log(`[FullProvision]   ✓ ${serial} → DEP synced → device ${device.id} → group (attempt ${attempt})`);
-              } else {
-                allFound = false;
-              }
-            } catch (e) {
-              allFound = false;
-            }
-          }
-          if (allFound) {
-            console.log(`[FullProvision]   ✓ All ABM devices synced and assigned on attempt ${attempt}`);
-            break;
-          }
-        }
-      } else {
-        // No ABM assignments — still trigger DEP sync for good measure
-        try {
-          await fetch(`https://a.simplemdm.com/api/v1/dep_servers/${depServerId}/sync`, {
-            method: 'POST',
-            headers: { Authorization: 'Basic ' + Buffer.from(rawKey + ':').toString('base64') },
-          });
-          console.log(`[FullProvision]   ✓ DEP sync triggered`);
-        } catch (e) { console.log(`[FullProvision]   DEP sync failed: ${e.message}`); }
-      }
+      run.status = 'completed';
 
       // Push apps to group after device assignment
       try {
@@ -7360,36 +7261,19 @@ app.post('/api/simplemdm/groups/:groupId/delete-with-cleanup', async (req, res) 
     }
     results.devicesProcessed = deviceRefs.length;
 
-    // Unassign from ABM
-    if (serialsForAbm.length > 0) {
-      try {
-        const abmResult = await abmUnassignDevices(serialsForAbm);
-        if (!abmResult.skipped && abmResult.status >= 200 && abmResult.status < 300) {
-          results.abmUnassigned = true;
-          console.log(`[GROUP-DELETE]   🍎 ABM unassigned ${serialsForAbm.length} devices`);
-          
-          // Trigger immediate DEP sync
-          const depServerId = MDM_ACCOUNTS[accountId]?.depServerId || '10650';
-          const auth = 'Basic ' + Buffer.from(rawKey + ':').toString('base64');
-          try {
-            await fetch(`https://a.simplemdm.com/api/v1/dep_servers/${depServerId}/sync`, { method: 'POST', headers: { Authorization: auth } });
-            console.log(`[GROUP-DELETE]   🔄 Triggered DEP sync to purge unassigned devices`);
-            
-            // Trigger delayed DEP sync 4 minutes later to catch devices that take time to wipe/unenroll
-            setTimeout(async () => {
-              try {
-                await fetch(`https://a.simplemdm.com/api/v1/dep_servers/${depServerId}/sync`, { method: 'POST', headers: { Authorization: auth } });
-                console.log(`[GROUP-DELETE]   🔄 Triggered delayed DEP sync (cleanup for ${groupId})`);
-              } catch (_) {}
-            }, 4 * 60 * 1000);
-          } catch (e) {
-            console.log(`[GROUP-DELETE]   ⚠ DEP sync failed: ${e.message}`);
-          }
+    // No longer unassigning from ABM — devices remain in Fello SimpleMDM permanently
+    // We trigger a delayed deletion of the device records so they don't clutter the "Unenrolled" view
+    console.log(`[GROUP-DELETE]   ⏳ Scheduling unenrolled device cleanup for 4 minutes from now`);
+    setTimeout(async () => {
+      for (const ref of deviceRefs) {
+        try {
+          await smdmRequest(rawKey, `/devices/${ref.id}`, 'DELETE');
+          console.log(`[GROUP-DELETE]   🗑️ Deleted unenrolled device ${ref.id} (delayed cleanup)`);
+        } catch (e) {
+          console.log(`[GROUP-DELETE]   ⚠ Failed to delete unenrolled device ${ref.id}: ${e.message}`);
         }
-      } catch (abmErr) {
-        console.error('[GROUP-DELETE] ABM unassign error:', abmErr.message);
       }
-    }
+    }, 4 * 60 * 1000);
 
     // Delete the group
     try {
