@@ -6946,8 +6946,15 @@ app.post('/api/automation/full-provision', async (req, res) => {
               
               run.serials.push({ serial, deviceId: linkedDevice.id, name: newName, status: 'assigned', source: 'dep_enrolled' });
             } else {
+              sequenceNumber++;
+              const newName = `${orderNumber} (${String(sequenceNumber).padStart(2, '0')})`;
+              pendingEnrollments[serial] = {
+                groupId, groupName, plannedName: newName, assignedAt: new Date().toISOString()
+              };
+              savePendingEnrollments();
+              
               run.serials.push({ serial, status: 'pending_enrollment', source: 'dep' });
-              console.log(`[FullProvision]   ⚠ ${serial} in DEP but not enrolled — will auto-assign on enrollment`);
+              console.log(`[FullProvision]   ⚠ ${serial} in DEP but not enrolled — saved for webhook`);
             }
             continue;
           }
@@ -6965,7 +6972,16 @@ app.post('/api/automation/full-provision', async (req, res) => {
                   if (assignResult.status >= 200 && assignResult.status < 300) {
                     abmPending.push(serial);
                     run.serials.push({ serial, status: 'assigned_to_dep', source: 'abm' });
-                    console.log(`[FullProvision]   ✓ ${serial} assigned to Fello SimpleMDM via ABM`);
+                    
+                    // Save for webhook
+                    sequenceNumber++;
+                    const newName = `${orderNumber} (${String(sequenceNumber).padStart(2, '0')})`;
+                    pendingEnrollments[serial] = {
+                      groupId, groupName, plannedName: newName, assignedAt: new Date().toISOString()
+                    };
+                    savePendingEnrollments();
+                    
+                    console.log(`[FullProvision]   ✓ ${serial} assigned to Fello SimpleMDM via ABM (saved for webhook)`);
                   } else {
                     run.serials.push({ serial, status: 'abm_assign_failed', error: JSON.stringify(assignResult.data) });
                   }
@@ -7351,6 +7367,24 @@ app.post('/api/simplemdm/groups/:groupId/delete-with-cleanup', async (req, res) 
         if (!abmResult.skipped && abmResult.status >= 200 && abmResult.status < 300) {
           results.abmUnassigned = true;
           console.log(`[GROUP-DELETE]   🍎 ABM unassigned ${serialsForAbm.length} devices`);
+          
+          // Trigger immediate DEP sync
+          const depServerId = MDM_ACCOUNTS[accountId]?.depServerId || '10650';
+          const auth = 'Basic ' + Buffer.from(rawKey + ':').toString('base64');
+          try {
+            await fetch(`https://a.simplemdm.com/api/v1/dep_servers/${depServerId}/sync`, { method: 'POST', headers: { Authorization: auth } });
+            console.log(`[GROUP-DELETE]   🔄 Triggered DEP sync to purge unassigned devices`);
+            
+            // Trigger delayed DEP sync 4 minutes later to catch devices that take time to wipe/unenroll
+            setTimeout(async () => {
+              try {
+                await fetch(`https://a.simplemdm.com/api/v1/dep_servers/${depServerId}/sync`, { method: 'POST', headers: { Authorization: auth } });
+                console.log(`[GROUP-DELETE]   🔄 Triggered delayed DEP sync (cleanup for ${groupId})`);
+              } catch (_) {}
+            }, 4 * 60 * 1000);
+          } catch (e) {
+            console.log(`[GROUP-DELETE]   ⚠ DEP sync failed: ${e.message}`);
+          }
         }
       } catch (abmErr) {
         console.error('[GROUP-DELETE] ABM unassign error:', abmErr.message);
